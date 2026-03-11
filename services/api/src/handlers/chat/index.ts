@@ -1481,15 +1481,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       const roomName = roomEntry[0];
       console.log(`[HealthCheck] Testing Kara in room "${roomName}"...`);
+      const healthCheckTime = new Date();
 
-      // Save a test message to the room so Kara has something to respond to
-      await Data.message.create({
-        content: 'Kara, system health check — please confirm you are online with a brief response.',
-        type: 'system',
-        room_id: kara.room_id,
-        author_id: null,
-        username: 'System',
-      });
+      // Emit health check message (emitSystemMessage already persists to DB)
       emitSystemMessage(io, roomName, 'Kara, system health check — please confirm you are online with a brief response.');
 
       // Trigger Kara's response
@@ -1497,11 +1491,12 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       if (!freshKara) return;
       await runAgentResponse(io, freshKara as AgentLike, roomName);
 
-      // Check if she responded by looking at recent messages
+      // Check if she responded AFTER the health check was sent
       const recentMessages = await prisma.$queryRawUnsafe(
-        `SELECT content, username FROM message WHERE room_id = ? AND username = ? ORDER BY created_at DESC LIMIT 1`,
+        `SELECT content, username FROM message WHERE room_id = ? AND username = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 1`,
         kara.room_id,
         kara.name,
+        healthCheckTime,
       ) as Array<{ content: string; username: string }>;
 
       if (recentMessages.length > 0) {
