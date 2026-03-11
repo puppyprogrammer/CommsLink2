@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.6.3';
+const AGENT_VERSION = '1.6.4';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -505,8 +505,13 @@ const connect = (config: SavedConfig): void => {
         cleanup();
 
         // Use /copy to get Claude's clean response text via clipboard
+        // Clear any leftover text on the input line first (Ctrl+U = clear line, Escape = dismiss any overlay)
         log(`[Claude PTY Collect] Sending /copy to grab response for ${execId}`);
         if (activePty) {
+          activePty.write('\x1b');          // Escape — dismiss any overlay
+          await new Promise((r) => setTimeout(r, 300));
+          activePty.write('\x15');          // Ctrl+U — clear input line
+          await new Promise((r) => setTimeout(r, 200));
           activePty.write('/copy\r');
         }
 
@@ -533,6 +538,8 @@ const connect = (config: SavedConfig): void => {
         btwResponseBuffer = '';
 
         log(`[Claude PTY Collect] Sending /btw status check for ${execId}`);
+        // Clear any leftover text on the input line before sending /btw
+        activePty.write('\x15');          // Ctrl+U — clear input line
         activePty.write('/btw are you done? reply only YES or NO\r');
 
         // Timeout in case /btw doesn't respond
