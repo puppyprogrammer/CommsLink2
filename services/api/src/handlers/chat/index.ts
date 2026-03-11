@@ -41,23 +41,48 @@ const pendingApprovals = new Map<string, PendingApproval>();
  * Execute a terminal command on a connected machine via Socket.IO.
  * Returns the command output or error string.
  */
+/**
+ * Check if a machine's socket is actually connected. If not, mark it offline in DB
+ * and emit a system message so AI agents know the machine is gone.
+ */
+const checkAndCleanStaleMachine = async (
+  io: SocketServer,
+  machineSocketId: string,
+  machineName: string,
+  roomName?: string,
+): Promise<void> => {
+  const sock = io.sockets.sockets.get(machineSocketId);
+  if (!sock) {
+    // Socket is gone — mark offline in DB
+    await Data.machine.setOfflineBySocketId(machineSocketId).catch(console.error);
+    console.log(`[StaleMachine] Marked "${machineName}" offline (socket ${machineSocketId} gone)`);
+    if (roomName) {
+      emitSystemMessage(io, roomName, `[System] Machine "${machineName}" is no longer connected. It has been marked offline.`);
+    }
+  }
+};
+
 const executeTerminalCommand = (
   io: SocketServer,
   machineSocketId: string,
   command: string,
   timeoutMs = 30_000,
+  machineName?: string,
+  roomName?: string,
 ): Promise<string> => {
   return new Promise((resolve) => {
     const execId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const machineSocket = io.sockets.sockets.get(machineSocketId);
 
     if (!machineSocket) {
+      if (machineName) checkAndCleanStaleMachine(io, machineSocketId, machineName, roomName);
       resolve('Error: Machine is not connected.');
       return;
     }
 
     const timer = setTimeout(() => {
       machineSocket.off(`terminal_output:${execId}`, handler);
+      if (machineName) checkAndCleanStaleMachine(io, machineSocketId, machineName, roomName);
       resolve('Error: Command timed out after 30 seconds.');
     }, timeoutMs);
 
@@ -85,18 +110,21 @@ const executeClaudePrompt = (
   agentName: string,
   timeoutMs = 180_000,
   approved = false,
+  machineName?: string,
 ): Promise<string> => {
   return new Promise((resolve) => {
     const execId = `claude-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const machineSocket = io.sockets.sockets.get(machineSocketId);
 
     if (!machineSocket) {
+      if (machineName) checkAndCleanStaleMachine(io, machineSocketId, machineName, roomName);
       resolve('Error: Machine is not connected.');
       return;
     }
 
     const timer = setTimeout(() => {
       machineSocket.off(`claude_pty_response:${execId}`, handler);
+      if (machineName) checkAndCleanStaleMachine(io, machineSocketId, machineName, roomName);
       resolve('Error: Claude prompt timed out after 3 minutes.');
     }, timeoutMs);
 
@@ -1066,7 +1094,7 @@ const runAgentResponse = async (
 
         // Execute the command on the machine
         try {
-          const output = await executeTerminalCommand(io, machineRecord.socket_id, command);
+          const output = await executeTerminalCommand(io, machineRecord.socket_id, command, 30_000, machineName, roomName);
           toolResults.push(`[Terminal ${machineName}]:\n${output}`);
         } catch (err) {
           toolResults.push(`[Terminal error]: ${(err as Error).message}`);
@@ -1120,7 +1148,7 @@ const runAgentResponse = async (
         const sessionKey = `${roomId}:${machineName}`;
 
         try {
-          const output = await executeClaudePrompt(io, machineRecord.socket_id, sessionKey, prompt, roomName, agent.name, 180_000, approved);
+          const output = await executeClaudePrompt(io, machineRecord.socket_id, sessionKey, prompt, roomName, agent.name, 180_000, approved, machineName);
           toolResults.push(`[Claude ${machineName}]:\n${output}`);
           emitSystemMessage(io, roomName, `[Claude ${machineName} response]:\n${output.substring(0, 4000)}`);
         } catch (err) {
@@ -2517,7 +2545,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       }
 
       try {
-        const output = await executeTerminalCommand(io, machineRecord.socket_id, data.command);
+        const output = await executeTerminalCommand(io, machineRecord.socket_id, data.command, 30_000, data.machineName, user?.currentRoom);
         socket.emit('terminal_panel_output', { machineName: data.machineName, output });
 
         // Also emit to chat so AI and summarizer can see it
