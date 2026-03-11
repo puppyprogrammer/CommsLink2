@@ -1,0 +1,39 @@
+@use './colorVariables.scss' as *;
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  min-height: 100vh;
+  overflow-x: hidden;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  background-color: $background;
+  color: $text-primary;
+}
+
+a {
+  color: $primary;
+  text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: $text-muted;
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: $text-secondary;
+}

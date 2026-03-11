@@ -1,0 +1,58 @@
+{
+  "name": "commslink2",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "core",
+    "services/*"
+  ],
+  "scripts": {
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "start:api": "cd services/api && yarn start",
+    "watch:api": "cd services/api && yarn watch",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate dev"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@hapi/hapi": "^21.3.7",
+    "@hapi/inert": "^7.1.0",
+    "bcrypt": "^5.1.1",
+    "bullmq": "^5.0.0",
+    "cheerio": "^1.2.0",
+    "dayjs": "^1.11.10",
+    "dotenv": "^16.4.0",
+    "hapi-auth-bearer-token": "^8.0.0",
+    "ioredis": "^5.3.2",
+    "joi": "^17.12.0",
+    "jsonwebtoken": "^9.0.2",
+    "puppeteer-core": "^24.0.0",
+    "sharp": "^0.34.5",
+    "socket.io": "^4.7.4",
+    "stripe": "^14.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@prisma/client": "^5.10.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/hapi__inert": "^7.1.0",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^18.19.0",
+    "@types/sharp": "^0.32.0",
+    "@types/uuid": "^9.0.7",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.0",
+    "prettier": "^3.2.0",
+    "prisma": "^5.10.0",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.4.0"
+  }
+}

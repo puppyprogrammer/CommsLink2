@@ -1,0 +1,287 @@
+generator client {
+  provider      = "prisma-client-js"
+  output        = "./client"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model user {
+  id                     String    @id @default(uuid())
+  username               String    @unique
+  email                  String?
+  password_hash          String
+  is_premium             Boolean   @default(false)
+  is_banned              Boolean   @default(false)
+  is_admin               Boolean   @default(false)
+  stripe_customer_id     String?
+  stripe_subscription_id String?
+  premium_expires_at     DateTime?
+
+  voice_id          String?
+  volume            Float   @default(1.0)
+  use_premium_voice Boolean @default(false)
+  hear_own_voice    Boolean @default(false)
+
+  credit_balance      Int       @default(0)
+  subscription_tier   String?
+  billing_cycle_start DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  threads              thread[]
+  posts                post[]
+  messages             message[]
+  llm_agents           llm_agent[]
+  credit_transactions  credit_transaction[]
+  credit_usage_logs    credit_usage_log[]
+  machines             machine[]
+  scheduled_jobs       scheduled_job[]
+
+  @@index([stripe_customer_id])
+  @@index([username])
+}
+
+model room {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  display_name    String
+  password_hash   String?
+  is_permanent    Boolean  @default(false)
+  memory_enabled      Boolean  @default(false)
+  cmd_recall_enabled      Boolean  @default(true)
+  cmd_sql_enabled         Boolean  @default(true)
+  cmd_memory_enabled      Boolean  @default(true)
+  cmd_selfmod_enabled     Boolean  @default(true)
+  cmd_autopilot_enabled   Boolean  @default(true)
+  cmd_web_enabled         Boolean  @default(true)
+  cmd_mentions_enabled    Boolean  @default(true)
+  cmd_terminal_enabled    Boolean  @default(false)
+  cmd_claude_enabled      Boolean  @default(false)
+  cmd_schedule_enabled    Boolean  @default(false)
+  created_by          String?
+  created_at      DateTime @default(now())
+
+  messages            message[]
+  llm_agents          llm_agent[]
+  memory_summaries    memory_summary[]
+  machine_permissions machine_permission[]
+  scheduled_jobs      scheduled_job[]
+
+  @@index([name])
+}
+
+model thread {
+  id              String   @id @default(uuid())
+  title           String
+  author_id       String
+  author_username String
+  view_count      Int      @default(0)
+  reply_count     Int      @default(0)
+  created_at      DateTime @default(now())
+  last_reply_at   DateTime @default(now())
+
+  author user   @relation(fields: [author_id], references: [id])
+  posts  post[]
+
+  @@index([last_reply_at])
+  @@index([author_id])
+}
+
+model post {
+  id              String   @id @default(uuid())
+  thread_id       String
+  author_id       String
+  author_username String
+  content         String   @db.Text
+  created_at      DateTime @default(now())
+
+  thread thread @relation(fields: [thread_id], references: [id], onDelete: Cascade)
+  author user   @relation(fields: [author_id], references: [id])
+
+  @@index([thread_id])
+  @@index([author_id])
+}
+
+model message {
+  id         String   @id @default(uuid())
+  content    String   @db.Text
+  type       String   @default("text")
+  room_id    String
+  author_id  String?
+  username   String
+  summarized Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  author user? @relation(fields: [author_id], references: [id])
+  room   room  @relation(fields: [room_id], references: [id], onDelete: Cascade)
+
+  @@index([room_id, created_at])
+  @@index([room_id, summarized])
+  @@index([author_id, created_at])
+}
+
+model llm_agent {
+  id                  String   @id @default(uuid())
+  name                String
+  room_id             String
+  creator_id          String
+  voice_id            String   @default("female")
+  model               String   @default("grok-4-1-fast-non-reasoning")
+  system_instructions  String?  @db.Text
+  memories             String?  @db.Text
+  autopilot_enabled    Boolean  @default(false)
+  autopilot_interval   Int      @default(300)
+  autopilot_prompts    String?  @db.Text
+  plan                 String?  @db.Text
+  created_at           DateTime @default(now())
+
+  creator user @relation(fields: [creator_id], references: [id])
+  room    room @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  scheduled_jobs scheduled_job[]
+
+  @@index([room_id])
+  @@index([creator_id])
+}
+
+model scheduled_job {
+  id             String    @id @default(uuid())
+  agent_id       String
+  room_id        String
+  creator_id     String
+  message        String    @db.Text
+  run_at         DateTime
+  recurrence     String?
+  recur_time     String?
+  recur_weekday  Int?
+  status         String    @default("active")
+  last_fired_at  DateTime?
+  created_at     DateTime  @default(now())
+
+  agent   llm_agent @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  room    room      @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  creator user      @relation(fields: [creator_id], references: [id])
+
+  @@index([agent_id, status])
+  @@index([room_id, status])
+  @@index([status, run_at])
+}
+
+model daily_stats {
+  date          String @id
+  visits        Int    @default(0)
+  messages_sent Int    @default(0)
+}
+
+model credit_transaction {
+  id            String   @id @default(uuid())
+  user_id       String
+  amount        Int
+  balance_after Int
+  type          String
+  description   String?
+  reference_id  String?
+  created_at    DateTime @default(now())
+
+  user user @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, created_at])
+  @@index([type])
+}
+
+model credit_usage_log {
+  id              String   @id @default(uuid())
+  user_id         String
+  service         String
+  model           String?
+  input_tokens    Int?
+  output_tokens   Int?
+  characters      Int?
+  raw_cost_usd    Float
+  credits_charged Int
+  room_id         String?
+  created_at      DateTime @default(now())
+
+  user user @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, created_at])
+  @@index([service])
+}
+
+model memory_summary {
+  id               String   @id @default(uuid())
+  room_id          String
+  ref_name         String
+  level            Int
+  parent_id        String?
+  content          String   @db.Text
+  msg_start        DateTime
+  msg_end          DateTime
+  messages_covered Int
+  created_at       DateTime @default(now())
+
+  room     room             @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  parent   memory_summary?  @relation("MemoryHierarchy", fields: [parent_id], references: [id])
+  children memory_summary[] @relation("MemoryHierarchy")
+
+  @@unique([room_id, ref_name])
+  @@index([room_id, level])
+  @@index([parent_id])
+}
+
+model machine {
+  id         String   @id @default(uuid())
+  name       String
+  owner_id   String
+  socket_id  String?
+  status     String   @default("offline")
+  os         String?
+  last_seen  DateTime?
+  created_at DateTime @default(now())
+
+  owner       user                 @relation(fields: [owner_id], references: [id])
+  permissions machine_permission[]
+
+  @@unique([owner_id, name])
+  @@index([owner_id])
+  @@index([status])
+}
+
+model machine_permission {
+  id         String  @id @default(uuid())
+  machine_id String
+  room_id    String
+  enabled    Boolean @default(false)
+
+  machine machine @relation(fields: [machine_id], references: [id], onDelete: Cascade)
+  room    room    @relation(fields: [room_id], references: [id], onDelete: Cascade)
+
+  @@unique([machine_id, room_id])
+  @@index([machine_id])
+  @@index([room_id])
+}
+
+model app_version {
+  id         String   @id @default(uuid())
+  version    Int      @unique
+  message    String?
+  created_at DateTime @default(now())
+}
+
+model claude_log {
+  id           String   @id @default(uuid())
+  direction    String
+  session_key  String
+  machine_name String
+  username     String
+  room_name    String
+  content      String   @db.Text
+  created_at   DateTime @default(now())
+
+  @@index([session_key])
+  @@index([created_at])
+}

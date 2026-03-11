@@ -1,0 +1,9 @@
+{
+  "name": "@commslink/api",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node -r dotenv/config src/index.ts",
+    "watch": "ts-node-dev --respawn --transpile-only -r dotenv/config src/index.ts"
+  }
+}

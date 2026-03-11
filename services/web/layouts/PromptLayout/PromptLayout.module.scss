@@ -1,0 +1,26 @@
+@use '../../styles/colorVariables.scss' as *;
+
+.root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $background-tertiary;
+}
+
+.logoContainer {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.card {
+  padding: 2rem;
+  background-color: $background-paper;
+  border: 1px solid $border;
+}
+
+.title {
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: $text-primary;
+}

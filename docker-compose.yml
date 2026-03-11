@@ -1,0 +1,69 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: commslink2-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: commslink_dev
+      MYSQL_DATABASE: commslink
+    volumes:
+      - commslink_mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: commslink2-redis
+    ports:
+      - "6380:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: commslink2-api
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: mysql://root:commslink_dev@mysql:3306/commslink
+      JWT_SECRET: commslink-dev-secret-change-in-production
+      GROK_API_KEY: ${GROK_API_KEY}
+      GROK_MODEL: ${GROK_MODEL:-grok-4-1-fast-non-reasoning}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      REDIS_URL: redis://redis:6379
+      CLIENT_URL: http://localhost:3000
+      PORT: 4000
+    volumes:
+      - commslink_uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  web:
+    build:
+      context: ./services/web
+      dockerfile: Dockerfile
+    container_name: commslink2-web
+    ports:
+      - "3000:3000"
+    environment:
+      SESSION_SECRET: commslink-session-secret-at-least-32-chars-long!
+      INTERNAL_API_URL: http://api:4000
+      NODE_ENV: development
+    depends_on:
+      - api
+
+volumes:
+  commslink_mysql_data:
+  commslink_uploads:

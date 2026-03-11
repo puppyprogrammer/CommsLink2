@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+prisma/client/
+.next/
+packages/terminal-agent/bin/
+*.exe
+.commslink-agent.json
+.env.production

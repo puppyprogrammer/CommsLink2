@@ -1,0 +1,14 @@
+{
+  "database-client.connections": [
+    {
+      "name": "CommsLink2 Docker MySQL",
+      "host": "localhost",
+      "port": 3307,
+      "user": "root",
+      "password": "commslink_dev",
+      "database": "commslink",
+      "dialect": "MySQL",
+      "useSSL": false
+    }
+  ]
+}

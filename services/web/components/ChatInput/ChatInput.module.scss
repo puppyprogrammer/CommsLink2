@@ -1,0 +1,81 @@
+@use '../../styles/colorVariables.scss' as *;
+
+.root {
+  display: flex;
+  flex-direction: column;
+  background-color: $input-background;
+  border-top: 1px solid $border;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.15rem 0.25rem 0.15rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.formatButtons {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.actionButtons {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.toolbarBtn {
+  color: $text-secondary !important;
+  padding: 3px !important;
+  border-radius: 3px !important;
+
+  &:hover {
+    color: $text-primary !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+  }
+}
+
+.editable {
+  min-height: 36px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: $text-primary;
+  outline: none;
+
+  [data-slate-placeholder='true'] {
+    color: $text-muted !important;
+    opacity: 1 !important;
+  }
+}
+
+.paragraph {
+  margin: 0;
+  padding: 0;
+}
+
+.codeBlock {
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid $border;
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  margin: 0.25rem 0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  color: $primary-light;
+}
+
+.inlineCode {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.85em;
+  color: $primary-light;
+}

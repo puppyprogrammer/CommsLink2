@@ -1,0 +1,43 @@
+@use '../../styles/colorVariables.scss' as *;
+
+.root {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.paragraph {
+  display: inline;
+}
+
+.codeBlock {
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid $border;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.25rem 0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  color: $primary-light;
+  display: block;
+  overflow-x: auto;
+}
+
+.inlineCode {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.85em;
+  color: $primary-light;
+}
+
+.link {
+  color: $primary;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

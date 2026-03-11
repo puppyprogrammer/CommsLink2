@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <!-- Glow filters for each arc color -->
+    <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glow-magenta" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Central dot glow -->
+    <filter id="glow-center" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer arc - Cyan -->
+  <path d="M 40 130 A 75 75 0 0 1 160 130"
+        fill="none" stroke="#63c5c0" stroke-width="5" stroke-linecap="round"
+        filter="url(#glow-cyan)" opacity="0.95"/>
+
+  <!-- Middle arc - Green -->
+  <path d="M 55 125 A 55 55 0 0 1 145 125"
+        fill="none" stroke="#36a900" stroke-width="5" stroke-linecap="round"
+        filter="url(#glow-green)" opacity="0.95"/>
+
+  <!-- Inner arc - Magenta -->
+  <path d="M 70 120 A 35 35 0 0 1 130 120"
+        fill="none" stroke="#ff00ff" stroke-width="5" stroke-linecap="round"
+        filter="url(#glow-magenta)" opacity="0.95"/>
+
+  <!-- Central glowing dot -->
+  <circle cx="100" cy="115" r="6" fill="#63c5c0" filter="url(#glow-center)" opacity="0.9"/>
+  <circle cx="100" cy="115" r="3" fill="#ffffff" opacity="0.8"/>
+
+  <!-- COMMSLINK text -->
+  <text x="100" y="165" text-anchor="middle"
+        font-family="'Segoe UI', 'Arial', sans-serif" font-weight="700"
+        font-size="22" letter-spacing="4" fill="#63c5c0"
+        filter="url(#glow-cyan)" opacity="0.9">
+    COMMSLINK
+  </text>
+</svg>

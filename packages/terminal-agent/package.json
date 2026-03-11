@@ -1,0 +1,32 @@
+{
+  "name": "@commslink/terminal-agent",
+  "version": "1.2.1",
+  "description": "CommsLink Terminal Agent - allows AI to execute commands on connected machines",
+  "main": "dist/index.js",
+  "bin": {
+    "commslink-agent": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "package": "npm run build && npx pkg dist/index.js --targets node18-win-x64,node18-linux-x64 --output bin/commslink-agent --compress GZip && npm run copy-natives",
+    "copy-natives": "node -e \"const fs=require('fs'),p=require('path');const src='node_modules/node-pty';['win32-x64','win32-arm64'].forEach(d=>{const dir=p.join(src,'prebuilds',d);if(fs.existsSync(dir)){const out=p.join('bin','prebuilds',d);fs.mkdirSync(out,{recursive:true});fs.readdirSync(dir).forEach(f=>fs.copyFileSync(p.join(dir,f),p.join(out,f)))}});const conpty=p.join(src,'build/Release/conpty');if(fs.existsSync(conpty)){const out=p.join('bin','build/Release/conpty');fs.mkdirSync(out,{recursive:true});fs.readdirSync(conpty).forEach(f=>fs.copyFileSync(p.join(conpty,f),p.join(out,f)))}\""
+  },
+  "pkg": {
+    "scripts": "dist/**/*.js",
+    "assets": [],
+    "outputPath": "bin"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "node-pty": "^1.1.0",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@yao-pkg/pkg": "^6.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
