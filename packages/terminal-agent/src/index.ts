@@ -146,7 +146,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.3.0';
+const AGENT_VERSION = '1.4.0';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -466,6 +466,8 @@ const connect = (config: SavedConfig): void => {
       let finished = false;
       let approvalCount = 0; // track how many approval prompts we've auto-responded to (allow multiple)
       let approvalCheckTimer: ReturnType<typeof setTimeout> | null = null;
+      let stallCheckTimer: ReturnType<typeof setTimeout> | null = null;
+      const collectStartTime = Date.now();
 
       // Strip ANSI escape sequences for pattern matching — comprehensive version
       const stripAnsi = (s: string): string =>
@@ -483,36 +485,93 @@ const connect = (config: SavedConfig): void => {
           .replace(/[ \t]+/g, ' ')
           .replace(/\n{3,}/g, '\n\n');
 
+      // Nuclear strip — reduces text to only letters, digits, spaces, newlines, and basic punctuation.
+      // This handles cases where ANSI codes are interspersed within words (e.g., each letter
+      // of "Yes" is individually colored), which makes the normal stripAnsi + regex approach fail.
+      const nuclearStrip = (s: string): string =>
+        s
+          // Remove all escape sequences aggressively (any ESC followed by anything up to a letter)
+          // eslint-disable-next-line no-control-regex
+          .replace(/\x1b[^a-zA-Z]*[a-zA-Z]/g, '')
+          // Remove all non-printable characters
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\x00-\x09\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '')
+          // Collapse whitespace
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n{2,}/g, '\n')
+          .trim();
+
       // Detect if Claude is waiting for an approval prompt (1/2/3 or Yes/No)
+      // Uses three layers of detection for reliability:
+      //   Layer 1: Regex patterns on ANSI-stripped text (fast, specific)
+      //   Layer 2: Keyword proximity search on nuclear-stripped text (catches broken ANSI)
+      //   Layer 3: Unique Claude Code UI strings that only appear on prompts
       const checkForApprovalPrompt = (): boolean => {
         const clean = stripAnsi(collected);
-        // Look at the last ~800 chars for the prompt pattern
         const tail = clean.slice(-800);
+        const nuclear = nuclearStrip(collected).slice(-800).toLowerCase();
 
-        // Debug: log what we see so we can diagnose matching issues
-        log(`[Claude PTY Collect] Approval check tail (${tail.length} chars): ${tail.slice(-300).replace(/\n/g, '\\n')}`);
+        // Debug: log both versions so we can diagnose
+        log(`[Claude PTY Collect] Approval check — stripped tail (${tail.length}): ${tail.slice(-200).replace(/\n/g, '\\n')}`);
+        log(`[Claude PTY Collect] Approval check — nuclear tail (${nuclear.length}): ${nuclear.slice(-200).replace(/\n/g, '\\n')}`);
 
-        // Claude Code approval patterns (various forms):
-        // "Yes", "Yes, and don't ask again for this tool", "No"
-        // "Allow once", "Allow always", "Deny"
-        // "y/n", numbered options like "1. Yes  2. No"
-        // The key indicator is Claude stopped and is waiting with a question
-        const patterns = [
-          /\bYes\b.*\bNo\b/i,                    // "Yes ... No" on same stretch
-          /\bAllow\b.*\bDeny\b/i,                 // "Allow ... Deny"
-          /\bAllow once\b/i,                       // "Allow once"
-          /\bAllow always\b/i,                     // "Allow always"
-          /[12]\.\s*Yes/i,                         // "1. Yes" or "2. Yes"
-          /[23]\.\s*No\b/i,                        // "2. No" or "3. No"
-          /\bDo you want to\b/i,                   // "Do you want to ..."
-          /\bWould you like to\b/i,                // "Would you like to ..."
-          /\bProceed\?\s*\(/i,                     // "Proceed? (y/n)"
-          /\by\/n\b/i,                             // "y/n"
-          /\ballow.*\bthis tool\b/i,               // "allow ... this tool"
-          /\bpermission\b.*\b(grant|allow|run)\b/i, // permission prompts
+        // ── Layer 1: Regex patterns on ANSI-stripped text ──
+        const layer1Patterns = [
+          /\bYes\b.*\bNo\b/i,
+          /\bAllow\b.*\bDeny\b/i,
+          /\bAllow once\b/i,
+          /\bAllow always\b/i,
+          /[12]\.\s*Yes/i,
+          /[23]\.\s*No\b/i,
+          /\bDo you want to\b/i,
+          /\bWould you like to\b/i,
+          /\bProceed\?\s*\(/i,
+          /\by\/n\b/i,
+          /\ballow.*\bthis tool\b/i,
+          /\bpermission\b.*\b(grant|allow|run)\b/i,
         ];
 
-        return patterns.some((p) => p.test(tail));
+        if (layer1Patterns.some((p) => p.test(tail))) {
+          log('[Claude PTY Collect] Approval detected via Layer 1 (regex on stripped text)');
+          return true;
+        }
+
+        // ── Layer 2: Keyword proximity on nuclear-stripped text ──
+        // If multiple approval-related keywords appear near each other, it's a prompt.
+        // This catches cases where ANSI codes break up words for Layer 1.
+        const approvalKeywords = ['yes', 'no', 'allow', 'deny', 'proceed', 'approve'];
+        const questionKeywords = ['do you want', 'would you like', 'want to proceed', 'you want to'];
+        const numberedOptions = /[123]\.\s*(yes|no|allow|deny)/i;
+
+        const keywordHits = approvalKeywords.filter((kw) => nuclear.includes(kw)).length;
+        const hasQuestion = questionKeywords.some((q) => nuclear.includes(q));
+        const hasNumbered = numberedOptions.test(nuclear);
+
+        if ((keywordHits >= 2 && hasQuestion) || (keywordHits >= 2 && hasNumbered) || (hasQuestion && hasNumbered)) {
+          log(`[Claude PTY Collect] Approval detected via Layer 2 (keyword proximity: ${keywordHits} keywords, question=${hasQuestion}, numbered=${hasNumbered})`);
+          return true;
+        }
+
+        // ── Layer 3: Claude Code-specific UI strings ──
+        // These strings are unique to Claude Code's permission prompts and don't appear
+        // in normal output. They survive even aggressive ANSI mangling.
+        const layer3Markers = [
+          'esc to cancel',       // Always shown on permission prompts
+          'tab to amend',        // Always shown on permission prompts
+          'allow reading from',  // "Yes. allow reading from docs/ during this session"
+          'allow writing to',    // "Yes. allow writing to ..."
+          'allow executing',     // "Yes. allow executing ..."
+          'during this session', // Common in option 2 text
+          'allow always',        // Permission option
+          'allow once',          // Permission option
+        ];
+
+        if (layer3Markers.some((marker) => nuclear.includes(marker))) {
+          log(`[Claude PTY Collect] Approval detected via Layer 3 (Claude UI marker found)`);
+          return true;
+        }
+
+        return false;
       };
 
       // Read clipboard contents (platform-specific)
@@ -548,6 +607,7 @@ const connect = (config: SavedConfig): void => {
         inactivityTimer = null;
         if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
         approvalCheckTimer = null;
+        if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
         hasOutput = false; // reset so new output restarts inactivity detection
         collected = ''; // clear buffer so we don't re-detect the same prompt
         // Safety net: if Claude goes completely silent after approval (e.g., another
@@ -575,6 +635,7 @@ const connect = (config: SavedConfig): void => {
         if (inactivityTimer) clearTimeout(inactivityTimer);
         if (totalTimer) clearTimeout(totalTimer);
         if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
+        if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
         if (disposable) disposable.dispose();
 
         // Send /copy to Claude PTY — this copies Claude's last response to clipboard
@@ -620,6 +681,22 @@ const connect = (config: SavedConfig): void => {
               handleAutoApproval();
             }
           }, 2000);
+
+          // Stall detector: if we've been collecting for >15s, check every 5s.
+          // This catches prompts that arrive gradually or where the 2s debounce
+          // keeps getting reset by TUI re-renders.
+          const elapsed = Date.now() - collectStartTime;
+          if (elapsed > 15_000 && !stallCheckTimer) {
+            stallCheckTimer = setInterval(() => {
+              if (finished) {
+                if (stallCheckTimer) clearInterval(stallCheckTimer);
+                stallCheckTimer = null;
+                return;
+              }
+              log(`[Claude PTY Collect] Stall check for ${execId} (${Math.round((Date.now() - collectStartTime) / 1000)}s elapsed)`);
+              handleAutoApproval();
+            }, 5000);
+          }
         } else if (hasOutput && !inactivityTimer) {
           // If we already got real output but timer isn't running, start it
           inactivityTimer = setTimeout(finish, INACTIVITY_MS);
