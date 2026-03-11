@@ -671,29 +671,25 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </Typography>
 
           {roomMachines.length > 0 && (
-            <Box sx={{ mb: 1 }}>
+            <Box sx={{ mb: 1, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
               {roomMachines.map((perm) => (
                 <Paper
                   key={perm.id}
-                  sx={{ p: 1, mb: 0.5, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}
+                  sx={{ p: 1, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}
                 >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                    <ComputerIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      {perm.machine?.name || 'Unknown'}
+                    </Typography>
+                    <CircleIcon
+                      sx={{
+                        fontSize: 8,
+                        color: perm.machine?.status === 'online' ? 'success.main' : 'text.disabled',
+                      }}
+                    />
+                  </Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ComputerIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {perm.machine?.name || 'Unknown'}
-                      </Typography>
-                      <CircleIcon
-                        sx={{
-                          fontSize: 8,
-                          color: perm.machine?.status === 'online' ? 'success.main' : 'text.disabled',
-                        }}
-                      />
-                      <Typography variant="detailText" sx={{ color: 'text.secondary' }}>
-                        {perm.machine?.status || 'unknown'}
-                        {perm.machine?.os ? ` — ${perm.machine.os}` : ''}
-                      </Typography>
-                    </Box>
                     <FormControlLabel
                       control={
                         <Checkbox
@@ -708,10 +704,27 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                             });
                           }}
                           size="small"
+                          sx={{ p: 0.25 }}
                         />
                       }
-                      label={<Typography variant="detailText">Enabled</Typography>}
+                      label={<Typography variant="detailText" sx={{ fontSize: '0.7rem' }}>Enabled</Typography>}
+                      sx={{ m: 0 }}
                     />
+                    {perm.machine?.status === 'offline' && (
+                      <IconButton
+                        size="small"
+                        title="Delete machine"
+                        onClick={() => {
+                          if (!session?.token) return;
+                          if (!confirm(`Delete machine "${perm.machine?.name}"?`)) return;
+                          const socket = getSocket(session.token);
+                          socket.emit('delete_machine', { machineId: perm.machine_id });
+                          setRoomMachines((prev) => prev.filter((p) => p.machine_id !== perm.machine_id));
+                        }}
+                      >
+                        <DeleteIcon sx={{ fontSize: 14, color: 'error.main' }} />
+                      </IconButton>
+                    )}
                   </Box>
                 </Paper>
               ))}
@@ -727,15 +740,15 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', color: 'text.secondary' }}>
                   Your machines not yet in this room:
                 </Typography>
-                {unlinked.map((m) => (
-                  <Paper
-                    key={m.id}
-                    sx={{ p: 1, mb: 0.5, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <ComputerIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
+                  {unlinked.map((m) => (
+                    <Paper
+                      key={m.id}
+                      sx={{ p: 1, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <ComputerIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
                           {m.name}
                         </Typography>
                         <CircleIcon
@@ -744,26 +757,40 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                             color: m.status === 'online' ? 'success.main' : 'text.disabled',
                           }}
                         />
-                        <Typography variant="detailText" sx={{ color: 'text.secondary' }}>
-                          {m.status}
-                          {m.os ? ` — ${m.os}` : ''}
-                        </Typography>
                       </Box>
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<AddIcon />}
-                        onClick={() => {
-                          if (!session?.token) return;
-                          const socket = getSocket(session.token);
-                          socket.emit('update_machine_permission', { machineId: m.id, roomName, enabled: true });
-                        }}
-                      >
-                        Add
-                      </Button>
-                    </Box>
-                  </Paper>
-                ))}
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<AddIcon sx={{ fontSize: 12 }} />}
+                          onClick={() => {
+                            if (!session?.token) return;
+                            const socket = getSocket(session.token);
+                            socket.emit('update_machine_permission', { machineId: m.id, roomName, enabled: true });
+                          }}
+                          sx={{ fontSize: '0.7rem', py: 0.25 }}
+                        >
+                          Add
+                        </Button>
+                        {m.status === 'offline' && (
+                          <IconButton
+                            size="small"
+                            title="Delete machine"
+                            onClick={() => {
+                              if (!session?.token) return;
+                              if (!confirm(`Delete machine "${m.name}"?`)) return;
+                              const socket = getSocket(session.token);
+                              socket.emit('delete_machine', { machineId: m.id });
+                              setOwnedMachines((prev) => prev.filter((om) => om.id !== m.id));
+                            }}
+                          >
+                            <DeleteIcon sx={{ fontSize: 14, color: 'error.main' }} />
+                          </IconButton>
+                        )}
+                      </Box>
+                    </Paper>
+                  ))}
+                </Box>
               </Box>
             );
           })()}
@@ -816,6 +843,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           <Typography variant="detailText" sx={{ mb: 1, display: 'block', color: 'text.secondary' }}>
             Toggle which commands AI agents can use. Memory commands also work as user chat commands.
           </Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
           {[
             ...(memoryEnabled
               ? [
@@ -906,7 +934,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               set: setCmdModeration,
             },
           ].map((cmd) => (
-            <Box key={cmd.key} sx={{ mb: 0.5 }}>
+            <Box key={cmd.key}>
               <FormControlLabel
                 control={
                   <Checkbox
@@ -918,26 +946,30 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                       socket.emit('update_room_commands', { roomName, [cmd.key]: e.target.checked });
                     }}
                     size="small"
+                    sx={{ p: 0.25 }}
                   />
                 }
                 label={
                   <Box>
-                    <Typography variant="detailText" sx={{ fontWeight: 600 }}>
+                    <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
                       {cmd.label}
                     </Typography>
                     <Typography
                       variant="detailText"
-                      sx={{ display: 'block', color: 'text.secondary', fontSize: '0.7rem' }}
+                      sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
                     >
                       {cmd.desc}
                     </Typography>
                   </Box>
                 }
+                sx={{ m: 0, alignItems: 'flex-start' }}
               />
             </Box>
           ))}
+          </Box>
 
           {/* Always-on commands (informational) */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
           {[
             {
               label: 'List Users — See who is online in this room',
@@ -952,25 +984,27 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               desc: 'AI: {volume 0.0-1.0}',
             },
           ].map((cmd) => (
-            <Box key={cmd.label} sx={{ mb: 0.5 }}>
+            <Box key={cmd.label}>
               <FormControlLabel
-                control={<Checkbox checked disabled size="small" />}
+                control={<Checkbox checked disabled size="small" sx={{ p: 0.25 }} />}
                 label={
                   <Box>
-                    <Typography variant="detailText" sx={{ fontWeight: 600, opacity: 0.7 }}>
+                    <Typography variant="detailText" sx={{ fontWeight: 600, opacity: 0.7, fontSize: '0.75rem' }}>
                       {cmd.label}
                     </Typography>
                     <Typography
                       variant="detailText"
-                      sx={{ display: 'block', color: 'text.secondary', fontSize: '0.7rem' }}
+                      sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
                     >
                       {cmd.desc}
                     </Typography>
                   </Box>
                 }
+                sx={{ m: 0, alignItems: 'flex-start' }}
               />
             </Box>
           ))}
+          </Box>
         </Box>
 
         <Divider sx={{ mb: 2 }} />
