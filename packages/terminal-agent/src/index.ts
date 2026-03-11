@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.6.6';
+const AGENT_VERSION = '1.6.7';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -499,53 +499,68 @@ const connect = (config: SavedConfig): void => {
         if (disposable) { disposable.dispose(); disposable = null; }
       };
 
-      const captureAndEmit = async () => {
+      const captureAndEmit = () => {
         if (finished) return;
         finished = true;
         cleanup();
 
         // Use /copy to get Claude's clean response text via clipboard
-        // Clear any leftover text on the input line first (Ctrl+U = clear line, Escape = dismiss any overlay)
+        // Clear any leftover text on the input line first (Escape → Ctrl+U → /copy with delays)
         log(`[Claude PTY Collect] Sending /copy to grab response for ${execId}`);
-        if (activePty) {
-          activePty.write('\x1b');          // Escape — dismiss any overlay
-          await new Promise((r) => setTimeout(r, 300));
-          activePty.write('\x15');          // Ctrl+U — clear input line
-          await new Promise((r) => setTimeout(r, 200));
-          activePty.write('/copy\r');
-        }
+        try {
+          if (activePty) activePty.write('\x1b'); // Escape
+        } catch { /* PTY may be dead */ }
 
-        await new Promise((r) => setTimeout(r, 2000));
+        setTimeout(() => {
+          try {
+            if (activePty) activePty.write('\x15'); // Ctrl+U
+          } catch { /* ignore */ }
 
-        const clipboardContent = await readClipboard();
-        log(`[Claude PTY Collect] Clipboard for ${execId}: ${clipboardContent.length} chars`);
+          setTimeout(() => {
+            try {
+              if (activePty) activePty.write('/copy\r');
+            } catch { /* ignore */ }
 
-        const output = clipboardContent || stripAnsi(collected).trim() || '(no response captured)';
-
-        log(`[Claude PTY Collect] done for ${execId}, ${output.length} chars`);
-        const responsePayload = { output: output.substring(0, 16000), exitCode: 0 };
-        socket.emit(`claude_pty_response:${execId}`, responsePayload);
-        socket.emit('claude_pty_response', responsePayload);
+            setTimeout(() => {
+              readClipboard().then((clipboardContent) => {
+                log(`[Claude PTY Collect] Clipboard for ${execId}: ${clipboardContent.length} chars`);
+                const output = clipboardContent || stripAnsi(collected).trim() || '(no response captured)';
+                log(`[Claude PTY Collect] done for ${execId}, ${output.length} chars`);
+                const responsePayload = { output: output.substring(0, 16000), exitCode: 0 };
+                socket.emit(`claude_pty_response:${execId}`, responsePayload);
+                socket.emit('claude_pty_response', responsePayload);
+              }).catch((err) => {
+                log(`[Claude PTY Collect] clipboard read failed: ${err}`);
+                const output = stripAnsi(collected).trim() || '(no response captured)';
+                const responsePayload = { output: output.substring(0, 16000), exitCode: 1 };
+                socket.emit(`claude_pty_response:${execId}`, responsePayload);
+                socket.emit('claude_pty_response', responsePayload);
+              });
+            }, 2000);
+          }, 300);
+        }, 300);
       };
 
       // /btw polling: ask Claude if it's done, parse the response
       let isBtwPolling = false;
       let btwResponseBuffer = '';
 
-      const doBtwPoll = async () => {
+      const doBtwPoll = () => {
         if (finished || isBtwPolling || !activePty) return;
         isBtwPolling = true;
         btwResponseBuffer = '';
 
         log(`[Claude PTY Collect] Sending /btw status check for ${execId}`);
         // Clear any leftover text on the input line, then wait before sending /btw
-        activePty.write('\x1b');          // Escape — dismiss any overlay
-        await new Promise((r) => setTimeout(r, 300));
-        if (!activePty || finished) { isBtwPolling = false; return; }
-        activePty.write('\x15');          // Ctrl+U — clear input line
-        await new Promise((r) => setTimeout(r, 300));
-        if (!activePty || finished) { isBtwPolling = false; return; }
-        activePty.write('/btw are you done? reply only YES or NO\r');
+        try { activePty.write('\x1b'); } catch { isBtwPolling = false; return; }  // Escape
+        setTimeout(() => {
+          if (!activePty || finished) { isBtwPolling = false; return; }
+          try { activePty.write('\x15'); } catch { isBtwPolling = false; return; }  // Ctrl+U
+          setTimeout(() => {
+            if (!activePty || finished) { isBtwPolling = false; return; }
+            try { activePty.write('/btw are you done? reply only YES or NO\r'); } catch { isBtwPolling = false; return; }
+          }, 300);
+        }, 300);
 
         // Timeout in case /btw doesn't respond (30s — Claude may need time to process)
         const btwTimeout = setTimeout(() => {

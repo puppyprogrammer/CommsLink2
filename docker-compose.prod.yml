@@ -49,7 +49,7 @@ services:
       NODE_ENV: production
       PORT: 4000
       TERMINAL_AGENT_BIN_DIR: /app/terminal-agent-bin
-      AGENT_VERSION: "1.6.6"
+      AGENT_VERSION: "1.6.7"
     volumes:
       - commslink_uploads:/app/uploads
       - ./packages/terminal-agent/bin:/app/terminal-agent-bin:ro
