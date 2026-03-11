@@ -146,7 +146,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.4.0';
+const AGENT_VERSION = '1.4.1';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -467,6 +467,7 @@ const connect = (config: SavedConfig): void => {
       let approvalCount = 0; // track how many approval prompts we've auto-responded to (allow multiple)
       let approvalCheckTimer: ReturnType<typeof setTimeout> | null = null;
       let stallCheckTimer: ReturnType<typeof setTimeout> | null = null;
+      let blindApprovalTimer: ReturnType<typeof setInterval> | null = null;
       const collectStartTime = Date.now();
 
       // Strip ANSI escape sequences for pattern matching — comprehensive version
@@ -608,6 +609,7 @@ const connect = (config: SavedConfig): void => {
         if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
         approvalCheckTimer = null;
         if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
+        if (blindApprovalTimer) { clearInterval(blindApprovalTimer); blindApprovalTimer = null; }
         hasOutput = false; // reset so new output restarts inactivity detection
         collected = ''; // clear buffer so we don't re-detect the same prompt
         // Safety net: if Claude goes completely silent after approval (e.g., another
@@ -636,6 +638,7 @@ const connect = (config: SavedConfig): void => {
         if (totalTimer) clearTimeout(totalTimer);
         if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
         if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
+        if (blindApprovalTimer) { clearInterval(blindApprovalTimer); blindApprovalTimer = null; }
         if (disposable) disposable.dispose();
 
         // Send /copy to Claude PTY — this copies Claude's last response to clipboard
@@ -710,6 +713,26 @@ const connect = (config: SavedConfig): void => {
         }
         // If we have output, let inactivity timer handle it
       }, MAX_WAIT_MS);
+
+      // Layer 4 — Blind approval: after 60s, start pressing "1" every 30s as a
+      // brute-force fallback. If Claude is stuck on a permission prompt that none
+      // of the detection layers caught, this unsticks it. Pressing "1" when there
+      // is no prompt is harmless — Claude Code ignores stray digit keypresses.
+      setTimeout(() => {
+        if (finished) return;
+        log(`[Claude PTY Collect] Starting blind approval fallback for ${execId}`);
+        blindApprovalTimer = setInterval(() => {
+          if (finished) {
+            if (blindApprovalTimer) { clearInterval(blindApprovalTimer); blindApprovalTimer = null; }
+            return;
+          }
+          log(`[Claude PTY Collect] Blind approval: pressing "1" for ${execId} (${Math.round((Date.now() - collectStartTime) / 1000)}s elapsed)`);
+          socket.emit('claude_debug', { execId, phase: 'blind_approve', elapsed: Date.now() - collectStartTime });
+          if (activePty) {
+            activePty.write('1');
+          }
+        }, 30_000);
+      }, 60_000);
 
       // Write the prompt into the PTY
       activePty.write(userInput + '\r');
