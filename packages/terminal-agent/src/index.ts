@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.6.5';
+const AGENT_VERSION = '1.6.6';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -464,8 +464,8 @@ const connect = (config: SavedConfig): void => {
       let btwPollTimer: ReturnType<typeof setInterval> | null = null;
       let totalTimer: ReturnType<typeof setTimeout> | null = null;
       const MAX_WAIT_MS = 900_000; // 15 min absolute max
-      const BTW_POLL_START_MS = 15_000; // Start /btw polling after 15s
-      const BTW_POLL_INTERVAL_MS = 30_000; // Poll every 30s
+      const BTW_POLL_START_MS = 60_000; // Start /btw polling after 60s
+      const BTW_POLL_INTERVAL_MS = 60_000; // Poll every 60s
 
       // Read clipboard contents (platform-specific)
       const readClipboard = (): Promise<string> => {
@@ -567,7 +567,7 @@ const connect = (config: SavedConfig): void => {
             isBtwPolling = false;
 
             if (isDone) {
-              setTimeout(() => captureAndEmit(), 1500);
+              setTimeout(() => captureAndEmit(), 45_000);
             }
           }
         };
@@ -591,7 +591,7 @@ const connect = (config: SavedConfig): void => {
             isBtwPolling = false;
 
             if (isDone) {
-              setTimeout(() => captureAndEmit(), 1500);
+              setTimeout(() => captureAndEmit(), 45_000);
             }
           }
         }
