@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.6.7';
+const AGENT_VERSION = '1.6.8';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -500,7 +500,6 @@ const connect = (config: SavedConfig): void => {
       };
 
       const captureAndEmit = () => {
-        if (finished) return;
         finished = true;
         cleanup();
 
@@ -582,7 +581,11 @@ const connect = (config: SavedConfig): void => {
             isBtwPolling = false;
 
             if (isDone) {
-              setTimeout(() => captureAndEmit(), 45_000);
+              // Stop all polling immediately — Claude confirmed done
+              finished = true;
+              cleanup();
+              log(`[Claude PTY Collect] Claude confirmed done, capturing in 2s for ${execId}`);
+              setTimeout(() => captureAndEmit(), 2000);
             }
           }
         };
@@ -606,7 +609,11 @@ const connect = (config: SavedConfig): void => {
             isBtwPolling = false;
 
             if (isDone) {
-              setTimeout(() => captureAndEmit(), 45_000);
+              // Stop all polling immediately — Claude confirmed done
+              finished = true;
+              cleanup();
+              log(`[Claude PTY Collect] Claude confirmed done, capturing in 2s for ${execId}`);
+              setTimeout(() => captureAndEmit(), 2000);
             }
           }
         }
