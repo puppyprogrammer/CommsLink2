@@ -119,6 +119,9 @@ const addCredits = async (id: string, amount: number): Promise<user> =>
     data: { credit_balance: { increment: amount } },
   });
 
+const updateLastRoom = async (id: string, roomId: string | null): Promise<user> =>
+  prisma.user.update({ where: { id }, data: { last_room_id: roomId } });
+
 export default {
   create,
   findById,
@@ -130,4 +133,5 @@ export default {
   updateBanStatus,
   deductCredits,
   addCredits,
+  updateLastRoom,
 };

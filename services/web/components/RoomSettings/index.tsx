@@ -31,6 +31,9 @@ import DownloadIcon from '@mui/icons-material/Download';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ComputerIcon from '@mui/icons-material/Computer';
 import CircleIcon from '@mui/icons-material/Circle';
+import BlockIcon from '@mui/icons-material/Block';
+import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
+import PeopleIcon from '@mui/icons-material/People';
 
 import useSession from '@/lib/session/useSession';
 import { getSocket } from '@/lib/socket';
@@ -119,6 +122,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdTerminal, setCmdTerminal] = useState(false);
   const [cmdClaude, setCmdClaude] = useState(false);
   const [cmdSchedule, setCmdSchedule] = useState(false);
+  const [cmdModeration, setCmdModeration] = useState(false);
 
   // Terminal machines
   type MachinePermission = {
@@ -135,6 +139,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [newMachineName, setNewMachineName] = useState('');
   const [setupCode, setSetupCode] = useState('');
   const [setupStep, setSetupStep] = useState<'name' | 'download'>('name');
+
+  // Room members
+  type RoomMember = { userId: string; username: string; role: string };
+  const [roomMembers, setRoomMembers] = useState<RoomMember[]>([]);
 
   // Create form
   const [newName, setNewName] = useState('');
@@ -202,6 +210,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdTerminal: boolean;
       cmdClaude: boolean;
       cmdSchedule: boolean;
+      cmdModeration: boolean;
     }) => {
       setMemoryEnabled(data.enabled);
       setCmdRecall(data.cmdRecall);
@@ -214,6 +223,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setCmdTerminal(data.cmdTerminal);
       setCmdClaude(data.cmdClaude);
       setCmdSchedule(data.cmdSchedule);
+      setCmdModeration(data.cmdModeration);
     };
 
     const handleMemoryToggled = (data: { enabled: boolean }) => {
@@ -231,6 +241,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdTerminal?: boolean;
       cmdClaude?: boolean;
       cmdSchedule?: boolean;
+      cmdModeration?: boolean;
     }) => {
       if (data.cmdRecall !== undefined) setCmdRecall(data.cmdRecall);
       if (data.cmdSql !== undefined) setCmdSql(data.cmdSql);
@@ -240,6 +251,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       if (data.cmdWeb !== undefined) setCmdWeb(data.cmdWeb);
       if (data.cmdMentions !== undefined) setCmdMentions(data.cmdMentions);
       if (data.cmdTerminal !== undefined) setCmdTerminal(data.cmdTerminal);
+      if (data.cmdModeration !== undefined) setCmdModeration(data.cmdModeration);
       if (data.cmdClaude !== undefined) setCmdClaude(data.cmdClaude);
       if (data.cmdSchedule !== undefined) setCmdSchedule(data.cmdSchedule);
     };
@@ -288,6 +300,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       socket.emit('get_room_machines', { roomName });
     };
 
+    const handleRoomMembers = (data: { members: RoomMember[] }) => {
+      setRoomMembers(data.members);
+    };
+
     socket.on('room_machines', handleRoomMachines);
     socket.on('machine_permission_updated', handleMachinePermissionUpdated);
     socket.on('room_memory_status', handleMemoryStatus);
@@ -298,6 +314,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     socket.on('agent_updated', handleUpdated);
     socket.on('agent_deleted', handleDeleted);
     socket.on('agent_error', handleError);
+    socket.on('room_members', handleRoomMembers);
+
+    // Fetch members
+    socket.emit('get_room_members', { roomName });
 
     return () => {
       socket.off('room_machines', handleRoomMachines);
@@ -310,6 +330,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       socket.off('agent_updated', handleUpdated);
       socket.off('agent_deleted', handleDeleted);
       socket.off('agent_error', handleError);
+      socket.off('room_members', handleRoomMembers);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, session?.token, roomName]);
@@ -865,6 +886,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               key: 'cmdSchedule' as const,
               set: setCmdSchedule,
             },
+            {
+              label: 'AI Moderation — Kick and ban users',
+              desc: 'AI: {kick username}, {ban username}, {unban username} | AI can moderate disruptive users',
+              checked: cmdModeration,
+              key: 'cmdModeration' as const,
+              set: setCmdModeration,
+            },
           ].map((cmd) => (
             <Box key={cmd.key} sx={{ mb: 0.5 }}>
               <FormControlLabel
@@ -1023,6 +1051,81 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             <Button variant="contained" size="small" onClick={handleCreate} disabled={!newName.trim()} sx={{ mt: 1 }}>
               Add Agent
             </Button>
+          </>
+        )}
+        {/* Room Members */}
+        {canManageRoom && roomMembers.length > 0 && (
+          <>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <PeopleIcon sx={{ fontSize: 16 }} /> Members ({roomMembers.length})
+            </Typography>
+            {roomMembers.map((member) => (
+              <Box
+                key={member.userId}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  py: 0.5,
+                  px: 1,
+                  mb: 0.5,
+                  borderRadius: 1,
+                  bgcolor: member.role === 'banned' ? 'rgba(255,0,0,0.08)' : 'rgba(255,255,255,0.03)',
+                }}
+              >
+                <Typography variant="body2" sx={{ color: member.role === 'banned' ? '#f44336' : 'inherit' }}>
+                  {member.username} {member.role === 'banned' ? '(banned)' : ''}
+                </Typography>
+                <Box>
+                  {member.role === 'banned' ? (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => {
+                        if (!session?.token) return;
+                        const socket = getSocket(session.token);
+                        socket.emit('unban_member', { roomName, userId: member.userId });
+                        setRoomMembers((prev) => prev.filter((m) => m.userId !== member.userId));
+                      }}
+                      sx={{ minWidth: 0, fontSize: 11 }}
+                    >
+                      Unban
+                    </Button>
+                  ) : (
+                    <>
+                      <IconButton
+                        size="small"
+                        title="Kick"
+                        onClick={() => {
+                          if (!session?.token) return;
+                          const socket = getSocket(session.token);
+                          socket.emit('kick_member', { roomName, userId: member.userId });
+                          setRoomMembers((prev) => prev.filter((m) => m.userId !== member.userId));
+                        }}
+                      >
+                        <PersonRemoveIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        title="Ban"
+                        onClick={() => {
+                          if (!session?.token) return;
+                          if (!confirm(`Ban ${member.username} from this room?`)) return;
+                          const socket = getSocket(session.token);
+                          socket.emit('ban_member', { roomName, userId: member.userId });
+                          setRoomMembers((prev) =>
+                            prev.map((m) => (m.userId === member.userId ? { ...m, role: 'banned' } : m)),
+                          );
+                        }}
+                      >
+                        <BlockIcon sx={{ fontSize: 16, color: '#f44336' }} />
+                      </IconButton>
+                    </>
+                  )}
+                </Box>
+              </Box>
+            ))}
           </>
         )}
         {canManageRoom && (

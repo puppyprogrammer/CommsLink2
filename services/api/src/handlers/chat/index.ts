@@ -328,7 +328,7 @@ type AgentLike = {
 /**
  * Build the system prompt for an agent, optionally with extra autopilot context.
  */
-type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean };
+type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean; moderation?: boolean };
 
 const buildSystemPrompt = (
   agent: AgentLike,
@@ -408,6 +408,18 @@ const buildSystemPrompt = (
       '{set_tokens N} - Set your response token budget (200-4000). Use higher values when you need to compose long commands ' +
       '(e.g. detailed {claude} prompts) or give thorough explanations. Use lower values for quick replies to save credits. ' +
       'This persists across messages — set it once and it stays until you change it.',
+    );
+  }
+
+  // Moderation commands (conditional)
+  if (cmds.moderation) {
+    actions.push(
+      '=== ROOM MODERATION ===\n' +
+      'You can moderate users in this room. Use these commands carefully and only when warranted.\n\n' +
+      '{kick username} - Kick a user from this room. They lose membership and are moved to the public room. They can rejoin with the password.\n' +
+      '{ban username} - Ban a user from this room. They cannot rejoin until unbanned.\n' +
+      '{unban username} - Unban a previously banned user, allowing them to rejoin.\n\n' +
+      'Use {list_users} first to see who is in the room. Only moderate for clear rule violations, disruptive behavior, or when asked by the room creator.',
     );
   }
 
@@ -604,7 +616,10 @@ const CANCEL_SCHEDULE_REGEX = /\{cancel_schedule\s+([^}]+)\}/g;
 const ALARM_REGEX = /\{alarm\s+(\S+)\s+([^}]+)\}/g;
 const VOLUME_REGEX = /\{volume\s+([\d.]+)\}/g;
 const LIST_USERS_REGEX = /\{list_users\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
+const KICK_REGEX = /\{kick\s+([^}]+)\}/g;
+const BAN_REGEX = /\{ban\s+([^}]+)\}/g;
+const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
 const MAX_RECALL_LOOPS = 5;
 const MAX_MENTION_DEPTH = 5;
 
@@ -678,6 +693,7 @@ const runAgentResponse = async (
     const claudeOn = roomRecord?.cmd_claude_enabled ?? false;
     const scheduleOn = roomRecord?.cmd_schedule_enabled ?? true;
     const tokensOn = roomRecord?.cmd_tokens_enabled ?? true;
+    const moderationOn = roomRecord?.cmd_moderation_enabled ?? false;
 
     const masterSummary = memoryOn ? await Data.memorySummary.findMasterByRoom(roomId) : null;
     const masterContent = memCmdOn ? masterSummary?.content : undefined;
@@ -700,6 +716,7 @@ const runAgentResponse = async (
       claude: claudeOn,
       schedule: scheduleOn,
       tokens: tokensOn,
+      moderation: moderationOn,
     }, onlineMachines);
 
     const response = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, agentMaxTokens);
@@ -747,6 +764,9 @@ const runAgentResponse = async (
       const alarmMatches = [...responseText.matchAll(ALARM_REGEX)];
       const volumeMatches = [...responseText.matchAll(VOLUME_REGEX)];
       const listUsersMatches = [...responseText.matchAll(LIST_USERS_REGEX)];
+      const kickMatches = moderationOn ? [...responseText.matchAll(KICK_REGEX)] : [];
+      const banMatches = moderationOn ? [...responseText.matchAll(BAN_REGEX)] : [];
+      const unbanMatches = moderationOn ? [...responseText.matchAll(UNBAN_REGEX)] : [];
 
       const hasAnyCommand = recallMatches.length + sqlMatches.length +
         addMemMatches.length + rmMemMatches.length +
@@ -760,7 +780,8 @@ const runAgentResponse = async (
         scheduleMatches.length + scheduleRecurMatches.length +
         listScheduleMatches.length + cancelScheduleMatches.length +
         alarmMatches.length + volumeMatches.length +
-        listUsersMatches.length > 0;
+        listUsersMatches.length +
+        kickMatches.length + banMatches.length + unbanMatches.length > 0;
 
       if (!hasAnyCommand) break;
 
@@ -1197,6 +1218,104 @@ const runAgentResponse = async (
         }
       }
 
+      // Moderation commands — kick, ban, unban by username
+      for (const match of kickMatches) {
+        const targetUsername = match[1].trim();
+        const targetUser = await Data.user.findByUsername(targetUsername);
+        if (!targetUser) {
+          toolResults.push(`Kick failed: user "${targetUsername}" not found.`);
+          continue;
+        }
+        if (targetUser.id === agent.creator_id) {
+          toolResults.push(`Kick failed: cannot kick the room creator.`);
+          continue;
+        }
+        await Data.roomMember.removeMember(roomId, targetUser.id);
+        // Move them out of the room if online
+        for (const [sid, u] of connectedUsers.entries()) {
+          if (u.userId === targetUser.id && u.currentRoom === roomName) {
+            const targetSocket = io.sockets.sockets.get(sid);
+            if (targetSocket) {
+              const room = activeRooms.get(roomName);
+              if (room) room.users.delete(sid);
+              targetSocket.leave(roomName);
+              targetSocket.join('public');
+              const pubRoom = activeRooms.get('public');
+              if (pubRoom) pubRoom.users.add(sid);
+              u.currentRoom = 'public';
+              const publicRoomId = getRoomId('public');
+              if (publicRoomId) {
+                const history = await Data.message.findByRoom(publicRoomId, 50);
+                const pwp = activeRooms.get('public')?.watchParty;
+                targetSocket.emit('room_joined', {
+                  roomName: 'Public',
+                  users: getRoomUsers('public'),
+                  messages: formatHistoryForClient(history.reverse()),
+                  watchParty: pwp ? { videoId: pwp.videoId, state: pwp.state, currentTime: getEffectiveTime(pwp) } : null,
+                });
+              }
+              targetSocket.emit('room_join_error', { error: `You were kicked by ${agent.name}` });
+            }
+          }
+        }
+        emitSystemMessage(io, roomName, `[${agent.name} kicked ${targetUsername} from the room]`);
+        toolResults.push(`Kicked ${targetUsername} from the room.`);
+      }
+
+      for (const match of banMatches) {
+        const targetUsername = match[1].trim();
+        const targetUser = await Data.user.findByUsername(targetUsername);
+        if (!targetUser) {
+          toolResults.push(`Ban failed: user "${targetUsername}" not found.`);
+          continue;
+        }
+        if (targetUser.id === agent.creator_id) {
+          toolResults.push(`Ban failed: cannot ban the room creator.`);
+          continue;
+        }
+        await Data.roomMember.addMember(roomId, targetUser.id, 'banned');
+        for (const [sid, u] of connectedUsers.entries()) {
+          if (u.userId === targetUser.id && u.currentRoom === roomName) {
+            const targetSocket = io.sockets.sockets.get(sid);
+            if (targetSocket) {
+              const room = activeRooms.get(roomName);
+              if (room) room.users.delete(sid);
+              targetSocket.leave(roomName);
+              targetSocket.join('public');
+              const pubRoom = activeRooms.get('public');
+              if (pubRoom) pubRoom.users.add(sid);
+              u.currentRoom = 'public';
+              const publicRoomId = getRoomId('public');
+              if (publicRoomId) {
+                const history = await Data.message.findByRoom(publicRoomId, 50);
+                const pwp = activeRooms.get('public')?.watchParty;
+                targetSocket.emit('room_joined', {
+                  roomName: 'Public',
+                  users: getRoomUsers('public'),
+                  messages: formatHistoryForClient(history.reverse()),
+                  watchParty: pwp ? { videoId: pwp.videoId, state: pwp.state, currentTime: getEffectiveTime(pwp) } : null,
+                });
+              }
+              targetSocket.emit('room_join_error', { error: `You were banned by ${agent.name}` });
+            }
+          }
+        }
+        emitSystemMessage(io, roomName, `[${agent.name} banned ${targetUsername} from the room]`);
+        toolResults.push(`Banned ${targetUsername} from the room.`);
+      }
+
+      for (const match of unbanMatches) {
+        const targetUsername = match[1].trim();
+        const targetUser = await Data.user.findByUsername(targetUsername);
+        if (!targetUser) {
+          toolResults.push(`Unban failed: user "${targetUsername}" not found.`);
+          continue;
+        }
+        await Data.roomMember.removeMember(roomId, targetUser.id);
+        emitSystemMessage(io, roomName, `[${agent.name} unbanned ${targetUsername}]`);
+        toolResults.push(`Unbanned ${targetUsername}. They can now rejoin the room.`);
+      }
+
       // If only self-modification commands were used (no data-fetching commands), no need to re-prompt
       const hasDataCommands = recallMatches.length + sqlMatches.length + searchMatches.length + browseMatches.length + findMatches.length + screenshotMatches.length + terminalMatches.length + claudeMatches.length + listUsersMatches.length;
       if (hasDataCommands === 0) break;
@@ -1545,24 +1664,50 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       currentRoom: 'public',
     });
 
-    // Join public room
-    socket.join('public');
-    const publicRoom = activeRooms.get('public');
-    if (publicRoom) publicRoom.users.add(socket.id);
+    // Determine initial room: last room user was in, or public
+    const initRoom = async () => {
+      const dbUser = await Data.user.findById(socket.user.id);
+      let targetRoom = 'public';
 
-    // Send initial state with message history
-    const publicRoomId = getRoomId('public');
-    if (publicRoomId) {
-      Data.message.findByRoom(publicRoomId, 50).then((history) => {
-        const wp = activeRooms.get('public')?.watchParty;
+      if (dbUser?.last_room_id) {
+        // Find the active room matching this DB id
+        for (const [name, room] of activeRooms.entries()) {
+          if (room.id === dbUser.last_room_id) {
+            // For password-protected rooms, check membership
+            if (room.passwordHash) {
+              const membership = await Data.roomMember.findByRoomAndUser(room.id, socket.user.id);
+              if (membership && membership.role !== 'banned') {
+                targetRoom = name;
+              }
+            } else {
+              targetRoom = name;
+            }
+            break;
+          }
+        }
+      }
+
+      socket.join(targetRoom);
+      const room = activeRooms.get(targetRoom);
+      if (room) room.users.add(socket.id);
+
+      const user = connectedUsers.get(socket.id);
+      if (user) user.currentRoom = targetRoom;
+
+      const roomId = getRoomId(targetRoom);
+      if (roomId) {
+        const history = await Data.message.findByRoom(roomId, 50);
+        const wp = activeRooms.get(targetRoom)?.watchParty;
         socket.emit('room_joined', {
-          roomName: 'Public',
-          users: getRoomUsers('public'),
+          roomName: room?.displayName || targetRoom,
+          users: getRoomUsers(targetRoom),
           messages: formatHistoryForClient(history.reverse()),
           watchParty: wp ? { videoId: wp.videoId, state: wp.state, currentTime: getEffectiveTime(wp) } : null,
         });
-      }).catch(console.error);
-    }
+      }
+    };
+
+    initRoom().catch(console.error);
 
     io.emit('roster_update', Array.from(connectedUsers.values()));
     io.emit('room_list_update', { rooms: getRoomList() });
@@ -1898,7 +2043,13 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         watchParty: null,
       });
 
+      // Auto-add creator as member
+      await Data.roomMember.addMember(dbRoom.id, socket.user.id);
+
       joinRoom(socket, normalizedName);
+
+      // Save last room
+      Data.user.updateLastRoom(socket.user.id, dbRoom.id).catch(console.error);
 
       socket.emit('room_created', { success: true, roomName: normalizedName });
 
@@ -1925,7 +2076,15 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         return;
       }
 
-      if (room.passwordHash) {
+      // Check if user is banned from this room
+      const membership = await Data.roomMember.findByRoomAndUser(room.id, socket.user.id);
+      if (membership?.role === 'banned') {
+        socket.emit('room_join_error', { error: 'You are banned from this room' });
+        return;
+      }
+
+      // If room has a password and user is NOT already a member, require password
+      if (room.passwordHash && (!membership || membership.role !== 'member')) {
         if (!data.password) {
           socket.emit('room_join_error', { error: 'Password required' });
           return;
@@ -1936,9 +2095,15 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           socket.emit('room_join_error', { error: 'Incorrect password' });
           return;
         }
+
+        // Password correct — add as member so they don't need it again
+        await Data.roomMember.addMember(room.id, socket.user.id);
       }
 
       joinRoom(socket, normalizedName);
+
+      // Save last room
+      Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
 
       const joinHistory = await Data.message.findByRoom(room.id, 50);
       const jwp = room.watchParty;
@@ -1964,12 +2129,19 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         return;
       }
 
+      // For password-protected rooms, check membership (or if it's public)
       if (normalizedName !== 'public' && room.passwordHash) {
-        socket.emit('room_join_error', { error: 'Password required for this room' });
-        return;
+        const membership = await Data.roomMember.findByRoomAndUser(room.id, socket.user.id);
+        if (!membership || membership.role === 'banned') {
+          socket.emit('room_join_error', { error: 'Password required for this room' });
+          return;
+        }
       }
 
       joinRoom(socket, normalizedName);
+
+      // Save last room
+      Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
 
       const switchHistory = await Data.message.findByRoom(room.id, 50);
       const swp = room.watchParty;
@@ -2112,7 +2284,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     socket.on('get_room_memory', async (data: { roomName: string }) => {
       const roomId = getRoomId(data.roomName.toLowerCase());
       if (!roomId) {
-        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false });
+        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdModeration: false });
         return;
       }
       const roomRecord = await Data.room.findById(roomId);
@@ -2128,6 +2300,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdTerminal: roomRecord?.cmd_terminal_enabled ?? false,
         cmdClaude: roomRecord?.cmd_claude_enabled ?? false,
         cmdSchedule: roomRecord?.cmd_schedule_enabled ?? false,
+        cmdModeration: roomRecord?.cmd_moderation_enabled ?? false,
       });
     });
 
@@ -2143,6 +2316,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       cmdTerminal?: boolean;
       cmdClaude?: boolean;
       cmdSchedule?: boolean;
+      cmdModeration?: boolean;
     }) => {
       const normalizedName = data.roomName.toLowerCase();
       const room = activeRooms.get(normalizedName);
@@ -2164,6 +2338,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmd_terminal_enabled: data.cmdTerminal,
         cmd_claude_enabled: data.cmdClaude,
         cmd_schedule_enabled: data.cmdSchedule,
+        cmd_moderation_enabled: data.cmdModeration,
       });
 
       io.to(normalizedName).emit('room_commands_updated', {
@@ -2177,6 +2352,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdTerminal: data.cmdTerminal,
         cmdClaude: data.cmdClaude,
         cmdSchedule: data.cmdSchedule,
+        cmdModeration: data.cmdModeration,
       });
     });
 
@@ -2584,10 +2760,142 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     });
 
     // ┌──────────────────────────────────────────┐
+    // │ Room Membership (kick / ban / unban)   │
+    // └──────────────────────────────────────────┘
+    socket.on('get_room_members', async (data: { roomName: string }) => {
+      const normalizedName = data.roomName.toLowerCase();
+      const room = activeRooms.get(normalizedName);
+      if (!room) return;
+
+      const members = await Data.roomMember.findByRoom(room.id);
+      socket.emit('room_members', {
+        roomName: normalizedName,
+        members: members.map((m) => ({
+          userId: m.user_id,
+          username: m.user.username,
+          role: m.role,
+        })),
+      });
+    });
+
+    socket.on('kick_member', async (data: { roomName: string; userId: string }) => {
+      const normalizedName = data.roomName.toLowerCase();
+      const room = activeRooms.get(normalizedName);
+      if (!room) return;
+
+      // Only creator or admin can kick
+      if (room.createdBy !== socket.user.id && !socket.user.is_admin) {
+        socket.emit('room_join_error', { error: 'Only the room creator or an admin can kick users' });
+        return;
+      }
+
+      // Remove membership
+      await Data.roomMember.removeMember(room.id, data.userId);
+
+      // Find their sockets and move to public
+      for (const [sid, u] of connectedUsers.entries()) {
+        if (u.userId === data.userId && u.currentRoom === normalizedName) {
+          const targetSocket = io.sockets.sockets.get(sid);
+          if (targetSocket) {
+            room.users.delete(sid);
+            targetSocket.leave(normalizedName);
+            targetSocket.join('public');
+            const pubRoom = activeRooms.get('public');
+            if (pubRoom) pubRoom.users.add(sid);
+            u.currentRoom = 'public';
+
+            const publicRoomId = getRoomId('public');
+            if (publicRoomId) {
+              const history = await Data.message.findByRoom(publicRoomId, 50);
+              const pwp = activeRooms.get('public')?.watchParty;
+              targetSocket.emit('room_joined', {
+                roomName: 'Public',
+                users: getRoomUsers('public'),
+                messages: formatHistoryForClient(history.reverse()),
+                watchParty: pwp ? { videoId: pwp.videoId, state: pwp.state, currentTime: getEffectiveTime(pwp) } : null,
+              });
+            }
+            targetSocket.emit('room_join_error', { error: 'You have been kicked from the room' });
+          }
+        }
+      }
+
+      emitSystemMessage(io, normalizedName, `[System] ${data.userId} was kicked from the room.`);
+      io.emit('room_list_update', { rooms: getRoomList() });
+    });
+
+    socket.on('ban_member', async (data: { roomName: string; userId: string }) => {
+      const normalizedName = data.roomName.toLowerCase();
+      const room = activeRooms.get(normalizedName);
+      if (!room) return;
+
+      if (room.createdBy !== socket.user.id && !socket.user.is_admin) {
+        socket.emit('room_join_error', { error: 'Only the room creator or an admin can ban users' });
+        return;
+      }
+
+      // Set role to banned
+      await Data.roomMember.addMember(room.id, data.userId, 'banned');
+
+      // Find their sockets and move to public
+      for (const [sid, u] of connectedUsers.entries()) {
+        if (u.userId === data.userId && u.currentRoom === normalizedName) {
+          const targetSocket = io.sockets.sockets.get(sid);
+          if (targetSocket) {
+            room.users.delete(sid);
+            targetSocket.leave(normalizedName);
+            targetSocket.join('public');
+            const pubRoom = activeRooms.get('public');
+            if (pubRoom) pubRoom.users.add(sid);
+            u.currentRoom = 'public';
+
+            const publicRoomId = getRoomId('public');
+            if (publicRoomId) {
+              const history = await Data.message.findByRoom(publicRoomId, 50);
+              const pwp = activeRooms.get('public')?.watchParty;
+              targetSocket.emit('room_joined', {
+                roomName: 'Public',
+                users: getRoomUsers('public'),
+                messages: formatHistoryForClient(history.reverse()),
+                watchParty: pwp ? { videoId: pwp.videoId, state: pwp.state, currentTime: getEffectiveTime(pwp) } : null,
+              });
+            }
+            targetSocket.emit('room_join_error', { error: 'You have been banned from this room' });
+          }
+        }
+      }
+
+      emitSystemMessage(io, normalizedName, `[System] A user was banned from the room.`);
+      io.emit('room_list_update', { rooms: getRoomList() });
+    });
+
+    socket.on('unban_member', async (data: { roomName: string; userId: string }) => {
+      const normalizedName = data.roomName.toLowerCase();
+      const room = activeRooms.get(normalizedName);
+      if (!room) return;
+
+      if (room.createdBy !== socket.user.id && !socket.user.is_admin) {
+        socket.emit('room_join_error', { error: 'Only the room creator or an admin can unban users' });
+        return;
+      }
+
+      await Data.roomMember.removeMember(room.id, data.userId);
+      socket.emit('room_join_error', { error: 'User has been unbanned' });
+    });
+
+    // ┌──────────────────────────────────────────┐
     // │ Disconnect                              │
     // └──────────────────────────────────────────┘
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.user.username} (${socket.id})`);
+      // Save last room before leaving
+      const disconnectingUser = connectedUsers.get(socket.id);
+      if (disconnectingUser?.currentRoom) {
+        const lastRoomId = getRoomId(disconnectingUser.currentRoom);
+        if (lastRoomId) {
+          Data.user.updateLastRoom(socket.user.id, lastRoomId).catch(console.error);
+        }
+      }
       leaveCurrentRoom(socket);
       connectedUsers.delete(socket.id);
 

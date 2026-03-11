@@ -222,6 +222,11 @@ const ChatPage = () => {
     );
 
     socket.on('room_join_error', (data: { error: string }) => {
+      if (data.error === 'Password required for this room') {
+        // Open password dialog — pendingRoom is already set by handleSwitchRoom
+        setPasswordDialogOpen(true);
+        return;
+      }
       setRoomError(data.error);
       toast(data.error);
     });
@@ -511,11 +516,11 @@ const ChatPage = () => {
     if (!session?.token) return;
     setRoomError('');
 
+    // For password-protected rooms, try switch_room (members get through).
+    // If server responds with "Password required", the room_join_error handler
+    // will open the password dialog via pendingRoom state.
     if (room.hasPassword && !room.isPublic) {
-      // Show password prompt
       setPendingRoom(room.name);
-      setPasswordDialogOpen(true);
-      return;
     }
 
     const socket = getSocket(session.token);

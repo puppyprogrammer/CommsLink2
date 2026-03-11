@@ -29,6 +29,7 @@ model user {
   credit_balance      Int       @default(0)
   subscription_tier   String?
   billing_cycle_start DateTime?
+  last_room_id        String?
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -41,6 +42,7 @@ model user {
   credit_usage_logs    credit_usage_log[]
   machines             machine[]
   scheduled_jobs       scheduled_job[]
+  room_memberships     room_member[]
 
   @@index([stripe_customer_id])
   @@index([username])
@@ -64,6 +66,7 @@ model room {
   cmd_claude_enabled      Boolean  @default(false)
   cmd_schedule_enabled    Boolean  @default(false)
   cmd_tokens_enabled      Boolean  @default(true)
+  cmd_moderation_enabled  Boolean  @default(false)
   created_by          String?
   created_at      DateTime @default(now())
 
@@ -72,6 +75,7 @@ model room {
   memory_summaries    memory_summary[]
   machine_permissions machine_permission[]
   scheduled_jobs      scheduled_job[]
+  members             room_member[]
 
   @@index([name])
 }
@@ -265,6 +269,22 @@ model machine_permission {
   @@unique([machine_id, room_id])
   @@index([machine_id])
   @@index([room_id])
+}
+
+model room_member {
+  id      String @id @default(uuid())
+  room_id String
+  user_id String
+  role    String @default("member")
+
+  created_at DateTime @default(now())
+
+  room room @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  user user @relation(fields: [user_id], references: [id])
+
+  @@unique([room_id, user_id])
+  @@index([room_id])
+  @@index([user_id])
 }
 
 model app_version {
