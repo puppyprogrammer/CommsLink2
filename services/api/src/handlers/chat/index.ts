@@ -1481,7 +1481,8 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       const roomName = roomEntry[0];
       console.log(`[HealthCheck] Testing Kara in room "${roomName}"...`);
-      const healthCheckTime = new Date();
+      // Subtract 5s buffer to account for clock differences between Node and MySQL
+      const healthCheckTime = new Date(Date.now() - 5000).toISOString().slice(0, 23).replace('T', ' ');
 
       // Emit health check message (emitSystemMessage already persists to DB)
       emitSystemMessage(io, roomName, 'Kara, system health check — please confirm you are online with a brief response.');
