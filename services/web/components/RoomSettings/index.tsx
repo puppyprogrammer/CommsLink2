@@ -122,6 +122,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdTerminal, setCmdTerminal] = useState(false);
   const [cmdClaude, setCmdClaude] = useState(false);
   const [cmdSchedule, setCmdSchedule] = useState(false);
+  const [cmdTokens, setCmdTokens] = useState(true);
   const [cmdModeration, setCmdModeration] = useState(false);
 
   // Terminal machines
@@ -210,6 +211,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdTerminal: boolean;
       cmdClaude: boolean;
       cmdSchedule: boolean;
+      cmdTokens: boolean;
       cmdModeration: boolean;
     }) => {
       setMemoryEnabled(data.enabled);
@@ -223,6 +225,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setCmdTerminal(data.cmdTerminal);
       setCmdClaude(data.cmdClaude);
       setCmdSchedule(data.cmdSchedule);
+      setCmdTokens(data.cmdTokens);
       setCmdModeration(data.cmdModeration);
     };
 
@@ -241,6 +244,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdTerminal?: boolean;
       cmdClaude?: boolean;
       cmdSchedule?: boolean;
+      cmdTokens?: boolean;
       cmdModeration?: boolean;
     }) => {
       if (data.cmdRecall !== undefined) setCmdRecall(data.cmdRecall);
@@ -251,6 +255,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       if (data.cmdWeb !== undefined) setCmdWeb(data.cmdWeb);
       if (data.cmdMentions !== undefined) setCmdMentions(data.cmdMentions);
       if (data.cmdTerminal !== undefined) setCmdTerminal(data.cmdTerminal);
+      if (data.cmdTokens !== undefined) setCmdTokens(data.cmdTokens);
       if (data.cmdModeration !== undefined) setCmdModeration(data.cmdModeration);
       if (data.cmdClaude !== undefined) setCmdClaude(data.cmdClaude);
       if (data.cmdSchedule !== undefined) setCmdSchedule(data.cmdSchedule);
@@ -885,6 +890,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               checked: cmdSchedule,
               key: 'cmdSchedule' as const,
               set: setCmdSchedule,
+            },
+            {
+              label: 'Token Budget — AI adjusts own response length',
+              desc: 'AI: {set_tokens N} | Lets agents increase tokens for long prompts and lower them for quick replies',
+              checked: cmdTokens,
+              key: 'cmdTokens' as const,
+              set: setCmdTokens,
             },
             {
               label: 'AI Moderation — Kick and ban users',

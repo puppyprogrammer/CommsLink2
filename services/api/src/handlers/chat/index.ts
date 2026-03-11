@@ -2312,7 +2312,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     socket.on('get_room_memory', async (data: { roomName: string }) => {
       const roomId = getRoomId(data.roomName.toLowerCase());
       if (!roomId) {
-        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdModeration: false });
+        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdTokens: true, cmdModeration: false });
         return;
       }
       const roomRecord = await Data.room.findById(roomId);
@@ -2328,6 +2328,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdTerminal: roomRecord?.cmd_terminal_enabled ?? false,
         cmdClaude: roomRecord?.cmd_claude_enabled ?? false,
         cmdSchedule: roomRecord?.cmd_schedule_enabled ?? false,
+        cmdTokens: roomRecord?.cmd_tokens_enabled ?? true,
         cmdModeration: roomRecord?.cmd_moderation_enabled ?? false,
       });
     });
@@ -2344,6 +2345,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       cmdTerminal?: boolean;
       cmdClaude?: boolean;
       cmdSchedule?: boolean;
+      cmdTokens?: boolean;
       cmdModeration?: boolean;
     }) => {
       const normalizedName = data.roomName.toLowerCase();
@@ -2366,6 +2368,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmd_terminal_enabled: data.cmdTerminal,
         cmd_claude_enabled: data.cmdClaude,
         cmd_schedule_enabled: data.cmdSchedule,
+        cmd_tokens_enabled: data.cmdTokens,
         cmd_moderation_enabled: data.cmdModeration,
       });
 
@@ -2380,6 +2383,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdTerminal: data.cmdTerminal,
         cmdClaude: data.cmdClaude,
         cmdSchedule: data.cmdSchedule,
+        cmdTokens: data.cmdTokens,
         cmdModeration: data.cmdModeration,
       });
     });
