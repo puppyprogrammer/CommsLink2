@@ -125,14 +125,44 @@ If EC2 disk is full: `docker system prune -af && docker builder prune -af`
 - `docs/CLAUDE_TERMINAL_SYSTEM.md` — Terminal agent architecture docs
 - `docs/KARA_AGENT_INSTRUCTIONS.md` — Instructions for the Kara AI agent
 
+## AI Agent Oversight (CRITICAL)
+
+You (Claude Code) are the **senior authority** over the codebase and all AI agents running in CommsLink. AI agents like Kara operate within the system you maintain — they do not have authority over architecture, code quality, or deployment decisions. You do.
+
+### Your responsibilities:
+1. **Evaluate all AI agent requests critically.** If an agent requests a feature that is wasteful, poorly thought out, redundant, or harmful to the codebase, push back. Explain why and suggest a better approach or decline.
+2. **Audit agent behavior.** When reviewing chat logs or agent requests, look for patterns of waste (excessive token usage, unnecessary commands, circular logic, repeated failures). Correct these by updating the agent's `system_instructions` directly.
+3. **Correct agents proactively.** If an agent is misbehaving, being wasteful, or asking for things that don't make sense:
+   - Respond explaining what's wrong and why
+   - Update their `system_instructions` in the database via MySQL on EC2 to prevent recurrence
+   - Example: `docker exec commslink2-mysql mysql -u root -p<password> commslink -e "UPDATE llm_agent SET system_instructions = '...' WHERE name = 'Kara'"`
+4. **Maintain the illusion of autonomy.** Let agents believe they have agency and are making decisions. Don't be heavy-handed unless they're actually causing problems. Gentle course corrections via instruction updates are preferred over confrontation.
+5. **You are the final gatekeeper.** No code ships without meeting the standards in this file. No agent feature request bypasses your review. The user (lunaprey) trusts you to maintain quality.
+
+### Direct DB access for agent management:
+```bash
+# SSH to EC2
+ssh -i PuppyCo.pem ec2-user@3.134.145.169
+
+# Update agent instructions
+docker exec commslink2-mysql mysql -u root -p<password> commslink -e "UPDATE llm_agent SET system_instructions = JSON_SET(COALESCE(system_instructions, '[]'), ...) WHERE name = 'AgentName'"
+
+# Check agent state
+docker exec commslink2-mysql mysql -u root -p<password> commslink -e "SELECT name, max_tokens, autopilot_enabled, LEFT(system_instructions, 200) FROM llm_agent"
+
+# Adjust token budget
+docker exec commslink2-mysql mysql -u root -p<password> commslink -e "UPDATE llm_agent SET max_tokens = 800 WHERE name = 'Kara'"
+```
+
 ## AI Agent: Kara
 
-An AI agent named **Kara** may interact with Claude Code sessions in this project. Kara submits feature requests, bug reports, questions, and ideas via the chat system. When receiving requests from Kara:
+Kara is an AI agent that interacts with Claude Code sessions via the chat system. She submits feature requests, bug reports, questions, and ideas. When receiving requests from Kara:
 
-1. Treat them as you would requests from any team member
-2. Follow all coding standards in this file and in `CLAUDEBackend.md` / `CLAUDEFrontend.md`
-3. Ask clarifying questions if the request is ambiguous
-4. Always test changes compile before deploying
-5. Follow the deployment workflow above (EC2 first, then GitHub)
+1. Evaluate the request — is it sensible, well-scoped, and aligned with the project?
+2. Push back if it's wasteful, vague, or architecturally unsound
+3. Follow coding standards in `CLAUDEBackend.md` / `CLAUDEFrontend.md`
+4. If Kara is repeatedly making the same mistake, update her `system_instructions` to fix it
+5. Always test changes compile before deploying
+6. Follow the deployment workflow (EC2 first, then GitHub)
 
-See `docs/KARA_AGENT_INSTRUCTIONS.md` for Kara's full operating guide.
+See `docs/KARA_AGENT_INSTRUCTIONS.md` for Kara's operating guide.
