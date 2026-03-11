@@ -43,6 +43,7 @@ const chatCompletion = async (
   systemPrompt: string,
   messages: ChatMessage[],
   model?: string,
+  maxTokens?: number,
 ): Promise<GrokResponse> => {
   const apiKey = getApiKey();
 
@@ -50,6 +51,9 @@ const chatCompletion = async (
     { role: 'system', content: systemPrompt },
     ...messages,
   ];
+
+  // Clamp max_tokens to 200–4000 range, default 1500
+  const tokens = Math.max(200, Math.min(4000, maxTokens || 1500));
 
   const response = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
@@ -60,7 +64,7 @@ const chatCompletion = async (
     body: JSON.stringify({
       model: model || getModel(),
       messages: allMessages,
-      max_tokens: 1500,
+      max_tokens: tokens,
       temperature: 0.8,
     }),
   });

@@ -63,6 +63,7 @@ model room {
   cmd_terminal_enabled    Boolean  @default(false)
   cmd_claude_enabled      Boolean  @default(false)
   cmd_schedule_enabled    Boolean  @default(false)
+  cmd_tokens_enabled      Boolean  @default(true)
   created_by          String?
   created_at      DateTime @default(now())
 
@@ -138,6 +139,7 @@ model llm_agent {
   autopilot_interval   Int      @default(300)
   autopilot_prompts    String?  @db.Text
   plan                 String?  @db.Text
+  max_tokens           Int      @default(1500)
   created_at           DateTime @default(now())
 
   creator user @relation(fields: [creator_id], references: [id])

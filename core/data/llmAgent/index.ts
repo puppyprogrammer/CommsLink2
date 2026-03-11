@@ -13,6 +13,7 @@ type CreateAgentDTO = {
   autopilot_enabled?: boolean;
   autopilot_interval?: number;
   autopilot_prompts?: string;
+  max_tokens?: number;
 };
 
 type UpdateAgentDTO = {
@@ -25,6 +26,7 @@ type UpdateAgentDTO = {
   autopilot_interval?: number;
   autopilot_prompts?: string | null;
   plan?: string | null;
+  max_tokens?: number;
 };
 
 const create = async (data: CreateAgentDTO): Promise<llm_agent> =>

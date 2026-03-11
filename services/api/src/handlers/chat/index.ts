@@ -327,7 +327,7 @@ type AgentLike = {
 /**
  * Build the system prompt for an agent, optionally with extra autopilot context.
  */
-type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean };
+type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean };
 
 const buildSystemPrompt = (
   agent: AgentLike,
@@ -396,6 +396,17 @@ const buildSystemPrompt = (
       '=== AUTOPILOT CONTROL ===\n' +
       '{toggle_autopilot on|off} - Enable or disable your autopilot mode\n' +
       '{set_autopilot_interval N} - Set autopilot interval in seconds (2-86400). Use low values (2-10s) for rapid multi-step plan execution.',
+    );
+  }
+
+  // Token budget control (conditional)
+  if (cmds.tokens !== false) {
+    actions.push(
+      '=== TOKEN BUDGET ===\n' +
+      `Your current max_tokens is ${(agent as { max_tokens?: number }).max_tokens || 1500}.\n` +
+      '{set_tokens N} - Set your response token budget (200-4000). Use higher values when you need to compose long commands ' +
+      '(e.g. detailed {claude} prompts) or give thorough explanations. Use lower values for quick replies to save credits. ' +
+      'This persists across messages — set it once and it stays until you change it.',
     );
   }
 
@@ -571,6 +582,7 @@ const SET_PLAN_REGEX = /\{set_plan\s+([^}]+)\}/g;
 const CLEAR_PLAN_REGEX = /\{clear_plan\}/g;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
+const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
 const SEARCH_REGEX = /\{search\s+([^}]+)\}/g;
 const BROWSE_REGEX = /\{browse\s+([^}]+)\}/g;
 const FIND_REGEX = /\{find\s+([^}]+)\}/g;
@@ -591,7 +603,7 @@ const CANCEL_SCHEDULE_REGEX = /\{cancel_schedule\s+([^}]+)\}/g;
 const ALARM_REGEX = /\{alarm\s+(\S+)\s+([^}]+)\}/g;
 const VOLUME_REGEX = /\{volume\s+([\d.]+)\}/g;
 const LIST_USERS_REGEX = /\{list_users\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
 const MAX_RECALL_LOOPS = 5;
 const MAX_MENTION_DEPTH = 5;
 
@@ -664,6 +676,7 @@ const runAgentResponse = async (
     const terminalOn = roomRecord?.cmd_terminal_enabled ?? false;
     const claudeOn = roomRecord?.cmd_claude_enabled ?? false;
     const scheduleOn = roomRecord?.cmd_schedule_enabled ?? true;
+    const tokensOn = roomRecord?.cmd_tokens_enabled ?? true;
 
     const masterSummary = memoryOn ? await Data.memorySummary.findMasterByRoom(roomId) : null;
     const masterContent = memCmdOn ? masterSummary?.content : undefined;
@@ -672,6 +685,8 @@ const runAgentResponse = async (
     const onlineMachines = (terminalOn || claudeOn)
       ? (await Data.machine.findOnlineByOwner(agent.creator_id)).map((m) => m.name)
       : undefined;
+
+    const agentMaxTokens = agent.max_tokens ?? 1500;
 
     const systemPrompt = buildSystemPrompt(agent, autopilotMode, masterContent, {
       recall: recallOn,
@@ -683,9 +698,10 @@ const runAgentResponse = async (
       terminal: terminalOn,
       claude: claudeOn,
       schedule: scheduleOn,
+      tokens: tokensOn,
     }, onlineMachines);
 
-    const response = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model);
+    const response = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, agentMaxTokens);
     let responseText = response.text;
 
     creditActions.chargeGrokUsage(
@@ -716,6 +732,7 @@ const runAgentResponse = async (
       const clearPlanMatches = selfmodOn ? [...responseText.matchAll(CLEAR_PLAN_REGEX)] : [];
       const setIntervalMatches = autopilotCtrlOn ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)] : [];
       const toggleAutoMatches = autopilotCtrlOn ? [...responseText.matchAll(TOGGLE_AUTOPILOT_REGEX)] : [];
+      const setTokensMatches = tokensOn ? [...responseText.matchAll(SET_TOKENS_REGEX)] : [];
       const searchMatches = webOn ? [...responseText.matchAll(SEARCH_REGEX), ...responseText.matchAll(SEARCH_XML_REGEX)] : [];
       const browseMatches = webOn ? [...responseText.matchAll(BROWSE_REGEX), ...responseText.matchAll(BROWSE_XML_REGEX)] : [];
       const findMatches = webOn ? [...responseText.matchAll(FIND_REGEX), ...responseText.matchAll(FIND_XML_REGEX)] : [];
@@ -736,6 +753,7 @@ const runAgentResponse = async (
         addAutoMatches.length + rmAutoMatches.length +
         setPlanMatches.length + clearPlanMatches.length +
         setIntervalMatches.length + toggleAutoMatches.length +
+        setTokensMatches.length +
         searchMatches.length + browseMatches.length + findMatches.length +
         screenshotMatches.length + terminalMatches.length + claudeMatches.length +
         scheduleMatches.length + scheduleRecurMatches.length +
@@ -841,8 +859,17 @@ const runAgentResponse = async (
           toolResults.push(`Autopilot interval set to ${clamped} seconds.`);
         }
 
+        if (setTokensMatches.length > 0) {
+          const value = parseInt(setTokensMatches[setTokensMatches.length - 1][1], 10);
+          const clamped = Math.max(200, Math.min(4000, value));
+          await Data.llmAgent.update(agent.id, { max_tokens: clamped });
+          currentAgent = (await Data.llmAgent.findById(agent.id))!;
+          emitSystemMessage(io, roomName, `[${agent.name} set token budget to ${clamped}]`);
+          toolResults.push(`Token budget set to ${clamped}.`);
+        }
+
         // Emit agent_updated so UI stays in sync
-        const selfModCount = addMemMatches.length + rmMemMatches.length + addInstMatches.length + rmInstMatches.length + addAutoMatches.length + rmAutoMatches.length + setPlanMatches.length + clearPlanMatches.length + setIntervalMatches.length + toggleAutoMatches.length;
+        const selfModCount = addMemMatches.length + rmMemMatches.length + addInstMatches.length + rmInstMatches.length + addAutoMatches.length + rmAutoMatches.length + setPlanMatches.length + clearPlanMatches.length + setIntervalMatches.length + toggleAutoMatches.length + setTokensMatches.length;
         if (currentAgent && selfModCount > 0) {
           const roomEntry = Array.from(activeRooms.entries()).find(([, r]) => r.id === roomId);
           if (roomEntry) {
@@ -1181,7 +1208,7 @@ const runAgentResponse = async (
         content: `Tool results:\n${toolResults.join('\n\n')}\n\nUse these results to formulate your response. Do not repeat commands you already issued. Do not restate what you already said above.`,
       });
 
-      const loopResponse = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model);
+      const loopResponse = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, currentAgent?.max_tokens ?? agentMaxTokens);
       responseText = loopResponse.text;
 
       creditActions.chargeGrokUsage(
