@@ -707,7 +707,11 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                           sx={{ p: 0.25 }}
                         />
                       }
-                      label={<Typography variant="detailText" sx={{ fontSize: '0.7rem' }}>Enabled</Typography>}
+                      label={
+                        <Typography variant="detailText" sx={{ fontSize: '0.7rem' }}>
+                          Enabled
+                        </Typography>
+                      }
                       sx={{ m: 0 }}
                     />
                     {perm.machine?.status === 'offline' && (
@@ -844,166 +848,166 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             Toggle which commands AI agents can use. Memory commands also work as user chat commands.
           </Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
-          {[
-            ...(memoryEnabled
-              ? [
-                  {
-                    label: '/memory — View master summary',
-                    desc: 'AI: automatically included in prompt | User: /memory',
-                    checked: cmdMemory,
-                    key: 'cmdMemory' as const,
-                    set: setCmdMemory,
-                  },
-                  {
-                    label: '/recall [ref] — Retrieve a specific summary',
-                    desc: 'AI: {recall ref_name} | User: /recall l1-20260309-001',
-                    checked: cmdRecall,
-                    key: 'cmdRecall' as const,
-                    set: setCmdRecall,
-                  },
-                  {
-                    label: '/sql [query] — Query room messages',
-                    desc: 'AI: {sql SELECT ...} | User: /sql SELECT username, content FROM message LIMIT 10',
-                    checked: cmdSql,
-                    key: 'cmdSql' as const,
-                    set: setCmdSql,
-                  },
-                ]
-              : []),
-            {
-              label: 'Self-Modification — Memories, instructions, prompts, plan',
-              desc: 'AI: {add_memory}, {remove_memory}, {add_instruction}, {remove_instruction}, {add_autopilot}, {remove_autopilot}, {set_plan}, {clear_plan}',
-              checked: cmdSelfmod,
-              key: 'cmdSelfmod' as const,
-              set: setCmdSelfmod,
-            },
-            {
-              label: 'Autopilot Control — Toggle and set interval',
-              desc: 'AI: {toggle_autopilot on|off}, {set_autopilot_interval N} (seconds, min 2)',
-              checked: cmdAutopilot,
-              key: 'cmdAutopilot' as const,
-              set: setCmdAutopilot,
-            },
-            {
-              label: 'Web Browsing — Search, browse pages, find text',
-              desc: 'AI: {search query}, {browse url}, {find text}',
-              checked: cmdWeb,
-              key: 'cmdWeb' as const,
-              set: setCmdWeb,
-            },
-            {
-              label: 'AI Mentions — Agents respond to each other',
-              desc: 'When an agent mentions another agent by name, that agent responds (max 5 exchanges)',
-              checked: cmdMentions,
-              key: 'cmdMentions' as const,
-              set: setCmdMentions,
-            },
-            {
-              label: 'Remote Terminal — Execute commands on connected machines',
-              desc: 'AI: {terminal machine_name command} | Dangerous commands require creator approval',
-              checked: cmdTerminal,
-              key: 'cmdTerminal' as const,
-              set: setCmdTerminal,
-            },
-            {
-              label: 'Claude Code — Persistent AI coding sessions on remote machines',
-              desc: 'AI: {claude machine_name prompt} | Sessions persist across messages',
-              checked: cmdClaude,
-              key: 'cmdClaude' as const,
-              set: setCmdClaude,
-            },
-            {
-              label: 'Scheduling — Set reminders and recurring tasks',
-              desc: 'AI: {schedule YYYY-MM-DD HH:mm message}, {schedule_recurring daily|weekly|weekdays|monthly HH:mm message}',
-              checked: cmdSchedule,
-              key: 'cmdSchedule' as const,
-              set: setCmdSchedule,
-            },
-            {
-              label: 'Token Budget — AI adjusts own response length',
-              desc: 'AI: {set_tokens N} | Lets agents increase tokens for long prompts and lower them for quick replies',
-              checked: cmdTokens,
-              key: 'cmdTokens' as const,
-              set: setCmdTokens,
-            },
-            {
-              label: 'AI Moderation — Kick and ban users',
-              desc: 'AI: {kick username}, {ban username}, {unban username} | AI can moderate disruptive users',
-              checked: cmdModeration,
-              key: 'cmdModeration' as const,
-              set: setCmdModeration,
-            },
-          ].map((cmd) => (
-            <Box key={cmd.key}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={cmd.checked}
-                    onChange={(e) => {
-                      cmd.set(e.target.checked);
-                      if (!session?.token) return;
-                      const socket = getSocket(session.token);
-                      socket.emit('update_room_commands', { roomName, [cmd.key]: e.target.checked });
-                    }}
-                    size="small"
-                    sx={{ p: 0.25 }}
-                  />
-                }
-                label={
-                  <Box>
-                    <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-                      {cmd.label}
-                    </Typography>
-                    <Typography
-                      variant="detailText"
-                      sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
-                    >
-                      {cmd.desc}
-                    </Typography>
-                  </Box>
-                }
-                sx={{ m: 0, alignItems: 'flex-start' }}
-              />
-            </Box>
-          ))}
+            {[
+              ...(memoryEnabled
+                ? [
+                    {
+                      label: '/memory — View master summary',
+                      desc: 'AI: automatically included in prompt | User: /memory',
+                      checked: cmdMemory,
+                      key: 'cmdMemory' as const,
+                      set: setCmdMemory,
+                    },
+                    {
+                      label: '/recall [ref] — Retrieve a specific summary',
+                      desc: 'AI: {recall ref_name} | User: /recall l1-20260309-001',
+                      checked: cmdRecall,
+                      key: 'cmdRecall' as const,
+                      set: setCmdRecall,
+                    },
+                    {
+                      label: '/sql [query] — Query room messages',
+                      desc: 'AI: {sql SELECT ...} | User: /sql SELECT username, content FROM message LIMIT 10',
+                      checked: cmdSql,
+                      key: 'cmdSql' as const,
+                      set: setCmdSql,
+                    },
+                  ]
+                : []),
+              {
+                label: 'Self-Modification — Memories, instructions, prompts, plan',
+                desc: 'AI: {add_memory}, {remove_memory}, {add_instruction}, {remove_instruction}, {add_autopilot}, {remove_autopilot}, {set_plan}, {clear_plan}',
+                checked: cmdSelfmod,
+                key: 'cmdSelfmod' as const,
+                set: setCmdSelfmod,
+              },
+              {
+                label: 'Autopilot Control — Toggle and set interval',
+                desc: 'AI: {toggle_autopilot on|off}, {set_autopilot_interval N} (seconds, min 2)',
+                checked: cmdAutopilot,
+                key: 'cmdAutopilot' as const,
+                set: setCmdAutopilot,
+              },
+              {
+                label: 'Web Browsing — Search, browse pages, find text',
+                desc: 'AI: {search query}, {browse url}, {find text}',
+                checked: cmdWeb,
+                key: 'cmdWeb' as const,
+                set: setCmdWeb,
+              },
+              {
+                label: 'AI Mentions — Agents respond to each other',
+                desc: 'When an agent mentions another agent by name, that agent responds (max 5 exchanges)',
+                checked: cmdMentions,
+                key: 'cmdMentions' as const,
+                set: setCmdMentions,
+              },
+              {
+                label: 'Remote Terminal — Execute commands on connected machines',
+                desc: 'AI: {terminal machine_name command} | Dangerous commands require creator approval',
+                checked: cmdTerminal,
+                key: 'cmdTerminal' as const,
+                set: setCmdTerminal,
+              },
+              {
+                label: 'Claude Code — Persistent AI coding sessions on remote machines',
+                desc: 'AI: {claude machine_name prompt} | Sessions persist across messages',
+                checked: cmdClaude,
+                key: 'cmdClaude' as const,
+                set: setCmdClaude,
+              },
+              {
+                label: 'Scheduling — Set reminders and recurring tasks',
+                desc: 'AI: {schedule YYYY-MM-DD HH:mm message}, {schedule_recurring daily|weekly|weekdays|monthly HH:mm message}',
+                checked: cmdSchedule,
+                key: 'cmdSchedule' as const,
+                set: setCmdSchedule,
+              },
+              {
+                label: 'Token Budget — AI adjusts own response length',
+                desc: 'AI: {set_tokens N} | Lets agents increase tokens for long prompts and lower them for quick replies',
+                checked: cmdTokens,
+                key: 'cmdTokens' as const,
+                set: setCmdTokens,
+              },
+              {
+                label: 'AI Moderation — Kick and ban users',
+                desc: 'AI: {kick username}, {ban username}, {unban username} | AI can moderate disruptive users',
+                checked: cmdModeration,
+                key: 'cmdModeration' as const,
+                set: setCmdModeration,
+              },
+            ].map((cmd) => (
+              <Box key={cmd.key}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={cmd.checked}
+                      onChange={(e) => {
+                        cmd.set(e.target.checked);
+                        if (!session?.token) return;
+                        const socket = getSocket(session.token);
+                        socket.emit('update_room_commands', { roomName, [cmd.key]: e.target.checked });
+                      }}
+                      size="small"
+                      sx={{ p: 0.25 }}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                        {cmd.label}
+                      </Typography>
+                      <Typography
+                        variant="detailText"
+                        sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
+                      >
+                        {cmd.desc}
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ m: 0, alignItems: 'flex-start' }}
+                />
+              </Box>
+            ))}
           </Box>
 
           {/* Always-on commands (informational) */}
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
-          {[
-            {
-              label: 'List Users — See who is online in this room',
-              desc: 'AI: {list_users} | User: /users',
-            },
-            {
-              label: "Alarm — Trigger a loud alarm on a specific user's device",
-              desc: 'AI: {alarm username message}',
-            },
-            {
-              label: "Volume — Set a user's volume level",
-              desc: 'AI: {volume 0.0-1.0}',
-            },
-          ].map((cmd) => (
-            <Box key={cmd.label}>
-              <FormControlLabel
-                control={<Checkbox checked disabled size="small" sx={{ p: 0.25 }} />}
-                label={
-                  <Box>
-                    <Typography variant="detailText" sx={{ fontWeight: 600, opacity: 0.7, fontSize: '0.75rem' }}>
-                      {cmd.label}
-                    </Typography>
-                    <Typography
-                      variant="detailText"
-                      sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
-                    >
-                      {cmd.desc}
-                    </Typography>
-                  </Box>
-                }
-                sx={{ m: 0, alignItems: 'flex-start' }}
-              />
-            </Box>
-          ))}
+            {[
+              {
+                label: 'List Users — See who is online in this room',
+                desc: 'AI: {list_users} | User: /users',
+              },
+              {
+                label: "Alarm — Trigger a loud alarm on a specific user's device",
+                desc: 'AI: {alarm username message}',
+              },
+              {
+                label: "Volume — Set a user's volume level",
+                desc: 'AI: {volume 0.0-1.0}',
+              },
+            ].map((cmd) => (
+              <Box key={cmd.label}>
+                <FormControlLabel
+                  control={<Checkbox checked disabled size="small" sx={{ p: 0.25 }} />}
+                  label={
+                    <Box>
+                      <Typography variant="detailText" sx={{ fontWeight: 600, opacity: 0.7, fontSize: '0.75rem' }}>
+                        {cmd.label}
+                      </Typography>
+                      <Typography
+                        variant="detailText"
+                        sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
+                      >
+                        {cmd.desc}
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ m: 0, alignItems: 'flex-start' }}
+                />
+              </Box>
+            ))}
           </Box>
         </Box>
 
