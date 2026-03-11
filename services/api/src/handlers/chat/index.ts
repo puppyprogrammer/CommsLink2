@@ -322,6 +322,7 @@ type AgentLike = {
   autopilot_interval: number;
   autopilot_prompts: string | null;
   plan: string | null;
+  max_tokens: number;
 };
 
 /**
@@ -403,7 +404,7 @@ const buildSystemPrompt = (
   if (cmds.tokens !== false) {
     actions.push(
       '=== TOKEN BUDGET ===\n' +
-      `Your current max_tokens is ${(agent as { max_tokens?: number }).max_tokens || 1500}.\n` +
+      `Your current max_tokens is ${agent.max_tokens || 1500}.\n` +
       '{set_tokens N} - Set your response token budget (200-4000). Use higher values when you need to compose long commands ' +
       '(e.g. detailed {claude} prompts) or give thorough explanations. Use lower values for quick replies to save credits. ' +
       'This persists across messages — set it once and it stays until you change it.',
