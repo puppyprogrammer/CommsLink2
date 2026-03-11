@@ -84,9 +84,14 @@ docker compose up -d              # Start all services
 ## Deployment Workflow
 
 1. **Edit locally** in `H:\Development\CommsLink2`
-2. **SCP to EC2**: `scp -i PuppyCo.pem -r <files> ec2-user@13.58.77.132:~/app/`
-3. **Rebuild on EC2**: `docker compose -f docker-compose.prod.yml up -d --build --no-cache`
-4. **Push to GitHub**: `git add . && git commit -m "description" && git push origin main`
+2. **SCP changed files to EC2**: `scp -i PuppyCo.pem <files> ec2-user@3.134.145.169:~/CommsLink2/<path>`
+3. **Rebuild on EC2**:
+   - **Code-only changes** (default): `docker-compose -f docker-compose.prod.yml build api && docker-compose -f docker-compose.prod.yml up -d api`
+   - **Dependency changes** (package.json/yarn.lock): `docker-compose -f docker-compose.prod.yml build --no-cache api && docker-compose -f docker-compose.prod.yml up -d api`
+   - Replace `api` with `web` or `api web` as needed
+4. **Push to GitHub**: `git add <files> && git commit -m "description" && git push origin main`
+
+**IMPORTANT**: Do NOT use `--no-cache` for code-only changes. The Dockerfile layers deps before source, so code changes invalidate the cache correctly. Using `--no-cache` wastes ~6-8GB per build on a 20GB disk.
 
 If EC2 disk is full: `docker system prune -af && docker builder prune -af`
 
