@@ -38,5 +38,25 @@ const sumByUserSince = async (
   return result._sum.credits_charged || 0;
 };
 
-export type { CreateUsageLogDTO };
-export default { create, findByUser, sumByUserSince };
+type SpendingByService = {
+  service: string;
+  total_cost_usd: number;
+};
+
+const sumCostByServiceSince = async (
+  userId: string,
+  since: Date,
+): Promise<SpendingByService[]> => {
+  const result = await prisma.credit_usage_log.groupBy({
+    by: ['service'],
+    where: { user_id: userId, created_at: { gte: since } },
+    _sum: { raw_cost_usd: true },
+  });
+  return result.map((r) => ({
+    service: r.service,
+    total_cost_usd: r._sum.raw_cost_usd || 0,
+  }));
+};
+
+export type { CreateUsageLogDTO, SpendingByService };
+export default { create, findByUser, sumByUserSince, sumCostByServiceSince };

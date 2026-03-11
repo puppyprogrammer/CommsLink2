@@ -22,6 +22,7 @@ import paymentApi from '@/lib/api/payment';
 
 // Components
 import ConnectionStatus from '@/components/ConnectionStatus';
+import SpendingBar from '@/components/SpendingBar';
 
 // Styles
 import classes from './Dashboard.module.scss';
@@ -74,9 +75,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
         <Toolbar variant="dense" sx={{ minHeight: 36, px: 1 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.svg" alt="" width={20} height={20} style={{ marginRight: '0.5rem' }} />
-          <Typography variant="body2" sx={{ flexGrow: 1, fontWeight: 500 }}>
+          <Typography variant="body2" sx={{ fontWeight: 500 }}>
             CommsLink
           </Typography>
+          <SpendingBar />
           <ConnectionStatus />
           {creditBalance !== null && (
             <Chip

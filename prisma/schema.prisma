@@ -67,6 +67,9 @@ model room {
   cmd_schedule_enabled    Boolean  @default(false)
   cmd_tokens_enabled      Boolean  @default(true)
   cmd_moderation_enabled  Boolean  @default(false)
+  cmd_think_enabled       Boolean  @default(true)
+  cmd_effort_enabled      Boolean  @default(true)
+  cmd_audit_enabled       Boolean  @default(true)
   created_by          String?
   created_at      DateTime @default(now())
 

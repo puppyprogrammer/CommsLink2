@@ -28,4 +28,12 @@ const findRecent = async (limit = 100) => {
   });
 };
 
-export default { create, findBySessionKey, findRecent };
+const findByMachine = async (machineName: string, limit = 10) => {
+  return prisma.claude_log.findMany({
+    where: { machine_name: machineName },
+    orderBy: { created_at: 'desc' },
+    take: limit,
+  });
+};
+
+export default { create, findBySessionKey, findRecent, findByMachine };

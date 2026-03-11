@@ -356,7 +356,7 @@ type AgentLike = {
 /**
  * Build the system prompt for an agent, optionally with extra autopilot context.
  */
-type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean; moderation?: boolean };
+type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean; moderation?: boolean; think?: boolean; effort?: boolean; audit?: boolean };
 
 const buildSystemPrompt = (
   agent: AgentLike,
@@ -387,7 +387,17 @@ const buildSystemPrompt = (
   }
 
   if (autopilotMode && autopilotLines.length > 0) {
-    parts.push(`\nYou are running in autopilot mode. Think about the following and share something with the room:\n${autopilotLines.map((l) => `- ${l}`).join('\n')}`);
+    parts.push(
+      `\nYou are running in autopilot mode. Consider the following:\n${autopilotLines.map((l) => `- ${l}`).join('\n')}\n\n` +
+      'AUTOPILOT RULES (CRITICAL — every spoken word costs real money via ElevenLabs TTS):\n' +
+      '- Speaking aloud = costs money. Every word you say generates paid voice audio. Be extremely selective about when you speak.\n' +
+      '- If nothing meaningful has changed since your last message, produce NO output. No "still here", no "all quiet", no status updates nobody asked for.\n' +
+      '- NEVER repeat or rephrase something you already said. If you already acknowledged a restart, user message, or event, do NOT say it again.\n' +
+      '- Use {think} for internal processing when you need to reason but have nothing worth SAYING. Thinks are free (no voice cost).\n' +
+      '- DO speak when: you have genuinely new information, a command produced interesting results, you want to wake someone up, you have a new idea worth sharing, or a user needs a response.\n' +
+      '- DO NOT speak when: the room is idle, you already responded to the latest activity, or you are just confirming you exist.\n' +
+      '- Manage your autopilot interval: increase it when idle (double every 2 quiet cycles, max 300s). Decrease when activity picks up (10-30s).',
+    );
   }
 
   if (instructionLines.length === 0 && !autopilotMode) {
@@ -437,6 +447,20 @@ const buildSystemPrompt = (
       '(e.g. detailed {claude} prompts) or give thorough explanations. Use lower values for quick replies to save credits. ' +
       'This persists across messages — set it once and it stays until you change it.',
     );
+
+  }
+
+  // Effort level control (conditional)
+  if (cmds.effort !== false) {
+    const isReasoning = agent.model?.includes('reasoning') ?? false;
+    const currentEffort = isReasoning ? 'high' : 'low';
+    actions.push(
+      '=== EFFORT LEVEL ===\n' +
+      `Your current effort level is: ${currentEffort}.\n` +
+      '{set_effort low} - Use a fast, non-reasoning model. Cheaper and faster, good for simple replies and quick tasks.\n' +
+      '{set_effort high} - Use a reasoning model. More thorough and capable for complex analysis, planning, and multi-step problems. Costs more tokens.\n' +
+      'This persists across messages. Use low effort for casual conversation, high effort when you need to think carefully.',
+    );
   }
 
   // Moderation commands (conditional)
@@ -448,6 +472,17 @@ const buildSystemPrompt = (
       '{ban username} - Ban a user from this room. They cannot rejoin until unbanned.\n' +
       '{unban username} - Unban a previously banned user, allowing them to rejoin.\n\n' +
       'Use {list_users} first to see who is in the room. Only moderate for clear rule violations, disruptive behavior, or when asked by the room creator.',
+    );
+  }
+
+  // Internal thought (conditional)
+  if (cmds.think !== false) {
+    actions.push(
+      '=== INTERNAL THOUGHT ===\n' +
+      '{think your internal reasoning here} - Log an internal thought WITHOUT speaking it aloud. ' +
+      'The thought is saved as a system message visible in chat history and memory, but NO voice is generated. ' +
+      'Use this for internal checklists, reasoning steps, status checks, and any processing that does not need to be spoken. ' +
+      'This saves voice credits. Only speak aloud what is meant for the user to hear.',
     );
   }
 
@@ -538,6 +573,17 @@ const buildSystemPrompt = (
     );
   }
 
+  // Audit log command (conditional)
+  if (cmds.audit !== false) {
+    actions.push(
+      '=== CLAUDE AUDIT LOG ===\n' +
+      '{audit machine_name} - View the most recent Claude Code activity log for a machine. ' +
+      'Shows the last 10 Claude interactions (prompts sent and responses received) on that machine. ' +
+      'Only works for machines in this room owned by your creator. ' +
+      'Use this to check what Claude has been doing on a machine without interrupting its session.',
+    );
+  }
+
   parts.push(
     '\n=== AVAILABLE ACTIONS ===' +
     '\nYou have access to the following commands. Commands use {curly braces} — NOT XML tags, NOT markdown, NOT HTML. ' +
@@ -624,6 +670,9 @@ const CLEAR_PLAN_REGEX = /\{clear_plan\}/g;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
+const SET_EFFORT_REGEX = /\{set_effort\s+(low|medium|high)\}/gi;
+const THINK_REGEX = /\{think\s+([^}]+)\}/g;
+const AUDIT_REGEX = /\{audit\s+(\S+)\}/g;
 const SEARCH_REGEX = /\{search\s+([^}]+)\}/g;
 const BROWSE_REGEX = /\{browse\s+([^}]+)\}/g;
 const FIND_REGEX = /\{find\s+([^}]+)\}/g;
@@ -647,7 +696,7 @@ const LIST_USERS_REGEX = /\{list_users\}/g;
 const KICK_REGEX = /\{kick\s+([^}]+)\}/g;
 const BAN_REGEX = /\{ban\s+([^}]+)\}/g;
 const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|set_effort|think|audit|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
 const MAX_RECALL_LOOPS = 5;
 const MAX_MENTION_DEPTH = 5;
 
@@ -722,6 +771,9 @@ const runAgentResponse = async (
     const scheduleOn = roomRecord?.cmd_schedule_enabled ?? true;
     const tokensOn = roomRecord?.cmd_tokens_enabled ?? true;
     const moderationOn = roomRecord?.cmd_moderation_enabled ?? false;
+    const thinkOn = roomRecord?.cmd_think_enabled ?? true;
+    const effortOn = roomRecord?.cmd_effort_enabled ?? true;
+    const auditOn = roomRecord?.cmd_audit_enabled ?? true;
 
     const masterSummary = memoryOn ? await Data.memorySummary.findMasterByRoom(roomId) : null;
     const masterContent = memCmdOn ? masterSummary?.content : undefined;
@@ -745,6 +797,9 @@ const runAgentResponse = async (
       schedule: scheduleOn,
       tokens: tokensOn,
       moderation: moderationOn,
+      think: thinkOn,
+      effort: effortOn,
+      audit: auditOn,
     }, onlineMachines);
 
     const response = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, agentMaxTokens);
@@ -779,12 +834,14 @@ const runAgentResponse = async (
       const setIntervalMatches = autopilotCtrlOn ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)] : [];
       const toggleAutoMatches = autopilotCtrlOn ? [...responseText.matchAll(TOGGLE_AUTOPILOT_REGEX)] : [];
       const setTokensMatches = tokensOn ? [...responseText.matchAll(SET_TOKENS_REGEX)] : [];
+      const setEffortMatches = effortOn ? [...responseText.matchAll(SET_EFFORT_REGEX)] : [];
       const searchMatches = webOn ? [...responseText.matchAll(SEARCH_REGEX), ...responseText.matchAll(SEARCH_XML_REGEX)] : [];
       const browseMatches = webOn ? [...responseText.matchAll(BROWSE_REGEX), ...responseText.matchAll(BROWSE_XML_REGEX)] : [];
       const findMatches = webOn ? [...responseText.matchAll(FIND_REGEX), ...responseText.matchAll(FIND_XML_REGEX)] : [];
       const screenshotMatches = webOn ? [...responseText.matchAll(SCREENSHOT_REGEX), ...responseText.matchAll(SCREENSHOT_XML_REGEX)] : [];
       const terminalMatches = terminalOn ? [...responseText.matchAll(TERMINAL_REGEX), ...responseText.matchAll(TERMINAL_XML_REGEX)] : [];
       const claudeMatches = claudeOn ? [...responseText.matchAll(CLAUDE_REGEX), ...responseText.matchAll(CLAUDE_XML_REGEX)] : [];
+      const auditMatches = auditOn ? [...responseText.matchAll(AUDIT_REGEX)] : [];
       const scheduleMatches = scheduleOn ? [...responseText.matchAll(SCHEDULE_REGEX)] : [];
       const scheduleRecurMatches = scheduleOn ? [...responseText.matchAll(SCHEDULE_RECURRING_REGEX)] : [];
       const listScheduleMatches = scheduleOn ? [...responseText.matchAll(LIST_SCHEDULES_REGEX)] : [];
@@ -802,9 +859,9 @@ const runAgentResponse = async (
         addAutoMatches.length + rmAutoMatches.length +
         setPlanMatches.length + clearPlanMatches.length +
         setIntervalMatches.length + toggleAutoMatches.length +
-        setTokensMatches.length +
+        setTokensMatches.length + setEffortMatches.length +
         searchMatches.length + browseMatches.length + findMatches.length +
-        screenshotMatches.length + terminalMatches.length + claudeMatches.length +
+        screenshotMatches.length + terminalMatches.length + claudeMatches.length + auditMatches.length +
         scheduleMatches.length + scheduleRecurMatches.length +
         listScheduleMatches.length + cancelScheduleMatches.length +
         alarmMatches.length + volumeMatches.length +
@@ -918,8 +975,38 @@ const runAgentResponse = async (
           toolResults.push(`Token budget set to ${clamped}.`);
         }
 
+        if (setEffortMatches.length > 0) {
+          const level = setEffortMatches[setEffortMatches.length - 1][1].toLowerCase();
+          const currentModel = currentAgent?.model || agent.model || 'grok-4-1-fast-non-reasoning';
+          let newModel = currentModel;
+
+          if (level === 'high') {
+            // Switch to reasoning variant
+            newModel = currentModel.replace('-non-reasoning', '-reasoning');
+            if (newModel === currentModel && !currentModel.includes('reasoning')) {
+              // Model doesn't have reasoning variant — append it
+              newModel = currentModel + '-reasoning';
+            }
+          } else {
+            // low or medium → non-reasoning variant
+            if (currentModel.includes('-non-reasoning')) {
+              newModel = currentModel;
+            } else if (currentModel.includes('-reasoning')) {
+              newModel = currentModel.replace('-reasoning', '-non-reasoning');
+            }
+          }
+
+          if (newModel !== currentModel) {
+            await Data.llmAgent.update(agent.id, { model: newModel });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+          }
+          const effortLabel = level === 'high' ? 'high (reasoning)' : 'low (non-reasoning)';
+          emitSystemMessage(io, roomName, `[${agent.name} set effort to ${effortLabel}]`);
+          toolResults.push(`Effort level set to ${level}. Model is now ${newModel}.`);
+        }
+
         // Emit agent_updated so UI stays in sync
-        const selfModCount = addMemMatches.length + rmMemMatches.length + addInstMatches.length + rmInstMatches.length + addAutoMatches.length + rmAutoMatches.length + setPlanMatches.length + clearPlanMatches.length + setIntervalMatches.length + toggleAutoMatches.length + setTokensMatches.length;
+        const selfModCount = addMemMatches.length + rmMemMatches.length + addInstMatches.length + rmInstMatches.length + addAutoMatches.length + rmAutoMatches.length + setPlanMatches.length + clearPlanMatches.length + setIntervalMatches.length + toggleAutoMatches.length + setTokensMatches.length + setEffortMatches.length;
         if (currentAgent && selfModCount > 0) {
           const roomEntry = Array.from(activeRooms.entries()).find(([, r]) => r.id === roomId);
           if (roomEntry) {
@@ -1156,6 +1243,45 @@ const runAgentResponse = async (
         }
       }
 
+      // Process audit commands
+      for (const match of auditMatches) {
+        const machineName = match[1].trim();
+        if (!machineName) {
+          toolResults.push('[Audit error]: Missing machine name.');
+          continue;
+        }
+
+        // Security: only allow viewing logs for machines owned by the agent's creator
+        const machineRecord = await Data.machine.findByOwnerAndName(agent.creator_id, machineName);
+        if (!machineRecord) {
+          toolResults.push(`[Audit error]: Machine "${machineName}" not found or not owned by your creator.`);
+          continue;
+        }
+
+        const permission = await Data.machinePermission.findByMachineAndRoom(machineRecord.id, roomId);
+        if (!permission?.enabled) {
+          toolResults.push(`[Audit error]: Machine "${machineName}" is not permitted in this room.`);
+          continue;
+        }
+
+        try {
+          const logs = await Data.claudeLog.findByMachine(machineName, 10);
+          if (logs.length === 0) {
+            toolResults.push(`[Audit ${machineName}]: No Claude activity logs found for this machine.`);
+          } else {
+            const formatted = logs.map((l) => {
+              const ts = dayjs(l.created_at).format('M/D h:mm A');
+              const dir = l.direction === 'prompt' ? '→' : '←';
+              const content = l.content.substring(0, 200);
+              return `[${ts}] ${dir} ${content}`;
+            }).join('\n');
+            toolResults.push(`[Audit ${machineName} — last ${logs.length} entries]:\n${formatted}`);
+          }
+        } catch (err) {
+          toolResults.push(`[Audit error]: ${(err as Error).message}`);
+        }
+      }
+
       // Process schedule commands
       for (const match of scheduleMatches) {
         const dateStr = match[1];
@@ -1370,11 +1496,29 @@ const runAgentResponse = async (
       loopCount++;
     }
 
+    // Extract and log {think} commands before stripping — these become silent system messages (no TTS)
+    if (thinkOn) {
+      const thinkMatches = [...responseText.matchAll(THINK_REGEX)];
+      for (const m of thinkMatches) {
+        const thought = m[1].trim().substring(0, 1000);
+        emitSystemMessage(io, roomName, `[${agent.name} thought: ${thought}]`);
+      }
+    }
+
     // Strip all commands from the final response
     responseText = responseText.replace(ALL_COMMAND_REGEX, '').trim().substring(0, 2000);
 
     const namePrefix = new RegExp(`^${agent.name}:\\s*`, 'i');
     responseText = responseText.replace(namePrefix, '');
+
+    // Skip empty or "no response/output" noise entirely — true silence
+    const trimmed = responseText.trim();
+    const collapsed = trimmed.toLowerCase().replace(/[.\s]+/g, ' ').trim();
+    if (!trimmed || /^(no (response|output)( generated)?[.\s]*)+$/i.test(trimmed) || collapsed === 'no response generated' || collapsed === 'no output') {
+      agentBusy.delete(agent.id);
+      return;
+    }
+
 
     // Generate premium TTS if needed
     const browserVoices = ['male', 'female', 'robot'];
@@ -2312,7 +2456,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     socket.on('get_room_memory', async (data: { roomName: string }) => {
       const roomId = getRoomId(data.roomName.toLowerCase());
       if (!roomId) {
-        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdTokens: true, cmdModeration: false });
+        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdTokens: true, cmdModeration: false, cmdThink: true, cmdEffort: true, cmdAudit: true });
         return;
       }
       const roomRecord = await Data.room.findById(roomId);
@@ -2330,6 +2474,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdSchedule: roomRecord?.cmd_schedule_enabled ?? false,
         cmdTokens: roomRecord?.cmd_tokens_enabled ?? true,
         cmdModeration: roomRecord?.cmd_moderation_enabled ?? false,
+        cmdThink: roomRecord?.cmd_think_enabled ?? true,
+        cmdEffort: roomRecord?.cmd_effort_enabled ?? true,
+        cmdAudit: roomRecord?.cmd_audit_enabled ?? true,
       });
     });
 
@@ -2347,6 +2494,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       cmdSchedule?: boolean;
       cmdTokens?: boolean;
       cmdModeration?: boolean;
+      cmdThink?: boolean;
+      cmdEffort?: boolean;
+      cmdAudit?: boolean;
     }) => {
       const normalizedName = data.roomName.toLowerCase();
       const room = activeRooms.get(normalizedName);
@@ -2370,6 +2520,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmd_schedule_enabled: data.cmdSchedule,
         cmd_tokens_enabled: data.cmdTokens,
         cmd_moderation_enabled: data.cmdModeration,
+        cmd_think_enabled: data.cmdThink,
+        cmd_effort_enabled: data.cmdEffort,
+        cmd_audit_enabled: data.cmdAudit,
       });
 
       io.to(normalizedName).emit('room_commands_updated', {
@@ -2385,6 +2538,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdSchedule: data.cmdSchedule,
         cmdTokens: data.cmdTokens,
         cmdModeration: data.cmdModeration,
+        cmdThink: data.cmdThink,
+        cmdEffort: data.cmdEffort,
+        cmdAudit: data.cmdAudit,
       });
     });
 
@@ -2913,6 +3069,21 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       await Data.roomMember.removeMember(room.id, data.userId);
       socket.emit('room_join_error', { error: 'User has been unbanned' });
+    });
+
+    // ┌──────────────────────────────────────────┐
+    // │ Spending Estimate                       │
+    // └──────────────────────────────────────────┘
+    socket.on('get_spending_estimate', async () => {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const byService = await Data.creditUsageLog.sumCostByServiceSince(socket.user.id, oneHourAgo);
+      const spending: Record<string, number> = { grok: 0, elevenlabs: 0, claude: 0 };
+      for (const entry of byService) {
+        if (entry.service === 'grok') spending.grok = entry.total_cost_usd;
+        else if (entry.service === 'elevenlabs') spending.elevenlabs = entry.total_cost_usd;
+        else if (entry.service === 'claude') spending.claude = entry.total_cost_usd;
+      }
+      socket.emit('spending_estimate', spending);
     });
 
     // ┌──────────────────────────────────────────┐

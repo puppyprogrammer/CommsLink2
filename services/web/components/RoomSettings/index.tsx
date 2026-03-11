@@ -124,6 +124,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdSchedule, setCmdSchedule] = useState(false);
   const [cmdTokens, setCmdTokens] = useState(true);
   const [cmdModeration, setCmdModeration] = useState(false);
+  const [cmdThink, setCmdThink] = useState(true);
+  const [cmdEffort, setCmdEffort] = useState(true);
+  const [cmdAudit, setCmdAudit] = useState(true);
 
   // Terminal machines
   type MachinePermission = {
@@ -213,6 +216,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdSchedule: boolean;
       cmdTokens: boolean;
       cmdModeration: boolean;
+      cmdThink: boolean;
+      cmdEffort: boolean;
+      cmdAudit: boolean;
     }) => {
       setMemoryEnabled(data.enabled);
       setCmdRecall(data.cmdRecall);
@@ -227,6 +233,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setCmdSchedule(data.cmdSchedule);
       setCmdTokens(data.cmdTokens);
       setCmdModeration(data.cmdModeration);
+      setCmdThink(data.cmdThink);
+      setCmdEffort(data.cmdEffort);
+      setCmdAudit(data.cmdAudit);
     };
 
     const handleMemoryToggled = (data: { enabled: boolean }) => {
@@ -246,6 +255,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdSchedule?: boolean;
       cmdTokens?: boolean;
       cmdModeration?: boolean;
+      cmdThink?: boolean;
+      cmdEffort?: boolean;
+      cmdAudit?: boolean;
     }) => {
       if (data.cmdRecall !== undefined) setCmdRecall(data.cmdRecall);
       if (data.cmdSql !== undefined) setCmdSql(data.cmdSql);
@@ -259,6 +271,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       if (data.cmdModeration !== undefined) setCmdModeration(data.cmdModeration);
       if (data.cmdClaude !== undefined) setCmdClaude(data.cmdClaude);
       if (data.cmdSchedule !== undefined) setCmdSchedule(data.cmdSchedule);
+      if (data.cmdThink !== undefined) setCmdThink(data.cmdThink);
+      if (data.cmdEffort !== undefined) setCmdEffort(data.cmdEffort);
+      if (data.cmdAudit !== undefined) setCmdAudit(data.cmdAudit);
     };
 
     const handleAgents = (data: { agents: Agent[] }) => {
@@ -936,6 +951,27 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 checked: cmdModeration,
                 key: 'cmdModeration' as const,
                 set: setCmdModeration,
+              },
+              {
+                label: 'Internal Thought — Silent reasoning without voice',
+                desc: 'AI: {think reasoning here} | Logs thought as system message, no TTS generated. Saves voice credits.',
+                checked: cmdThink,
+                key: 'cmdThink' as const,
+                set: setCmdThink,
+              },
+              {
+                label: 'Effort Level — Switch between reasoning models',
+                desc: 'AI: {set_effort low|high} | Low = fast non-reasoning, High = thorough reasoning model',
+                checked: cmdEffort,
+                key: 'cmdEffort' as const,
+                set: setCmdEffort,
+              },
+              {
+                label: 'Claude Audit Log — View recent Claude activity on machines',
+                desc: 'AI: {audit machine_name} | Shows last 10 Claude interactions for a machine owned by the creator',
+                checked: cmdAudit,
+                key: 'cmdAudit' as const,
+                set: setCmdAudit,
               },
             ].map((cmd) => (
               <Box key={cmd.key}>
