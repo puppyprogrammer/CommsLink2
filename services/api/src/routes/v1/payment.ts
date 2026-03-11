@@ -80,6 +80,16 @@ const paymentRoutes: ServerRoute[] = [
         };
       }),
   },
+  {
+    method: 'GET',
+    path: '/api/v1/payment/transactions',
+    options: { auth: 'jwt' },
+    handler: async (request: Request, h: ResponseToolkit) =>
+      tracer.trace('CONTROLLER.PAYMENT.GET_TRANSACTIONS', async () => {
+        const credentials = request.auth.credentials as unknown as AuthCredentials;
+        return Data.paymentTransaction.findByUser(credentials.id, 50);
+      }),
+  },
 ];
 
 export { paymentRoutes };

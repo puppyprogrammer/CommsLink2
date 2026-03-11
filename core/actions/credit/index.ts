@@ -1,5 +1,5 @@
 import Data from '../../data';
-import { calculateGrokCredits, calculateElevenLabsCredits } from '../../constants/creditRates';
+import { calculateGrokCredits, calculateElevenLabsCredits, calculateEC2Credits } from '../../constants/creditRates';
 
 /**
  * Check if a user has enough credits for an estimated operation.
@@ -88,6 +88,46 @@ const chargeElevenLabsUsage = async (
 };
 
 /**
+ * Deduct credits for EC2 server usage time and log usage.
+ */
+const chargeEC2Usage = async (
+  userId: string,
+  durationSeconds: number,
+  roomId?: string,
+): Promise<{ credits: number; rawCostUsd: number; newBalance: number }> => {
+  const { credits, rawCostUsd } = calculateEC2Credits(durationSeconds);
+
+  if (credits <= 0) return { credits: 0, rawCostUsd, newBalance: 0 };
+
+  const user = await Data.user.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  // Don't charge if user has no credits left (avoid negative balance)
+  if (user.credit_balance <= 0) return { credits: 0, rawCostUsd, newBalance: 0 };
+
+  const toCharge = Math.min(credits, user.credit_balance);
+  const updated = await Data.user.deductCredits(userId, toCharge);
+
+  await Data.creditTransaction.create({
+    user_id: userId,
+    amount: -toCharge,
+    balance_after: updated.credit_balance,
+    type: 'usage',
+    description: `EC2 server time (${durationSeconds}s)`,
+  });
+
+  await Data.creditUsageLog.create({
+    user_id: userId,
+    service: 'ec2',
+    raw_cost_usd: rawCostUsd,
+    credits_charged: toCharge,
+    room_id: roomId,
+  });
+
+  return { credits: toCharge, rawCostUsd, newBalance: updated.credit_balance };
+};
+
+/**
  * Grant credits from a top-up purchase.
  */
 const grantTopUpCredits = async (
@@ -125,6 +165,7 @@ export default {
   hasCredits,
   chargeGrokUsage,
   chargeElevenLabsUsage,
+  chargeEC2Usage,
   grantTopUpCredits,
   getCreditStatus,
 };

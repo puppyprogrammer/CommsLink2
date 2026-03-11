@@ -42,7 +42,8 @@ model user {
   credit_usage_logs    credit_usage_log[]
   machines             machine[]
   scheduled_jobs       scheduled_job[]
-  room_memberships     room_member[]
+  room_memberships         room_member[]
+  payment_transactions     payment_transaction[]
 
   @@index([stripe_customer_id])
   @@index([username])
@@ -295,6 +296,24 @@ model app_version {
   version    Int      @unique
   message    String?
   created_at DateTime @default(now())
+}
+
+model payment_transaction {
+  id                        String   @id @default(uuid())
+  user_id                   String
+  stripe_session_id         String   @unique
+  stripe_payment_intent_id  String?
+  amount_usd                Int
+  currency                  String   @default("usd")
+  status                    String
+  pack_id                   String?
+  credits_granted           Int
+  created_at                DateTime @default(now())
+
+  user user @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, created_at])
+  @@index([status])
 }
 
 model claude_log {

@@ -1,4 +1,6 @@
 import { Server as SocketServer, Socket } from 'socket.io';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 import Data from '../../../../../core/data';
 import jwtHelper from '../../../../../core/helpers/jwt';
@@ -20,6 +22,16 @@ import type { IncomingMessage } from '../../../../../core/interfaces/message';
 
 // Extend Socket type to include user data
 type AuthenticatedSocket = Socket & { user: JwtPayload };
+
+// Expected agent version — set via AGENT_VERSION env var or read from package.json
+let expectedAgentVersion = process.env.AGENT_VERSION || 'unknown';
+if (expectedAgentVersion === 'unknown') {
+  try {
+    const pkgPath = join(__dirname, '..', '..', '..', '..', '..', '..', 'packages', 'terminal-agent', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    expectedAgentVersion = pkg.version || 'unknown';
+  } catch { /* ignore */ }
+}
 
 // In-memory state
 const connectedUsers = new Map<string, ConnectedUser>();
@@ -218,7 +230,7 @@ const leaveCurrentRoom = (socket: AuthenticatedSocket): void => {
   }
 };
 
-const joinRoom = (socket: AuthenticatedSocket, roomName: string): boolean => {
+const joinRoom = async (socket: AuthenticatedSocket, roomName: string): Promise<boolean> => {
   const normalizedName = roomName.toLowerCase();
   const room = activeRooms.get(normalizedName);
   if (!room) return false;
@@ -488,6 +500,9 @@ const buildSystemPrompt = (
       'Any text outside of {say} will NOT be spoken. Use {say} when you want to talk to users.\n' +
       '{think your internal reasoning here} - Log an internal thought silently. No voice is generated. ' +
       'Use this for all reasoning, planning, status checks, and processing.\n' +
+      '{continue} - Request another thinking loop. Use this when you need more time to reason, run more commands, or chain multiple steps. ' +
+      'You get up to ' + MAX_RECALL_LOOPS + ' loops per turn. Each loop lets you think, run commands, and decide whether to continue or respond. ' +
+      'Example: {think}I need to check 3 machines{/think}{terminal alien4 status}{continue}\n' +
       'RULE: Put ALL reasoning in {think}. Put ONLY final user-facing messages in {say}. ' +
       'Text outside both {think} and {say} is silently discarded. ' +
       'Example: {think}checking if alien4 is up{/think}{say}Hey, alien4 is online.{/say}',
@@ -707,8 +722,9 @@ const BAN_REGEX = /\{ban\s+([^}]+)\}/g;
 const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
 const SAY_REGEX = /\{say\s+([^}]+)\}/g;
 const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban)(?:\s+[^}]+)?\}|\{\/(?:think|say)\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
-const MAX_RECALL_LOOPS = 5;
+const CONTINUE_REGEX = /\{continue\}/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+[^}]+)?\}|\{\/(?:think|say)\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
+const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
 /**
@@ -884,6 +900,7 @@ const runAgentResponse = async (
       const kickMatches = moderationOn ? [...responseText.matchAll(KICK_REGEX)] : [];
       const banMatches = moderationOn ? [...responseText.matchAll(BAN_REGEX)] : [];
       const unbanMatches = moderationOn ? [...responseText.matchAll(UNBAN_REGEX)] : [];
+      const continueMatches = [...responseText.matchAll(CONTINUE_REGEX)];
 
       const hasAnyCommand = recallMatches.length + sqlMatches.length +
         addMemMatches.length + rmMemMatches.length +
@@ -898,7 +915,8 @@ const runAgentResponse = async (
         listScheduleMatches.length + cancelScheduleMatches.length +
         alarmMatches.length + volumeMatches.length +
         listUsersMatches.length +
-        kickMatches.length + banMatches.length + unbanMatches.length > 0;
+        kickMatches.length + banMatches.length + unbanMatches.length +
+        continueMatches.length > 0;
 
       if (!hasAnyCommand) break;
 
@@ -1007,15 +1025,21 @@ const runAgentResponse = async (
           toolResults.push(`Token budget set to ${clamped}.`);
         }
 
+        // Process {continue} — agent requests another thinking loop
+        if (continueMatches.length > 0) {
+          emitSystemMessage(io, roomName, `[${agent.name} continues thinking... (loop ${loopCount + 1}/${MAX_RECALL_LOOPS})]`);
+          toolResults.push(`Continuing — loop ${loopCount + 1} of ${MAX_RECALL_LOOPS}.`);
+        }
+
         // Auto-token-boost: if agent used expensive commands, raise tokens for next cycle
         // If no expensive commands, decay back to 800
         const usedExpensiveCommand = terminalMatches.length > 0 || claudeMatches.length > 0 || searchMatches.length > 0;
-        const currentTokens = currentAgent?.max_tokens || agent.max_tokens || 1500;
+        const currentTokens = currentAgent?.max_tokens || agent.max_tokens || 2000;
         if (usedExpensiveCommand && currentTokens < 3000 && setTokensMatches.length === 0) {
           await Data.llmAgent.update(agent.id, { max_tokens: 3000 });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
-        } else if (!usedExpensiveCommand && currentTokens > 1500 && setTokensMatches.length === 0) {
-          await Data.llmAgent.update(agent.id, { max_tokens: 1500 });
+        } else if (!usedExpensiveCommand && currentTokens > 2000 && setTokensMatches.length === 0) {
+          await Data.llmAgent.update(agent.id, { max_tokens: 2000 });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
         }
 
@@ -2273,7 +2297,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       // Auto-add creator as member
       await Data.roomMember.addMember(dbRoom.id, socket.user.id);
 
-      joinRoom(socket, normalizedName);
+      await joinRoom(socket, normalizedName);
 
       // Save last room
       Data.user.updateLastRoom(socket.user.id, dbRoom.id).catch(console.error);
@@ -2327,7 +2351,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         await Data.roomMember.addMember(room.id, socket.user.id);
       }
 
-      joinRoom(socket, normalizedName);
+      await joinRoom(socket, normalizedName);
 
       // Save last room
       Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
@@ -2365,7 +2389,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         }
       }
 
-      joinRoom(socket, normalizedName);
+      await joinRoom(socket, normalizedName);
 
       // Save last room
       Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
@@ -2620,7 +2644,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     // ┌──────────────────────────────────────────┐
     // │ Machine Management                       │
     // └──────────────────────────────────────────┘
-    socket.on('machine_register', async (data: { name: string; os?: string }) => {
+    socket.on('machine_register', async (data: { name: string; os?: string; version?: string }) => {
       const machineName = data.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
       if (!machineName || machineName.length < 1 || machineName.length > 50) {
         socket.emit('machine_error', { error: 'Machine name must be 1-50 characters (lowercase alphanumeric and hyphens)' });
@@ -2652,7 +2676,17 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       }
 
       socket.emit('machine_registered', { id: machineRecord.id, name: machineName, status: 'online' });
-      console.log(`[Machine] ${socket.user.username}/${machineName} registered (${data.os || 'unknown OS'})`);
+      console.log(`[Machine] ${socket.user.username}/${machineName} registered (${data.os || 'unknown OS'}, v${data.version || 'unknown'})`);
+
+      // Check agent version and request update if outdated
+      if (data.version && expectedAgentVersion !== 'unknown' && data.version !== expectedAgentVersion) {
+        const osStr = (data.os || '').toLowerCase();
+        const agentPlatform = osStr.includes('win32') ? 'win' : osStr.includes('darwin') ? 'macos' : 'linux';
+        const serverUrl = process.env.CLIENT_URL || 'https://commslink.net';
+        const downloadUrl = `${serverUrl}/api/v1/terminal/download/${agentPlatform}`;
+        console.log(`[Machine] ${machineName} has v${data.version}, expected v${expectedAgentVersion} — requesting update`);
+        socket.emit('update_required', { currentVersion: data.version, newVersion: expectedAgentVersion, downloadUrl });
+      }
 
       // Listen for debug events from the agent's Claude PTY collection
       socket.on('claude_debug', (debugData: { execId: string; phase: string; stripped?: string; choice?: string; approvalCount?: number }) => {
@@ -3132,11 +3166,12 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     socket.on('get_spending_estimate', async () => {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const byService = await Data.creditUsageLog.sumCostByServiceSince(socket.user.id, oneHourAgo);
-      const spending: Record<string, number> = { grok: 0, elevenlabs: 0, claude: 0 };
+      const spending: Record<string, number> = { grok: 0, elevenlabs: 0, claude: 0, ec2: 0 };
       for (const entry of byService) {
         if (entry.service === 'grok') spending.grok = entry.total_cost_usd;
         else if (entry.service === 'elevenlabs') spending.elevenlabs = entry.total_cost_usd;
         else if (entry.service === 'claude') spending.claude = entry.total_cost_usd;
+        else if (entry.service === 'ec2') spending.ec2 = entry.total_cost_usd;
       }
       socket.emit('spending_estimate', spending);
     });

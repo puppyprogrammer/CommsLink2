@@ -59,6 +59,30 @@ const calculateElevenLabsCredits = (
 };
 
 /**
+ * EC2 instance cost tracking.
+ * t3.medium ~$0.0416 USD/hour, split across connected users in a room.
+ */
+const EC2_COST_HOUR_USD = 0.0416;
+const EC2_COST_PER_SECOND_USD = EC2_COST_HOUR_USD / 3600;
+const EC2_COST_PER_SECOND_CREDITS = Math.ceil(EC2_COST_PER_SECOND_USD * 1000 * MARGIN); // ~0.0173 credits/sec per user
+
+/** Billing interval in seconds for EC2 usage charges. */
+const EC2_BILLING_INTERVAL_SECONDS = 60;
+
+/**
+ * Calculate credit cost for EC2 usage over a duration.
+ *
+ * @param durationSeconds - Time spent in a premium room.
+ * @returns Credits to charge and raw USD cost.
+ */
+const calculateEC2Credits = (
+  durationSeconds: number,
+): { credits: number; rawCostUsd: number } => {
+  const rawCostUsd = durationSeconds * EC2_COST_PER_SECOND_USD;
+  return { credits: usdToCredits(rawCostUsd), rawCostUsd };
+};
+
+/**
  * Credit top-up packs (one-time purchases).
  */
 const CREDIT_PACKS = [
@@ -71,8 +95,13 @@ export {
   MARGIN,
   GROK_PRICING,
   ELEVENLABS_COST_PER_CHAR,
+  EC2_COST_HOUR_USD,
+  EC2_COST_PER_SECOND_USD,
+  EC2_COST_PER_SECOND_CREDITS,
+  EC2_BILLING_INTERVAL_SECONDS,
   CREDIT_PACKS,
   usdToCredits,
   calculateGrokCredits,
   calculateElevenLabsCredits,
+  calculateEC2Credits,
 };

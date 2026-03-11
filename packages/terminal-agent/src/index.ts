@@ -5,11 +5,12 @@ import { io, Socket } from 'socket.io-client';
 import { exec } from 'child_process';
 import { platform, hostname, type as osType } from 'os';
 import { createInterface } from 'readline';
-import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, appendFileSync, unlinkSync, renameSync, createWriteStream, chmodSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { request as httpsRequest } from 'https';
 import { request as httpRequest } from 'http';
+import { spawn } from 'child_process';
 import * as pty from 'node-pty';
 
 // ┌──────────────────────────────────────────┐
@@ -146,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.6.0';
+const AGENT_VERSION = '1.6.3';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -452,76 +453,152 @@ const connect = (config: SavedConfig): void => {
     }
 
     if (data.collectResponse && data.execId) {
-      // AI mode: accumulate output and detect when Claude is done.
+      // AI mode: send prompt, poll with /btw to detect completion, /copy to capture response.
       // Claude runs with --dangerously-skip-permissions so no permission prompts exist.
-      // We simply collect output, wait for inactivity, then return the stripped text.
+      // Strategy: /btw polling is the PRIMARY completion detection mechanism.
+      // We do NOT use inactivity detection — Claude's TUI is too noisy for that to work reliably.
       const execId = data.execId;
       let collected = '';
-      let hasOutput = false;
-      let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
-      let totalTimer: ReturnType<typeof setTimeout> | null = null;
-      const INACTIVITY_MS = 5_000; // 5s of silence after output starts = done
-      const MAX_WAIT_MS = 900_000; // 15 min absolute max (Claude can take a while)
-
-      let disposable: { dispose: () => void } | null = null;
       let finished = false;
+      let disposable: { dispose: () => void } | null = null;
+      let btwPollTimer: ReturnType<typeof setInterval> | null = null;
+      let totalTimer: ReturnType<typeof setTimeout> | null = null;
+      const MAX_WAIT_MS = 900_000; // 15 min absolute max
+      const BTW_POLL_START_MS = 15_000; // Start /btw polling after 15s
+      const BTW_POLL_INTERVAL_MS = 30_000; // Poll every 30s
 
-      // Strip ANSI escape sequences for clean output
+      // Read clipboard contents (platform-specific)
+      const readClipboard = (): Promise<string> => {
+        return new Promise((resolve) => {
+          const cmd = platform() === 'win32'
+            ? 'powershell -command "Get-Clipboard"'
+            : platform() === 'darwin'
+              ? 'pbpaste'
+              : 'xclip -selection clipboard -o 2>/dev/null || xsel --clipboard --output 2>/dev/null';
+
+          exec(cmd, { timeout: 5_000 }, (error, stdout) => {
+            resolve(error ? '' : stdout.trim());
+          });
+        });
+      };
+
+      // Strip ANSI escape sequences for clean output (fallback only)
       const stripAnsi = (s: string): string =>
         s
-          // OSC sequences (title bar, etc.)
           .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-          // CSI sequences (colors, cursor movement, etc.)
           .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-          // Other ESC sequences
           .replace(/\x1b[^[\]].?/g, '')
-          // Remaining control chars except newline/tab
           // eslint-disable-next-line no-control-regex
           .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
-          // Collapse whitespace runs
           .replace(/[ \t]+/g, ' ')
           .replace(/\n{3,}/g, '\n\n');
 
-      const finish = () => {
+      const cleanup = () => {
+        if (btwPollTimer) { clearInterval(btwPollTimer); btwPollTimer = null; }
+        if (totalTimer) { clearTimeout(totalTimer); totalTimer = null; }
+        if (disposable) { disposable.dispose(); disposable = null; }
+      };
+
+      const captureAndEmit = async () => {
         if (finished) return;
         finished = true;
-        if (inactivityTimer) clearTimeout(inactivityTimer);
-        if (totalTimer) clearTimeout(totalTimer);
-        if (disposable) disposable.dispose();
+        cleanup();
 
-        // Extract response from collected PTY output
-        const stripped = stripAnsi(collected).trim();
-        const output = stripped || '(no response captured)';
+        // Use /copy to get Claude's clean response text via clipboard
+        log(`[Claude PTY Collect] Sending /copy to grab response for ${execId}`);
+        if (activePty) {
+          activePty.write('/copy\r');
+        }
+
+        await new Promise((r) => setTimeout(r, 2000));
+
+        const clipboardContent = await readClipboard();
+        log(`[Claude PTY Collect] Clipboard for ${execId}: ${clipboardContent.length} chars`);
+
+        const output = clipboardContent || stripAnsi(collected).trim() || '(no response captured)';
 
         log(`[Claude PTY Collect] done for ${execId}, ${output.length} chars`);
         const responsePayload = { output: output.substring(0, 16000), exitCode: 0 };
-        // Emit with execId for the AI path (executeClaudePrompt listener)
         socket.emit(`claude_pty_response:${execId}`, responsePayload);
-        // Also emit generic event for the web panel path (system message posting)
         socket.emit('claude_pty_response', responsePayload);
       };
 
+      // /btw polling: ask Claude if it's done, parse the response
+      let isBtwPolling = false;
+      let btwResponseBuffer = '';
+
+      const doBtwPoll = () => {
+        if (finished || isBtwPolling || !activePty) return;
+        isBtwPolling = true;
+        btwResponseBuffer = '';
+
+        log(`[Claude PTY Collect] Sending /btw status check for ${execId}`);
+        activePty.write('/btw are you done? reply only YES or NO\r');
+
+        // Timeout in case /btw doesn't respond
+        const btwTimeout = setTimeout(() => {
+          log(`[Claude PTY Collect] /btw timed out for ${execId}`);
+          isBtwPolling = false;
+        }, 15_000);
+
+        // Store timeout ref so we can clear it from the data handler
+        const checkBtwDone = () => {
+          const stripped = stripAnsi(btwResponseBuffer).toLowerCase();
+          if (stripped.includes('press space') || stripped.includes('press enter') || stripped.includes('to dismiss')) {
+            clearTimeout(btwTimeout);
+
+            const isDone = stripped.includes('yes');
+            log(`[Claude PTY Collect] /btw response: done=${isDone} for ${execId}`);
+
+            // Dismiss the /btw overlay
+            if (activePty) activePty.write(' ');
+            isBtwPolling = false;
+
+            if (isDone) {
+              setTimeout(() => captureAndEmit(), 1500);
+            }
+          }
+        };
+
+        // The main onData handler below routes chunks to btwResponseBuffer when isBtwPolling=true
+      };
+
+      // Single onData handler — routes to /btw parsing when polling, otherwise just collects
       disposable = activePty.onData((chunk: string) => {
         collected += chunk;
-        // Only treat chunks > 10 bytes as "real" output for inactivity detection.
-        // Claude's terminal emits constant tiny cursor blink/position sequences (3-6 bytes)
-        // that would otherwise prevent the inactivity timer from ever expiring.
-        if (chunk.length > 10) {
-          hasOutput = true;
-          if (inactivityTimer) clearTimeout(inactivityTimer);
-          inactivityTimer = setTimeout(finish, INACTIVITY_MS);
-        } else if (hasOutput && !inactivityTimer) {
-          // If we already got real output but timer isn't running, start it
-          inactivityTimer = setTimeout(finish, INACTIVITY_MS);
+
+        if (isBtwPolling) {
+          btwResponseBuffer += chunk;
+          // Check if /btw response is complete
+          const stripped = stripAnsi(btwResponseBuffer).toLowerCase();
+          if (stripped.includes('press space') || stripped.includes('press enter') || stripped.includes('to dismiss')) {
+            const isDone = stripped.includes('yes');
+            log(`[Claude PTY Collect] /btw response: done=${isDone} for ${execId}`);
+
+            if (activePty) activePty.write(' '); // dismiss /btw overlay
+            isBtwPolling = false;
+
+            if (isDone) {
+              setTimeout(() => captureAndEmit(), 1500);
+            }
+          }
         }
       });
 
-      // Start absolute timeout
+      // Start /btw polling after initial wait
+      setTimeout(() => {
+        if (finished) return;
+        log(`[Claude PTY Collect] Starting /btw polling for ${execId}`);
+        doBtwPoll(); // First poll at 15s
+        btwPollTimer = setInterval(doBtwPoll, BTW_POLL_INTERVAL_MS);
+      }, BTW_POLL_START_MS);
+
+      // Absolute timeout
       totalTimer = setTimeout(() => {
-        if (!hasOutput) {
-          finish();
+        if (!finished) {
+          log(`[Claude PTY Collect] Absolute timeout for ${execId}`);
+          captureAndEmit();
         }
-        // If we have output, let inactivity timer handle it
       }, MAX_WAIT_MS);
 
       // Write the prompt into the PTY
@@ -538,6 +615,106 @@ const connect = (config: SavedConfig): void => {
     if (activePty) {
       log('[Claude PTY] Sending Ctrl+C');
       activePty.write('\x03');
+    }
+  });
+
+  // ┌──────────────────────────────────────────┐
+  // │ Auto-Update                              │
+  // └──────────────────────────────────────────┘
+
+  let isUpdating = false;
+
+  socket.on('update_required', async (data: { currentVersion: string; newVersion: string; downloadUrl: string }) => {
+    if (isUpdating) return;
+    isUpdating = true;
+
+    const msg = `Update available: v${data.currentVersion} → v${data.newVersion}`;
+    consoleLog(msg);
+    log(msg);
+
+    try {
+      // Determine the path of the currently running binary
+      const currentBinary = process.execPath;
+      const isWindows = platform() === 'win32';
+      const tempPath = currentBinary + '.update';
+      const oldPath = currentBinary + '.old';
+
+      log(`[Update] Downloading from ${data.downloadUrl}`);
+      consoleLog('Downloading update...');
+
+      // Download the new binary
+      await new Promise<void>((resolve, reject) => {
+        const url = new URL(data.downloadUrl);
+        const reqFn = url.protocol === 'https:' ? httpsRequest : httpRequest;
+
+        const doRequest = (requestUrl: URL): void => {
+          const req = reqFn({
+            hostname: requestUrl.hostname,
+            port: requestUrl.port || (requestUrl.protocol === 'https:' ? 443 : 80),
+            path: requestUrl.pathname + requestUrl.search,
+            method: 'GET',
+          }, (res) => {
+            // Follow redirects
+            if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+              doRequest(new URL(res.headers.location, requestUrl.toString()));
+              return;
+            }
+
+            if (res.statusCode !== 200) {
+              reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+              return;
+            }
+
+            const file = createWriteStream(tempPath);
+            res.pipe(file);
+            file.on('finish', () => {
+              file.close();
+              resolve();
+            });
+            file.on('error', reject);
+          });
+          req.on('error', reject);
+          req.end();
+        };
+
+        doRequest(url);
+      });
+
+      log(`[Update] Downloaded to ${tempPath}`);
+
+      // Replace the binary
+      if (isWindows) {
+        // Windows: can't overwrite running exe — rename current to .old, then rename new to current
+        try { unlinkSync(oldPath); } catch { /* .old may not exist */ }
+        renameSync(currentBinary, oldPath);
+        renameSync(tempPath, currentBinary);
+      } else {
+        // Unix: can overwrite running binary (inode stays valid for current process)
+        renameSync(tempPath, currentBinary);
+        chmodSync(currentBinary, 0o755);
+      }
+
+      log(`[Update] Binary replaced. Respawning...`);
+      consoleLog(`Updated to v${data.newVersion}. Restarting...`);
+
+      // Respawn with the same arguments
+      const child = spawn(currentBinary, process.argv.slice(2), {
+        detached: true,
+        stdio: 'ignore',
+        cwd: process.cwd(),
+      });
+      child.unref();
+
+      // Give the new process a moment to start, then exit
+      setTimeout(() => {
+        socket.disconnect();
+        process.exit(0);
+      }, 1000);
+    } catch (err) {
+      const errMsg = `[Update] Failed: ${err instanceof Error ? err.message : String(err)}`;
+      log(errMsg);
+      consoleLog(errMsg);
+      isUpdating = false;
     }
   });
 
