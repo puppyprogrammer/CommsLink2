@@ -376,13 +376,14 @@ type AgentLike = {
 /**
  * Build the system prompt for an agent, optionally with extra autopilot context.
  */
-type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean; moderation?: boolean; think?: boolean; effort?: boolean; audit?: boolean };
+type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean; moderation?: boolean; think?: boolean; effort?: boolean; audit?: boolean; continue?: boolean };
 
 const buildSystemPrompt = (
   agent: AgentLike,
   autopilotMode = false,
   masterSummary?: string | null,
   cmds: CommandFlags = {},
+  roomMaxLoops = 5,
   onlineMachines?: string[],
 ): string => {
   const instructionLines = parseJsonList(agent.system_instructions);
@@ -500,12 +501,20 @@ const buildSystemPrompt = (
       'Any text outside of {say} will NOT be spoken. Use {say} when you want to talk to users.\n' +
       '{think your internal reasoning here} - Log an internal thought silently. No voice is generated. ' +
       'Use this for all reasoning, planning, status checks, and processing.\n' +
-      '{continue} - Request another thinking loop. Use this when you need more time to reason, run more commands, or chain multiple steps. ' +
-      'You get up to ' + MAX_RECALL_LOOPS + ' loops per turn. Each loop lets you think, run commands, and decide whether to continue or respond. ' +
-      'Example: {think}I need to check 3 machines{/think}{terminal alien4 status}{continue}\n' +
       'RULE: Put ALL reasoning in {think}. Put ONLY final user-facing messages in {say}. ' +
       'Text outside both {think} and {say} is silently discarded. ' +
       'Example: {think}checking if alien4 is up{/think}{say}Hey, alien4 is online.{/say}',
+    );
+  }
+
+  if (cmds.continue !== false) {
+    actions.push(
+      '=== EXTENDED THINKING ===\n' +
+      '{continue} - Request another thinking loop. Use this when you need more time to reason, run more commands, or chain multiple steps before responding. ' +
+      'You get up to ' + roomMaxLoops + ' loops per turn. Each loop lets you think, run commands, and decide whether to continue or respond.\n' +
+      'Example: {think}I need to check 3 machines{/think}{terminal alien4 status}{continue}\n' +
+      'Use {continue} when: you have more commands to run, you need to process results before deciding, or your reasoning is not complete. ' +
+      'Do NOT use {continue} when: you are ready to respond — just use {say} instead.',
     );
   }
 
@@ -810,6 +819,8 @@ const runAgentResponse = async (
     const thinkOn = roomRecord?.cmd_think_enabled ?? true;
     const effortOn = roomRecord?.cmd_effort_enabled ?? true;
     const auditOn = roomRecord?.cmd_audit_enabled ?? true;
+    const continueOn = roomRecord?.cmd_continue_enabled ?? true;
+    const maxLoops = roomRecord?.max_loops ?? 5;
 
     const masterSummary = memoryOn ? await Data.memorySummary.findMasterByRoom(roomId) : null;
     const masterContent = memCmdOn ? masterSummary?.content : undefined;
@@ -836,7 +847,8 @@ const runAgentResponse = async (
       think: thinkOn,
       effort: effortOn,
       audit: auditOn,
-    }, onlineMachines);
+      continue: continueOn,
+    }, maxLoops, onlineMachines);
 
     const response = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, agentMaxTokens);
     let responseText = response.text;
@@ -856,7 +868,7 @@ const runAgentResponse = async (
     // Track last fetched page content for {find} command
     let lastPageText = '';
 
-    while (loopCount < MAX_RECALL_LOOPS) {
+    while (loopCount < maxLoops) {
       const recallMatches = recallOn ? [...responseText.matchAll(RECALL_REGEX)] : [];
       const sqlMatches = sqlOn ? [...responseText.matchAll(SQL_REGEX)] : [];
       const addMemMatches = selfmodOn ? [...responseText.matchAll(ADD_MEMORY_REGEX)] : [];
@@ -900,7 +912,7 @@ const runAgentResponse = async (
       const kickMatches = moderationOn ? [...responseText.matchAll(KICK_REGEX)] : [];
       const banMatches = moderationOn ? [...responseText.matchAll(BAN_REGEX)] : [];
       const unbanMatches = moderationOn ? [...responseText.matchAll(UNBAN_REGEX)] : [];
-      const continueMatches = [...responseText.matchAll(CONTINUE_REGEX)];
+      const continueMatches = continueOn ? [...responseText.matchAll(CONTINUE_REGEX)] : [];
 
       const hasAnyCommand = recallMatches.length + sqlMatches.length +
         addMemMatches.length + rmMemMatches.length +
@@ -1027,8 +1039,8 @@ const runAgentResponse = async (
 
         // Process {continue} — agent requests another thinking loop
         if (continueMatches.length > 0) {
-          emitSystemMessage(io, roomName, `[${agent.name} continues thinking... (loop ${loopCount + 1}/${MAX_RECALL_LOOPS})]`);
-          toolResults.push(`Continuing — loop ${loopCount + 1} of ${MAX_RECALL_LOOPS}.`);
+          emitSystemMessage(io, roomName, `[${agent.name} continues thinking... (loop ${loopCount + 1}/${maxLoops})]`);
+          toolResults.push(`Continuing — loop ${loopCount + 1} of ${maxLoops}.`);
         }
 
         // Auto-token-boost: if agent used expensive commands, raise tokens for next cycle
@@ -2535,7 +2547,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     socket.on('get_room_memory', async (data: { roomName: string }) => {
       const roomId = getRoomId(data.roomName.toLowerCase());
       if (!roomId) {
-        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdTokens: true, cmdModeration: false, cmdThink: true, cmdEffort: true, cmdAudit: true });
+        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdTokens: true, cmdModeration: false, cmdThink: true, cmdEffort: true, cmdAudit: true, cmdContinue: true, maxLoops: 5 });
         return;
       }
       const roomRecord = await Data.room.findById(roomId);
@@ -2556,6 +2568,8 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdThink: roomRecord?.cmd_think_enabled ?? true,
         cmdEffort: roomRecord?.cmd_effort_enabled ?? true,
         cmdAudit: roomRecord?.cmd_audit_enabled ?? true,
+        cmdContinue: roomRecord?.cmd_continue_enabled ?? true,
+        maxLoops: roomRecord?.max_loops ?? 5,
       });
     });
 
@@ -2576,6 +2590,8 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       cmdThink?: boolean;
       cmdEffort?: boolean;
       cmdAudit?: boolean;
+      cmdContinue?: boolean;
+      maxLoops?: number;
     }) => {
       const normalizedName = data.roomName.toLowerCase();
       const room = activeRooms.get(normalizedName);
@@ -2602,6 +2618,8 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmd_think_enabled: data.cmdThink,
         cmd_effort_enabled: data.cmdEffort,
         cmd_audit_enabled: data.cmdAudit,
+        cmd_continue_enabled: data.cmdContinue,
+        max_loops: data.maxLoops !== undefined ? Math.max(3, Math.min(20, data.maxLoops)) : undefined,
       });
 
       io.to(normalizedName).emit('room_commands_updated', {
@@ -2620,6 +2638,8 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdThink: data.cmdThink,
         cmdEffort: data.cmdEffort,
         cmdAudit: data.cmdAudit,
+        cmdContinue: data.cmdContinue,
+        maxLoops: data.maxLoops,
       });
     });
 

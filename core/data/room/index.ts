@@ -49,7 +49,7 @@ const updateMemoryEnabled = async (
 
 const updateCommandSettings = async (
   id: string,
-  data: { cmd_recall_enabled?: boolean; cmd_sql_enabled?: boolean; cmd_memory_enabled?: boolean; cmd_selfmod_enabled?: boolean; cmd_autopilot_enabled?: boolean; cmd_web_enabled?: boolean; cmd_mentions_enabled?: boolean; cmd_terminal_enabled?: boolean; cmd_claude_enabled?: boolean; cmd_schedule_enabled?: boolean; cmd_tokens_enabled?: boolean; cmd_moderation_enabled?: boolean; cmd_think_enabled?: boolean; cmd_effort_enabled?: boolean; cmd_audit_enabled?: boolean },
+  data: { cmd_recall_enabled?: boolean; cmd_sql_enabled?: boolean; cmd_memory_enabled?: boolean; cmd_selfmod_enabled?: boolean; cmd_autopilot_enabled?: boolean; cmd_web_enabled?: boolean; cmd_mentions_enabled?: boolean; cmd_terminal_enabled?: boolean; cmd_claude_enabled?: boolean; cmd_schedule_enabled?: boolean; cmd_tokens_enabled?: boolean; cmd_moderation_enabled?: boolean; cmd_think_enabled?: boolean; cmd_effort_enabled?: boolean; cmd_audit_enabled?: boolean; cmd_continue_enabled?: boolean; max_loops?: number },
 ): Promise<room> => prisma.room.update({ where: { id }, data });
 
 export default {

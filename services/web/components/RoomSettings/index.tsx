@@ -21,6 +21,7 @@ import {
   InputAdornment,
   Checkbox,
   FormControlLabel,
+  Slider,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -127,6 +128,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdThink, setCmdThink] = useState(true);
   const [cmdEffort, setCmdEffort] = useState(true);
   const [cmdAudit, setCmdAudit] = useState(true);
+  const [cmdContinue, setCmdContinue] = useState(true);
+  const [maxLoops, setMaxLoops] = useState(5);
 
   // Terminal machines
   type MachinePermission = {
@@ -219,6 +222,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdThink: boolean;
       cmdEffort: boolean;
       cmdAudit: boolean;
+      cmdContinue: boolean;
+      maxLoops: number;
     }) => {
       setMemoryEnabled(data.enabled);
       setCmdRecall(data.cmdRecall);
@@ -236,6 +241,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setCmdThink(data.cmdThink);
       setCmdEffort(data.cmdEffort);
       setCmdAudit(data.cmdAudit);
+      setCmdContinue(data.cmdContinue);
+      setMaxLoops(data.maxLoops);
     };
 
     const handleMemoryToggled = (data: { enabled: boolean }) => {
@@ -258,6 +265,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdThink?: boolean;
       cmdEffort?: boolean;
       cmdAudit?: boolean;
+      cmdContinue?: boolean;
+      maxLoops?: number;
     }) => {
       if (data.cmdRecall !== undefined) setCmdRecall(data.cmdRecall);
       if (data.cmdSql !== undefined) setCmdSql(data.cmdSql);
@@ -274,6 +283,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       if (data.cmdThink !== undefined) setCmdThink(data.cmdThink);
       if (data.cmdEffort !== undefined) setCmdEffort(data.cmdEffort);
       if (data.cmdAudit !== undefined) setCmdAudit(data.cmdAudit);
+      if (data.cmdContinue !== undefined) setCmdContinue(data.cmdContinue);
+      if (data.maxLoops !== undefined) setMaxLoops(data.maxLoops);
     };
 
     const handleAgents = (data: { agents: Agent[] }) => {
@@ -973,6 +984,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 key: 'cmdAudit' as const,
                 set: setCmdAudit,
               },
+              {
+                label: 'Extended Thinking — AI chains multiple thought loops',
+                desc: 'AI: {continue} | Lets agents request additional thinking loops before responding (up to max loops setting)',
+                checked: cmdContinue,
+                key: 'cmdContinue' as const,
+                set: setCmdContinue,
+              },
             ].map((cmd) => (
               <Box key={cmd.key}>
                 <FormControlLabel
@@ -1006,6 +1024,40 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 />
               </Box>
             ))}
+          </Box>
+
+          {/* Max Loops slider */}
+          <Box sx={{ mt: 1, mb: 1, px: 1 }}>
+            <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+              Max Thinking Loops: {maxLoops}
+            </Typography>
+            <Typography
+              variant="detailText"
+              sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem', mb: 0.5 }}
+            >
+              Maximum command/thinking loops per AI turn. Higher = deeper reasoning but more API calls. Default: 5.
+            </Typography>
+            <Slider
+              size="small"
+              min={3}
+              max={20}
+              step={1}
+              value={maxLoops}
+              onChange={(_, val) => setMaxLoops(val as number)}
+              onChangeCommitted={(_, val) => {
+                if (!session?.token) return;
+                const socket = getSocket(session.token);
+                socket.emit('update_room_commands', { roomName, maxLoops: val as number });
+              }}
+              valueLabelDisplay="auto"
+              marks={[
+                { value: 3, label: '3' },
+                { value: 5, label: '5' },
+                { value: 10, label: '10' },
+                { value: 15, label: '15' },
+                { value: 20, label: '20' },
+              ]}
+            />
           </Box>
 
           {/* Always-on commands (informational) */}

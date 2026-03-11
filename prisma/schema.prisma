@@ -71,6 +71,8 @@ model room {
   cmd_think_enabled       Boolean  @default(true)
   cmd_effort_enabled      Boolean  @default(true)
   cmd_audit_enabled       Boolean  @default(true)
+  cmd_continue_enabled    Boolean  @default(true)
+  max_loops               Int      @default(5)
   created_by          String?
   created_at      DateTime @default(now())
 
