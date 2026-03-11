@@ -1454,6 +1454,73 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
   // Start scheduled job runner
   startScheduleRunner(io);
 
+  // ── Post-deploy: System announcement + Kara health check ──
+  const DEPLOY_VERSION = process.env.DEPLOY_VERSION || new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+
+  // Announce restart to all persisted rooms
+  for (const [roomName] of activeRooms.entries()) {
+    emitSystemMessage(io, roomName, `[System] Server restarted (${DEPLOY_VERSION}). All systems online.`);
+  }
+  console.log(`[Deploy] Announced restart to ${activeRooms.size} room(s)`);
+
+  // Health check: verify Kara responds after startup
+  setTimeout(async () => {
+    try {
+      const allAgents = await Data.llmAgent.findAutopilotEnabled();
+      const kara = allAgents.find((a) => a.name.toLowerCase() === 'kara');
+      if (!kara) {
+        console.log('[HealthCheck] Kara agent not found or autopilot disabled — skipping');
+        return;
+      }
+
+      const roomEntry = Array.from(activeRooms.entries()).find(([, r]) => r.id === kara.room_id);
+      if (!roomEntry) {
+        console.log('[HealthCheck] Kara\'s room not in activeRooms — skipping');
+        return;
+      }
+
+      const roomName = roomEntry[0];
+      console.log(`[HealthCheck] Testing Kara in room "${roomName}"...`);
+
+      // Save a test message to the room so Kara has something to respond to
+      await Data.message.create({
+        content: 'Kara, system health check — please confirm you are online with a brief response.',
+        type: 'system',
+        room_id: kara.room_id,
+        author_id: null,
+        username: 'System',
+      });
+      emitSystemMessage(io, roomName, 'Kara, system health check — please confirm you are online with a brief response.');
+
+      // Trigger Kara's response
+      const freshKara = await Data.llmAgent.findById(kara.id);
+      if (!freshKara) return;
+      await runAgentResponse(io, freshKara as AgentLike, roomName);
+
+      // Check if she responded by looking at recent messages
+      const recentMessages = await prisma.$queryRawUnsafe(
+        `SELECT content, username FROM message WHERE room_id = ? AND username = ? ORDER BY created_at DESC LIMIT 1`,
+        kara.room_id,
+        kara.name,
+      ) as Array<{ content: string; username: string }>;
+
+      if (recentMessages.length > 0) {
+        console.log(`[HealthCheck] ✓ Kara responded: "${recentMessages[0].content.substring(0, 80)}..."`);
+      } else {
+        console.error('[HealthCheck] ✗ Kara did NOT respond. Debugging:');
+        console.error(`  - Agent ID: ${kara.id}`);
+        console.error(`  - Room ID: ${kara.room_id}`);
+        console.error(`  - Model: ${kara.model}`);
+        console.error(`  - Autopilot: ${kara.autopilot_enabled}`);
+        console.error(`  - Max tokens: ${kara.max_tokens}`);
+        const hasCredits = await creditActions.hasCredits(kara.creator_id);
+        console.error(`  - Creator has credits: ${hasCredits}`);
+      }
+    } catch (err) {
+      console.error(`[HealthCheck] Kara test failed:`, err);
+    }
+  }, 15_000); // Wait 15s after startup for everything to settle
+
   // Auth middleware
   io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined;
