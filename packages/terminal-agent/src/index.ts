@@ -146,7 +146,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.2.1';
+const AGENT_VERSION = '1.3.0';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -465,6 +465,7 @@ const connect = (config: SavedConfig): void => {
       let disposable: { dispose: () => void } | null = null;
       let finished = false;
       let approvalCount = 0; // track how many approval prompts we've auto-responded to (allow multiple)
+      let approvalCheckTimer: ReturnType<typeof setTimeout> | null = null;
 
       // Strip ANSI escape sequences for pattern matching — comprehensive version
       const stripAnsi = (s: string): string =>
@@ -529,6 +530,37 @@ const connect = (config: SavedConfig): void => {
         });
       };
 
+      // Handle auto-approval when a permission prompt is detected
+      const handleAutoApproval = (): boolean => {
+        if (finished) return false;
+        if (!checkForApprovalPrompt()) return false;
+
+        approvalCount++;
+        const choice = isApproved ? '2' : '1'; // 2 = "Yes, always" when approved; 1 = "Yes" otherwise
+        log(`[Claude PTY Collect] Detected approval prompt #${approvalCount}, auto-responding with ${choice} (approved=${isApproved})`);
+        socket.emit('claude_debug', { execId, phase: 'auto_approve', choice, approvalCount });
+        if (activePty) {
+          // Claude Code's TUI responds to the digit keypress alone — no Enter needed
+          activePty.write(choice);
+        }
+        // Reset state — Claude will start outputting again after approval
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        inactivityTimer = null;
+        if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
+        approvalCheckTimer = null;
+        hasOutput = false; // reset so new output restarts inactivity detection
+        collected = ''; // clear buffer so we don't re-detect the same prompt
+        // Safety net: if Claude goes completely silent after approval (e.g., another
+        // approval prompt with no cursor blinks), force a finish check after INACTIVITY_MS
+        setTimeout(() => {
+          if (!finished && !inactivityTimer) {
+            log(`[Claude PTY Collect] Post-approval safety net firing for ${execId}`);
+            inactivityTimer = setTimeout(finish, INACTIVITY_MS);
+          }
+        }, INACTIVITY_MS + 2000);
+        return true;
+      };
+
       const finish = async () => {
         if (finished) return;
 
@@ -537,34 +569,12 @@ const connect = (config: SavedConfig): void => {
         socket.emit('claude_debug', { execId, phase: 'finish_check', stripped: debugTail });
 
         // Before finishing, check if Claude is actually waiting for approval
-        if (checkForApprovalPrompt()) {
-          approvalCount++;
-          const choice = isApproved ? '2' : '1'; // 2 = "Yes, always" when approved; 1 = "Yes" otherwise
-          log(`[Claude PTY Collect] Detected approval prompt #${approvalCount}, auto-responding with ${choice} (approved=${isApproved})`);
-          socket.emit('claude_debug', { execId, phase: 'auto_approve', choice, approvalCount });
-          if (activePty) {
-            // Claude Code's TUI responds to the digit keypress alone — no Enter needed
-            activePty.write(choice);
-          }
-          // Reset state — Claude will start outputting again after approval
-          if (inactivityTimer) clearTimeout(inactivityTimer);
-          inactivityTimer = null;
-          hasOutput = false; // reset so new output restarts inactivity detection
-          collected = ''; // clear buffer so we don't re-detect the same prompt
-          // Safety net: if Claude goes completely silent after approval (e.g., another
-          // approval prompt with no cursor blinks), force a finish check after INACTIVITY_MS
-          setTimeout(() => {
-            if (!finished && !inactivityTimer) {
-              log(`[Claude PTY Collect] Post-approval safety net firing for ${execId}`);
-              inactivityTimer = setTimeout(finish, INACTIVITY_MS);
-            }
-          }, INACTIVITY_MS + 2000);
-          return; // don't finish yet — wait for the actual response
-        }
+        if (handleAutoApproval()) return;
 
         finished = true;
         if (inactivityTimer) clearTimeout(inactivityTimer);
         if (totalTimer) clearTimeout(totalTimer);
+        if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
         if (disposable) disposable.dispose();
 
         // Send /copy to Claude PTY — this copies Claude's last response to clipboard
@@ -599,6 +609,17 @@ const connect = (config: SavedConfig): void => {
           hasOutput = true;
           if (inactivityTimer) clearTimeout(inactivityTimer);
           inactivityTimer = setTimeout(finish, INACTIVITY_MS);
+
+          // Proactively check for approval prompts 2s after each significant chunk.
+          // This catches prompts even if the TUI keeps re-rendering (resetting the
+          // 5s inactivity timer) — we don't have to wait for full silence.
+          if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
+          approvalCheckTimer = setTimeout(() => {
+            if (!finished) {
+              log(`[Claude PTY Collect] Proactive approval check for ${execId}`);
+              handleAutoApproval();
+            }
+          }, 2000);
         } else if (hasOutput && !inactivityTimer) {
           // If we already got real output but timer isn't running, start it
           inactivityTimer = setTimeout(finish, INACTIVITY_MS);
