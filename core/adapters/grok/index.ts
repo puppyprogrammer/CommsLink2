@@ -60,7 +60,7 @@ const chatCompletion = async (
     body: JSON.stringify({
       model: model || getModel(),
       messages: allMessages,
-      max_tokens: 500,
+      max_tokens: 1500,
       temperature: 0.8,
     }),
   });
