@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.6.4';
+const AGENT_VERSION = '1.6.5';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -532,21 +532,26 @@ const connect = (config: SavedConfig): void => {
       let isBtwPolling = false;
       let btwResponseBuffer = '';
 
-      const doBtwPoll = () => {
+      const doBtwPoll = async () => {
         if (finished || isBtwPolling || !activePty) return;
         isBtwPolling = true;
         btwResponseBuffer = '';
 
         log(`[Claude PTY Collect] Sending /btw status check for ${execId}`);
-        // Clear any leftover text on the input line before sending /btw
+        // Clear any leftover text on the input line, then wait before sending /btw
+        activePty.write('\x1b');          // Escape — dismiss any overlay
+        await new Promise((r) => setTimeout(r, 300));
+        if (!activePty || finished) { isBtwPolling = false; return; }
         activePty.write('\x15');          // Ctrl+U — clear input line
+        await new Promise((r) => setTimeout(r, 300));
+        if (!activePty || finished) { isBtwPolling = false; return; }
         activePty.write('/btw are you done? reply only YES or NO\r');
 
-        // Timeout in case /btw doesn't respond
+        // Timeout in case /btw doesn't respond (30s — Claude may need time to process)
         const btwTimeout = setTimeout(() => {
           log(`[Claude PTY Collect] /btw timed out for ${execId}`);
           isBtwPolling = false;
-        }, 15_000);
+        }, 30_000);
 
         // Store timeout ref so we can clear it from the data handler
         const checkBtwDone = () => {
