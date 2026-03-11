@@ -1,6 +1,6 @@
 {
   "name": "@commslink/terminal-agent",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "CommsLink Terminal Agent - allows AI to execute commands on connected machines",
   "main": "dist/index.js",
   "bin": {

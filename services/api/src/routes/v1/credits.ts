@@ -1,7 +1,7 @@
 import tracer from '../../../../../core/lib/tracer';
 import creditActions from '../../../../../core/actions/credit';
 import Data from '../../../../../core/data';
-import { CREDIT_PACKS, SUBSCRIPTION } from '../../../../../core/constants/creditRates';
+import { CREDIT_PACKS } from '../../../../../core/constants/creditRates';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -41,7 +41,7 @@ const creditRoutes: ServerRoute[] = [
     method: 'GET',
     path: '/api/v1/credits/packs',
     options: { auth: false },
-    handler: async () => ({ packs: CREDIT_PACKS, subscription: SUBSCRIPTION }),
+    handler: async () => ({ packs: CREDIT_PACKS }),
   },
 ];
 

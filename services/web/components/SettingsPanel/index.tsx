@@ -20,7 +20,6 @@ import {
 import useSession from '@/lib/session/useSession';
 import { usePreferences } from '@/lib/state/PreferencesContext';
 import voiceApi from '@/lib/api/voice';
-import paymentApi from '@/lib/api/payment';
 
 import classes from './SettingsPanel.module.scss';
 
@@ -37,7 +36,6 @@ const SettingsPanel: React.FC = () => {
   const { preferences, updatePreference, isSaving } = usePreferences();
   const [premiumVoices, setPremiumVoices] = useState<PremiumVoice[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(false);
-  const [checkingOut, setCheckingOut] = useState(false);
 
   // Fetch premium voices when user has premium + use_premium_voice enabled
   useEffect(() => {
@@ -56,34 +54,9 @@ const SettingsPanel: React.FC = () => {
 
   const isPremiumVoiceSelected = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
 
-  const handlePremiumToggle = async (checked: boolean) => {
-    if (!session?.token) return;
-
-    if (checked && !session.user.is_premium) {
-      // Not premium — redirect to Stripe checkout
-      setCheckingOut(true);
-      try {
-        const result = await paymentApi.createCheckout(session.token);
-        window.location.href = result.url;
-      } catch {
-        console.error('Failed to create checkout session');
-        setCheckingOut(false);
-      }
-      return;
-    }
-
-    // Already premium, just toggle the preference
+  const handlePremiumToggle = (checked: boolean) => {
+    if (!session?.user.is_premium) return;
     updatePreference('use_premium_voice', checked);
-  };
-
-  const handleManageSubscription = async () => {
-    if (!session?.token) return;
-    try {
-      const result = await paymentApi.getPortal(session.token);
-      window.open(result.url, '_blank');
-    } catch {
-      console.error('Failed to open subscription portal');
-    }
   };
 
   const handleTestVoice = () => {
@@ -195,7 +168,7 @@ const SettingsPanel: React.FC = () => {
 
       <Box className={classes.section}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <Typography variant="detailText">Subscription</Typography>
+          <Typography variant="detailText">Voice Options</Typography>
           <Chip
             label={session?.user.is_premium ? 'PREMIUM' : 'FREE'}
             size="small"
@@ -210,26 +183,15 @@ const SettingsPanel: React.FC = () => {
               checked={preferences.use_premium_voice}
               onChange={(e) => handlePremiumToggle(e.target.checked)}
               size="small"
-              disabled={checkingOut}
+              disabled={!session?.user.is_premium}
             />
           }
           label={
             <Typography variant="detailText">
-              {checkingOut ? 'Redirecting to checkout...' : 'Use Premium Voices ($5/mo)'}
+              {session?.user.is_premium ? 'Use Premium Voices' : 'Premium Voices (admin only)'}
             </Typography>
           }
         />
-
-        {session?.user.is_premium && (
-          <Button
-            size="small"
-            variant="text"
-            onClick={handleManageSubscription}
-            sx={{ mt: 0.5, textTransform: 'none' }}
-          >
-            Manage Subscription
-          </Button>
-        )}
 
         <FormControlLabel
           control={

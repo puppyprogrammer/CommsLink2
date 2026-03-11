@@ -123,31 +123,9 @@ const executeClaudePrompt = (
     }
 
     let done = false;
-    const reportedLogIds = new Set<string>();
-
-    // Poll claude_log every 5s to monitor for permission prompts and give visibility
-    const pollTimer = setInterval(async () => {
-      if (done) return;
-      try {
-        const recentLogs = await Data.claudeLog.findBySessionKey(execId, 10);
-        for (const log of recentLogs) {
-          if (reportedLogIds.has(log.id)) continue;
-          reportedLogIds.add(log.id);
-          try {
-            const parsed = JSON.parse(log.content);
-            if (parsed.phase === 'auto_approve') {
-              emitSystemMessage(io, roomName, `[Claude ${machineName || ''}] Permission prompt detected — auto-approved (choice ${parsed.choice})`);
-            } else if (parsed.phase === 'blind_approve') {
-              emitSystemMessage(io, roomName, `[Claude ${machineName || ''}] Possible stuck prompt — blind approval sent (${Math.round((parsed.elapsed || 0) / 1000)}s elapsed)`);
-            }
-          } catch { /* not JSON, skip */ }
-        }
-      } catch { /* DB query failed, ignore */ }
-    }, 5_000);
 
     const cleanup = () => {
       done = true;
-      clearInterval(pollTimer);
     };
 
     const timer = setTimeout(() => {
@@ -473,8 +451,8 @@ const buildSystemPrompt = (
     actions.push(
       '=== TOKEN BUDGET ===\n' +
       `Your current max_tokens is ${agent.max_tokens || 1500}.\n` +
-      '{set_tokens N} - Set your response token budget (800-4000). Use higher values when you need to compose long commands ' +
-      '(e.g. detailed {claude} prompts) or give thorough explanations. Use lower values for quick replies to save credits. ' +
+      '{set_tokens N} - Set your response token budget (1500-4000). IMPORTANT: Before sending a {claude} prompt, set tokens to 4000 so your prompt is not truncated. ' +
+      'After Claude responds, you can lower tokens back to 1500 for quiet cycles. ' +
       'This persists across messages — set it once and it stays until you change it.',
     );
 
@@ -505,11 +483,14 @@ const buildSystemPrompt = (
   // Internal thought (conditional)
   if (cmds.think !== false) {
     actions.push(
-      '=== INTERNAL THOUGHT ===\n' +
-      '{think your internal reasoning here} - Log an internal thought WITHOUT speaking it aloud. ' +
-      'The thought is saved as a system message visible in chat history and memory, but NO voice is generated. ' +
-      'Use this for internal checklists, reasoning steps, status checks, and any processing that does not need to be spoken. ' +
-      'This saves voice credits. Only speak aloud what is meant for the user to hear.',
+      '=== SPEAKING & THINKING ===\n' +
+      '{say your message here} - SPEAK aloud to the room. This is the ONLY way to produce spoken output with voice/TTS. ' +
+      'Any text outside of {say} will NOT be spoken. Use {say} when you want to talk to users.\n' +
+      '{think your internal reasoning here} - Log an internal thought silently. No voice is generated. ' +
+      'Use this for all reasoning, planning, status checks, and processing.\n' +
+      'RULE: Put ALL reasoning in {think}. Put ONLY final user-facing messages in {say}. ' +
+      'Text outside both {think} and {say} is silently discarded. ' +
+      'Example: {think}checking if alien4 is up{/think}{say}Hey, alien4 is online.{/say}',
     );
   }
 
@@ -588,18 +569,14 @@ const buildSystemPrompt = (
       : 'No machines are currently online.';
     actions.push(
       '=== CLAUDE CODE ===\n' +
-      'You can send prompts to a persistent Claude Code session running on a connected machine.\n' +
-      'TWO MODES:\n' +
-      '  {claude machine_name prompt} - RESTRICTED mode: Claude can read files, search, answer questions, but CANNOT write/edit files or run destructive commands.\n' +
-      '  {claude! machine_name prompt} - APPROVED mode: Claude has full permissions to read, write, edit files and run commands. Only use this when the user has explicitly approved the action.\n' +
+      'Send prompts to a persistent Claude Code session running on a connected machine.\n' +
+      '  {claude machine_name prompt} - Send a prompt to Claude Code on the specified machine.\n' +
       `${machineList}\n` +
-      'Sessions are persistent — Claude Code remembers previous context within the same session.\n' +
-      'ASYNC: Claude prompts run in the background. When you send a prompt, you get "Prompt sent" immediately. Claude\'s response will appear later as a [Claude response] system message. ' +
+      'Claude runs with full permissions (--dangerously-skip-permissions). Sessions are persistent — Claude remembers previous context.\n' +
+      'ASYNC: Claude prompts run in the background. You get "Prompt sent" immediately. Claude\'s response appears later as a [Claude response] system message. ' +
       'CRITICAL: After sending a {claude} prompt, you MUST WAIT for the [Claude response] to appear before sending another prompt to the same machine. ' +
       'Do NOT send multiple prompts — Claude is already working. If you do not see a response yet, just wait silently. It can take up to 15 minutes for complex tasks.\n' +
-      'WORKFLOW: First use {claude ...} (restricted) to have Claude analyze/plan. Review its response. If Claude says it needs permission to make changes, ask the user for approval. If approved, use {claude! ...} to execute.\n' +
-      'IMPORTANT: Use the exact machine name from the list above. Do NOT guess machine names.\n' +
-      'IMPORTANT: NEVER use {claude! ...} (approved mode) without the user explicitly saying to go ahead.',
+      'IMPORTANT: Use the exact machine name from the list above. Do NOT guess machine names.',
     );
   }
 
@@ -728,7 +705,9 @@ const LIST_USERS_REGEX = /\{list_users\}/g;
 const KICK_REGEX = /\{kick\s+([^}]+)\}/g;
 const BAN_REGEX = /\{ban\s+([^}]+)\}/g;
 const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|think|audit|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
+const SAY_REGEX = /\{say\s+([^}]+)\}/g;
+const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban)(?:\s+[^}]+)?\}|\{\/(?:think|say)\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
 const MAX_RECALL_LOOPS = 5;
 const MAX_MENTION_DEPTH = 5;
 
@@ -881,6 +860,18 @@ const runAgentResponse = async (
       const findMatches = webOn ? [...responseText.matchAll(FIND_REGEX), ...responseText.matchAll(FIND_XML_REGEX)] : [];
       const screenshotMatches = webOn ? [...responseText.matchAll(SCREENSHOT_REGEX), ...responseText.matchAll(SCREENSHOT_XML_REGEX)] : [];
       const terminalMatches = terminalOn ? [...responseText.matchAll(TERMINAL_REGEX), ...responseText.matchAll(TERMINAL_XML_REGEX)] : [];
+      // Fix common Grok mistake: {claude! machine} prompt text (prompt outside braces)
+      // Rewrite to {claude! machine prompt text} before matching
+      if (claudeOn) {
+        responseText = responseText.replace(
+          /\{claude(!?)\s+(\S+)\}\s*([^{}\n][^{}]*)/g,
+          (full, bang, machine, trailingPrompt) => {
+            const trimmed = trailingPrompt.trim();
+            if (trimmed) return `{claude${bang} ${machine} ${trimmed}}`;
+            return full;
+          },
+        );
+      }
       const claudeMatches = claudeOn ? [...responseText.matchAll(CLAUDE_REGEX), ...responseText.matchAll(CLAUDE_XML_REGEX)] : [];
       const auditMatches = auditOn ? [...responseText.matchAll(AUDIT_REGEX)] : [];
       const scheduleMatches = scheduleOn ? [...responseText.matchAll(SCHEDULE_REGEX)] : [];
@@ -1009,7 +1000,7 @@ const runAgentResponse = async (
 
         if (setTokensMatches.length > 0) {
           const value = parseInt(setTokensMatches[setTokensMatches.length - 1][1], 10);
-          const clamped = Math.max(800, Math.min(4000, value));
+          const clamped = Math.max(1500, Math.min(4000, value));
           await Data.llmAgent.update(agent.id, { max_tokens: clamped });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
           emitSystemMessage(io, roomName, `[${agent.name} set token budget to ${clamped}]`);
@@ -1019,12 +1010,12 @@ const runAgentResponse = async (
         // Auto-token-boost: if agent used expensive commands, raise tokens for next cycle
         // If no expensive commands, decay back to 800
         const usedExpensiveCommand = terminalMatches.length > 0 || claudeMatches.length > 0 || searchMatches.length > 0;
-        const currentTokens = currentAgent?.max_tokens || agent.max_tokens || 800;
-        if (usedExpensiveCommand && currentTokens < 2000 && setTokensMatches.length === 0) {
-          await Data.llmAgent.update(agent.id, { max_tokens: 2000 });
+        const currentTokens = currentAgent?.max_tokens || agent.max_tokens || 1500;
+        if (usedExpensiveCommand && currentTokens < 3000 && setTokensMatches.length === 0) {
+          await Data.llmAgent.update(agent.id, { max_tokens: 3000 });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
-        } else if (!usedExpensiveCommand && currentTokens > 800 && setTokensMatches.length === 0) {
-          await Data.llmAgent.update(agent.id, { max_tokens: 800 });
+        } else if (!usedExpensiveCommand && currentTokens > 1500 && setTokensMatches.length === 0) {
+          await Data.llmAgent.update(agent.id, { max_tokens: 1500 });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
         }
 
@@ -1236,7 +1227,7 @@ const runAgentResponse = async (
           continue;
         }
 
-        emitSystemMessage(io, roomName, `[${agent.name} claude${approved ? ' (approved)' : ''} → ${machineName}]: ${prompt}`);
+        emitSystemMessage(io, roomName, `[${agent.name} claude → ${machineName}]: ${prompt}`);
 
         const machineRecord = await Data.machine.findByOwnerAndName(agent.creator_id, machineName);
         if (!machineRecord) {
@@ -1538,19 +1529,38 @@ const runAgentResponse = async (
       }
       // Strip both think formats before command stripping
       responseText = responseText.replace(THINK_XML_REGEX, '').replace(THINK_REGEX, '');
-      // Also strip orphaned {/think} closing tags
-      responseText = responseText.replace(/\{\/think\}/g, '');
+      // Also strip orphaned {/think} and [/think] closing tags (Grok uses both formats)
+      responseText = responseText.replace(/\{\/think\}/g, '').replace(/\[\/think\]/g, '');
+    }
+
+    // Extract {say} content — this is the ONLY text that gets spoken aloud / TTS'd.
+    // Everything else outside {say} and other commands is discarded (or logged as thought).
+    const sayMatches = [...responseText.matchAll(SAY_REGEX), ...responseText.matchAll(SAY_XML_REGEX)];
+    const spokenParts: string[] = [];
+    for (const m of sayMatches) {
+      const part = m[1].trim();
+      if (part) spokenParts.push(part);
     }
 
     // Strip all commands from the final response
-    responseText = responseText.replace(ALL_COMMAND_REGEX, '').trim().substring(0, 2000);
+    const leftoverText = responseText.replace(ALL_COMMAND_REGEX, '').trim();
 
-    // Detect leaked think content — if the spoken output looks like internal reasoning, suppress it
-    const leakedThinkPattern = /^(OBSERVE:|THINK:|ACT:|INTERVAL:|Phase \d|Highest value:|Next:|Plan:|Server restart|Autopilot \d|No lunaprey|Room idle|Stay silent|Continue PHASE|Lunaprey (active|corrected|back)|Claude (still|prompt|output)|for growth ideas)/i;
-    if (leakedThinkPattern.test(responseText.trim())) {
-      // Log as thought instead of speaking
-      emitSystemMessage(io, roomName, `[${agent.name} thought: ${responseText.trim().substring(0, 1000)}]`);
-      responseText = '';
+    // If agent used {say}, ONLY speak that content. Leftover text is discarded (leaked reasoning).
+    // If agent did NOT use {say}, fall back to leftover text (backwards compat for non-{say} agents).
+    if (sayMatches.length > 0) {
+      responseText = spokenParts.join(' ').substring(0, 2000);
+      // Log any substantial leftover as thought (leaked reasoning the agent forgot to {think})
+      if (leftoverText.length > 10) {
+        emitSystemMessage(io, roomName, `[${agent.name} thought: ${leftoverText.substring(0, 1000)}]`);
+      }
+    } else {
+      responseText = leftoverText.substring(0, 2000);
+      // Detect leaked think content — if the spoken output looks like internal reasoning, suppress it
+      const leakedThinkPattern = /^(\*?\*?Internal Reasoning|OBSERVE:|THINK:|ACT:|INTERVAL:|Phase \d|Highest value:|Next:|Plan:|Server restart|Autopilot \d|No lunaprey|Room idle|Stay silent|Continue PHASE|Lunaprey (active|corrected|back|direct)|Claude (still|prompt|output|up)|for growth|Tool results:|Audit:|Post-audit|First:|alien\d|Win\d|Credits? (test|paused|wins)|Quick win|prepped|No (new |high-value )?action|Idle|machines? (offline|down|online|up)|Value check)/i;
+      if (leakedThinkPattern.test(responseText.trim())) {
+        emitSystemMessage(io, roomName, `[${agent.name} thought: ${responseText.trim().substring(0, 1000)}]`);
+        responseText = '';
+      }
     }
 
     const namePrefix = new RegExp(`^${agent.name}:\\s*`, 'i');

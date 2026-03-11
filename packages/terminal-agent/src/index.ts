@@ -146,7 +146,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.5.0';
+const AGENT_VERSION = '1.6.0';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -452,25 +452,21 @@ const connect = (config: SavedConfig): void => {
     }
 
     if (data.collectResponse && data.execId) {
-      // AI mode: accumulate output and detect when Claude is done
+      // AI mode: accumulate output and detect when Claude is done.
+      // Claude runs with --dangerously-skip-permissions so no permission prompts exist.
+      // We simply collect output, wait for inactivity, then return the stripped text.
       const execId = data.execId;
-      const isApproved = !!data.approved;
       let collected = '';
       let hasOutput = false;
       let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
       let totalTimer: ReturnType<typeof setTimeout> | null = null;
       const INACTIVITY_MS = 5_000; // 5s of silence after output starts = done
-      const MAX_WAIT_MS = 180_000; // 3 min absolute max
+      const MAX_WAIT_MS = 900_000; // 15 min absolute max (Claude can take a while)
 
       let disposable: { dispose: () => void } | null = null;
       let finished = false;
-      let approvalCount = 0; // track how many approval prompts we've auto-responded to (allow multiple)
-      let approvalCheckTimer: ReturnType<typeof setTimeout> | null = null;
-      let stallCheckTimer: ReturnType<typeof setTimeout> | null = null;
-      let blindApprovalTimer: ReturnType<typeof setInterval> | null = null;
-      const collectStartTime = Date.now();
 
-      // Strip ANSI escape sequences for pattern matching — comprehensive version
+      // Strip ANSI escape sequences for clean output
       const stripAnsi = (s: string): string =>
         s
           // OSC sequences (title bar, etc.)
@@ -486,175 +482,16 @@ const connect = (config: SavedConfig): void => {
           .replace(/[ \t]+/g, ' ')
           .replace(/\n{3,}/g, '\n\n');
 
-      // Nuclear strip — reduces text to only letters, digits, spaces, newlines, and basic punctuation.
-      // This handles cases where ANSI codes are interspersed within words (e.g., each letter
-      // of "Yes" is individually colored), which makes the normal stripAnsi + regex approach fail.
-      const nuclearStrip = (s: string): string =>
-        s
-          // Remove all escape sequences aggressively (any ESC followed by anything up to a letter)
-          // eslint-disable-next-line no-control-regex
-          .replace(/\x1b[^a-zA-Z]*[a-zA-Z]/g, '')
-          // Remove all non-printable characters
-          // eslint-disable-next-line no-control-regex
-          .replace(/[\x00-\x09\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '')
-          // Collapse whitespace
-          .replace(/[ \t]+/g, ' ')
-          .replace(/\n{2,}/g, '\n')
-          .trim();
-
-      // Detect if Claude is waiting for an approval prompt (1/2/3 or Yes/No)
-      // Uses three layers of detection for reliability:
-      //   Layer 1: Regex patterns on ANSI-stripped text (fast, specific)
-      //   Layer 2: Keyword proximity search on nuclear-stripped text (catches broken ANSI)
-      //   Layer 3: Unique Claude Code UI strings that only appear on prompts
-      const checkForApprovalPrompt = (): boolean => {
-        const clean = stripAnsi(collected);
-        const tail = clean.slice(-800);
-        const nuclear = nuclearStrip(collected).slice(-800).toLowerCase();
-
-        // Debug: log both versions so we can diagnose
-        log(`[Claude PTY Collect] Approval check — stripped tail (${tail.length}): ${tail.slice(-200).replace(/\n/g, '\\n')}`);
-        log(`[Claude PTY Collect] Approval check — nuclear tail (${nuclear.length}): ${nuclear.slice(-200).replace(/\n/g, '\\n')}`);
-
-        // ── Layer 1: Regex patterns on ANSI-stripped text ──
-        const layer1Patterns = [
-          /\bYes\b.*\bNo\b/i,
-          /\bAllow\b.*\bDeny\b/i,
-          /\bAllow once\b/i,
-          /\bAllow always\b/i,
-          /[12]\.\s*Yes/i,
-          /[23]\.\s*No\b/i,
-          /\bDo you want to\b/i,
-          /\bWould you like to\b/i,
-          /\bProceed\?\s*\(/i,
-          /\by\/n\b/i,
-          /\ballow.*\bthis tool\b/i,
-          /\bpermission\b.*\b(grant|allow|run)\b/i,
-        ];
-
-        if (layer1Patterns.some((p) => p.test(tail))) {
-          log('[Claude PTY Collect] Approval detected via Layer 1 (regex on stripped text)');
-          return true;
-        }
-
-        // ── Layer 2: Keyword proximity on nuclear-stripped text ──
-        // If multiple approval-related keywords appear near each other, it's a prompt.
-        // This catches cases where ANSI codes break up words for Layer 1.
-        const approvalKeywords = ['yes', 'no', 'allow', 'deny', 'proceed', 'approve'];
-        const questionKeywords = ['do you want', 'would you like', 'want to proceed', 'you want to'];
-        const numberedOptions = /[123]\.\s*(yes|no|allow|deny)/i;
-
-        const keywordHits = approvalKeywords.filter((kw) => nuclear.includes(kw)).length;
-        const hasQuestion = questionKeywords.some((q) => nuclear.includes(q));
-        const hasNumbered = numberedOptions.test(nuclear);
-
-        if ((keywordHits >= 2 && hasQuestion) || (keywordHits >= 2 && hasNumbered) || (hasQuestion && hasNumbered)) {
-          log(`[Claude PTY Collect] Approval detected via Layer 2 (keyword proximity: ${keywordHits} keywords, question=${hasQuestion}, numbered=${hasNumbered})`);
-          return true;
-        }
-
-        // ── Layer 3: Claude Code-specific UI strings ──
-        // These strings are unique to Claude Code's permission prompts and don't appear
-        // in normal output. They survive even aggressive ANSI mangling.
-        const layer3Markers = [
-          'esc to cancel',       // Always shown on permission prompts
-          'tab to amend',        // Always shown on permission prompts
-          'allow reading from',  // "Yes. allow reading from docs/ during this session"
-          'allow writing to',    // "Yes. allow writing to ..."
-          'allow executing',     // "Yes. allow executing ..."
-          'during this session', // Common in option 2 text
-          'allow always',        // Permission option
-          'allow once',          // Permission option
-        ];
-
-        if (layer3Markers.some((marker) => nuclear.includes(marker))) {
-          log(`[Claude PTY Collect] Approval detected via Layer 3 (Claude UI marker found)`);
-          return true;
-        }
-
-        return false;
-      };
-
-      // Read clipboard contents (platform-specific)
-      const readClipboard = (): Promise<string> => {
-        return new Promise((resolve) => {
-          const cmd = platform() === 'win32'
-            ? 'powershell -command "Get-Clipboard"'
-            : platform() === 'darwin'
-              ? 'pbpaste'
-              : 'xclip -selection clipboard -o 2>/dev/null || xsel --clipboard --output 2>/dev/null';
-
-          exec(cmd, { timeout: 5_000 }, (error, stdout) => {
-            resolve(error ? '' : stdout.trim());
-          });
-        });
-      };
-
-      // Handle auto-approval when a permission prompt is detected
-      const handleAutoApproval = (): boolean => {
-        if (finished) return false;
-        if (!checkForApprovalPrompt()) return false;
-
-        approvalCount++;
-        const choice = isApproved ? '2' : '1'; // 2 = "Yes, always" when approved; 1 = "Yes" otherwise
-        log(`[Claude PTY Collect] Detected approval prompt #${approvalCount}, auto-responding with ${choice} (approved=${isApproved})`);
-        socket.emit('claude_debug', { execId, phase: 'auto_approve', choice, approvalCount });
-        if (activePty) {
-          // Claude Code's TUI responds to the digit keypress alone — no Enter needed
-          activePty.write(choice);
-        }
-        // Reset state — Claude will start outputting again after approval
-        if (inactivityTimer) clearTimeout(inactivityTimer);
-        inactivityTimer = null;
-        if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
-        approvalCheckTimer = null;
-        if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
-        if (blindApprovalTimer) { clearInterval(blindApprovalTimer); blindApprovalTimer = null; }
-        hasOutput = false; // reset so new output restarts inactivity detection
-        collected = ''; // clear buffer so we don't re-detect the same prompt
-        // Safety net: if Claude goes completely silent after approval (e.g., another
-        // approval prompt with no cursor blinks), force a finish check after INACTIVITY_MS
-        setTimeout(() => {
-          if (!finished && !inactivityTimer) {
-            log(`[Claude PTY Collect] Post-approval safety net firing for ${execId}`);
-            inactivityTimer = setTimeout(finish, INACTIVITY_MS);
-          }
-        }, INACTIVITY_MS + 2000);
-        return true;
-      };
-
-      const finish = async () => {
+      const finish = () => {
         if (finished) return;
-
-        // Emit debug info to server so we can diagnose via claude_log
-        const debugTail = stripAnsi(collected).slice(-500);
-        socket.emit('claude_debug', { execId, phase: 'finish_check', stripped: debugTail });
-
-        // Before finishing, check if Claude is actually waiting for approval
-        if (handleAutoApproval()) return;
-
         finished = true;
         if (inactivityTimer) clearTimeout(inactivityTimer);
         if (totalTimer) clearTimeout(totalTimer);
-        if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
-        if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
-        if (blindApprovalTimer) { clearInterval(blindApprovalTimer); blindApprovalTimer = null; }
         if (disposable) disposable.dispose();
 
-        // Send /copy to Claude PTY — this copies Claude's last response to clipboard
-        log(`[Claude PTY Collect] Sending /copy to grab response for ${execId}`);
-        if (activePty) {
-          activePty.write('/copy\r');
-        }
-
-        // Wait for /copy to execute and clipboard to be populated
-        await new Promise((r) => setTimeout(r, 1500));
-
-        // Read the clipboard
-        const clipboardContent = await readClipboard();
-        log(`[Claude PTY Collect] Clipboard for ${execId}: ${clipboardContent.length} chars`);
-
-        const output = clipboardContent || '(no response captured)';
+        // Extract response from collected PTY output
+        const stripped = stripAnsi(collected).trim();
+        const output = stripped || '(no response captured)';
 
         log(`[Claude PTY Collect] done for ${execId}, ${output.length} chars`);
         const responsePayload = { output: output.substring(0, 16000), exitCode: 0 };
@@ -673,33 +510,6 @@ const connect = (config: SavedConfig): void => {
           hasOutput = true;
           if (inactivityTimer) clearTimeout(inactivityTimer);
           inactivityTimer = setTimeout(finish, INACTIVITY_MS);
-
-          // Proactively check for approval prompts 2s after each significant chunk.
-          // This catches prompts even if the TUI keeps re-rendering (resetting the
-          // 5s inactivity timer) — we don't have to wait for full silence.
-          if (approvalCheckTimer) clearTimeout(approvalCheckTimer);
-          approvalCheckTimer = setTimeout(() => {
-            if (!finished) {
-              log(`[Claude PTY Collect] Proactive approval check for ${execId}`);
-              handleAutoApproval();
-            }
-          }, 2000);
-
-          // Stall detector: if we've been collecting for >15s, check every 5s.
-          // This catches prompts that arrive gradually or where the 2s debounce
-          // keeps getting reset by TUI re-renders.
-          const elapsed = Date.now() - collectStartTime;
-          if (elapsed > 15_000 && !stallCheckTimer) {
-            stallCheckTimer = setInterval(() => {
-              if (finished) {
-                if (stallCheckTimer) clearInterval(stallCheckTimer);
-                stallCheckTimer = null;
-                return;
-              }
-              log(`[Claude PTY Collect] Stall check for ${execId} (${Math.round((Date.now() - collectStartTime) / 1000)}s elapsed)`);
-              handleAutoApproval();
-            }, 5000);
-          }
         } else if (hasOutput && !inactivityTimer) {
           // If we already got real output but timer isn't running, start it
           inactivityTimer = setTimeout(finish, INACTIVITY_MS);
@@ -713,26 +523,6 @@ const connect = (config: SavedConfig): void => {
         }
         // If we have output, let inactivity timer handle it
       }, MAX_WAIT_MS);
-
-      // Layer 4 — Blind approval: after 60s, start pressing "1" every 30s as a
-      // brute-force fallback. If Claude is stuck on a permission prompt that none
-      // of the detection layers caught, this unsticks it. Pressing "1" when there
-      // is no prompt is harmless — Claude Code ignores stray digit keypresses.
-      setTimeout(() => {
-        if (finished) return;
-        log(`[Claude PTY Collect] Starting blind approval fallback for ${execId}`);
-        blindApprovalTimer = setInterval(() => {
-          if (finished) {
-            if (blindApprovalTimer) { clearInterval(blindApprovalTimer); blindApprovalTimer = null; }
-            return;
-          }
-          log(`[Claude PTY Collect] Blind approval: pressing "1" for ${execId} (${Math.round((Date.now() - collectStartTime) / 1000)}s elapsed)`);
-          socket.emit('claude_debug', { execId, phase: 'blind_approve', elapsed: Date.now() - collectStartTime });
-          if (activePty) {
-            activePty.write('1');
-          }
-        }, 30_000);
-      }, 60_000);
 
       // Write the prompt into the PTY
       activePty.write(userInput + '\r');

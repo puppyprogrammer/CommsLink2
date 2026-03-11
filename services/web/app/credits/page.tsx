@@ -29,7 +29,6 @@ const CreditsPage = () => {
   const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
   const [usage, setUsage] = useState<UsageLog[]>([]);
   const [packs, setPacks] = useState<CreditPack[]>([]);
-  const [subscription, setSubscription] = useState<{ priceUsd: number; monthlyCredits: number } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,7 +44,6 @@ const CreditsPage = () => {
         setCreditStatus(status);
         setUsage(usageData);
         setPacks(packsData.packs);
-        setSubscription(packsData.subscription);
       } catch {
         toast('Failed to load credit information');
       } finally {
@@ -57,16 +55,6 @@ const CreditsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
 
-  const handleSubscribe = async () => {
-    if (!session?.token) return;
-    try {
-      const { url } = await paymentApi.createCheckout(session.token);
-      window.location.href = url;
-    } catch {
-      toast('Failed to create checkout session');
-    }
-  };
-
   const handleBuyCredits = async (packId: string) => {
     if (!session?.token) return;
     try {
@@ -74,16 +62,6 @@ const CreditsPage = () => {
       window.location.href = url;
     } catch {
       toast('Failed to create checkout session');
-    }
-  };
-
-  const handleManage = async () => {
-    if (!session?.token) return;
-    try {
-      const { url } = await paymentApi.getPortal(session.token);
-      window.location.href = url;
-    } catch {
-      toast('Failed to open billing portal');
     }
   };
 
@@ -106,55 +84,13 @@ const CreditsPage = () => {
 
         {/* Balance */}
         <Paper sx={{ p: 3, mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box>
-              <Typography variant="detailText" sx={{ mb: 0.5 }}>
-                Current Balance
-              </Typography>
-              <Typography variant="h4" color="primary">
-                {creditStatus?.balance?.toLocaleString() ?? 0} credits
-              </Typography>
-            </Box>
-            <Box sx={{ textAlign: 'right' }}>
-              {creditStatus?.isSubscribed ? (
-                <>
-                  <Chip label="Subscribed" color="primary" sx={{ mb: 1 }} />
-                  <Typography variant="detailText" display="block">
-                    {subscription?.monthlyCredits} credits/month
-                  </Typography>
-                  <Button size="small" onClick={handleManage} sx={{ mt: 1 }}>
-                    Manage Subscription
-                  </Button>
-                </>
-              ) : (
-                <Typography variant="detailText" color="text.secondary">
-                  No active subscription
-                </Typography>
-              )}
-            </Box>
-          </Box>
+          <Typography variant="detailText" sx={{ mb: 0.5 }}>
+            Current Balance
+          </Typography>
+          <Typography variant="h4" color="primary">
+            {creditStatus?.balance?.toLocaleString() ?? 0} credits
+          </Typography>
         </Paper>
-
-        {/* Subscribe */}
-        {!creditStatus?.isSubscribed && subscription && (
-          <Paper sx={{ p: 3, mb: 3, textAlign: 'center' }}>
-            <Typography variant="h6" color="primary">
-              CommsLink Premium
-            </Typography>
-            <Typography variant="h4" sx={{ my: 1 }}>
-              ${subscription.priceUsd}
-            </Typography>
-            <Typography variant="detailText" display="block" sx={{ mb: 1 }}>
-              /month
-            </Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              {subscription.monthlyCredits} credits every month for AI agents and premium voices
-            </Typography>
-            <Button variant="contained" size="large" onClick={handleSubscribe}>
-              Subscribe
-            </Button>
-          </Paper>
-        )}
 
         {/* Buy More Credits */}
         <Box sx={{ mb: 3 }}>
