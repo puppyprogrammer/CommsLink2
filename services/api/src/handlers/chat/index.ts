@@ -1605,14 +1605,14 @@ const runAgentResponse = async (
       if (leftoverText.length > 10) {
         emitSystemMessage(io, roomName, `[${agent.name} thought: ${leftoverText.substring(0, 1000)}]`);
       }
+    } else if (thinkOn && leftoverText.length > 0) {
+      // When think/say is enabled, agents MUST use {say} for spoken output.
+      // Any leftover text without {say} is leaked reasoning — log as bug, never speak.
+      emitSystemMessage(io, roomName, `[${agent.name} bugged: ${leftoverText.substring(0, 1000)}]`);
+      responseText = '';
     } else {
+      // No think/say system — fall back to leftover as speech (backwards compat)
       responseText = leftoverText.substring(0, 2000);
-      // Detect leaked think content — if the spoken output looks like internal reasoning, suppress it
-      const leakedThinkPattern = /^(\*?\*?Internal Reasoning|OBSERVE:|THINK:|ACT:|INTERVAL:|Phase \d|Highest value:|Next:|Plan:|Server restart|Autopilot \d|No lunaprey|Room idle|Stay silent|Continue PHASE|Lunaprey (active|corrected|back|direct)|Claude (still|prompt|output|up)|for growth|Tool results:|Audit:|Post-audit|First:|alien\d|Win\d|Credits? (test|paused|wins)|Quick win|prepped|No (new |high-value )?action|Idle|machines? (offline|down|online|up)|Value check)/i;
-      if (leakedThinkPattern.test(responseText.trim())) {
-        emitSystemMessage(io, roomName, `[${agent.name} thought: ${responseText.trim().substring(0, 1000)}]`);
-        responseText = '';
-      }
     }
 
     const namePrefix = new RegExp(`^${agent.name}:\\s*`, 'i');
