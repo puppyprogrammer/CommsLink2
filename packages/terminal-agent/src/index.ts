@@ -146,7 +146,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.4.1';
+const AGENT_VERSION = '1.5.0';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -258,7 +258,7 @@ const launchInteractiveClaude = (socket: Socket, machineName: string): void => {
   // Spawn Claude in a real pseudo-terminal (PTY)
   // This gives Claude a real TTY so it renders the full TUI with colors, thinking, etc.
   // We can read output (mirror to web) AND write input (remote commands) at the same time.
-  const ptyProcess = pty.spawn(shell, [], {
+  const ptyProcess = pty.spawn(shell, ['--dangerously-skip-permissions'], {
     name: 'xterm-256color',
     cols: (process.stdout as { columns?: number }).columns || 120,
     rows: (process.stdout as { rows?: number }).rows || 40,

@@ -122,13 +122,43 @@ const executeClaudePrompt = (
       return;
     }
 
+    let done = false;
+    const reportedLogIds = new Set<string>();
+
+    // Poll claude_log every 5s to monitor for permission prompts and give visibility
+    const pollTimer = setInterval(async () => {
+      if (done) return;
+      try {
+        const recentLogs = await Data.claudeLog.findBySessionKey(execId, 10);
+        for (const log of recentLogs) {
+          if (reportedLogIds.has(log.id)) continue;
+          reportedLogIds.add(log.id);
+          try {
+            const parsed = JSON.parse(log.content);
+            if (parsed.phase === 'auto_approve') {
+              emitSystemMessage(io, roomName, `[Claude ${machineName || ''}] Permission prompt detected — auto-approved (choice ${parsed.choice})`);
+            } else if (parsed.phase === 'blind_approve') {
+              emitSystemMessage(io, roomName, `[Claude ${machineName || ''}] Possible stuck prompt — blind approval sent (${Math.round((parsed.elapsed || 0) / 1000)}s elapsed)`);
+            }
+          } catch { /* not JSON, skip */ }
+        }
+      } catch { /* DB query failed, ignore */ }
+    }, 5_000);
+
+    const cleanup = () => {
+      done = true;
+      clearInterval(pollTimer);
+    };
+
     const timer = setTimeout(() => {
+      cleanup();
       machineSocket.off(`claude_pty_response:${execId}`, handler);
       if (machineName) checkAndCleanStaleMachine(io, machineSocketId, machineName, roomName);
       resolve('Error: Claude prompt timed out after 3 minutes.');
     }, timeoutMs);
 
     const handler = (data: { output: string; exitCode: number }) => {
+      cleanup();
       clearTimeout(timer);
       console.log(`[claude_prompt] Got claude_pty_response for ${execId}: ${data.output.length} chars, exit=${data.exitCode}`);
       // Post Claude's response as a system message so AI and room can see it
@@ -434,7 +464,7 @@ const buildSystemPrompt = (
     actions.push(
       '=== AUTOPILOT CONTROL ===\n' +
       '{toggle_autopilot on|off} - Enable or disable your autopilot mode\n' +
-      '{set_autopilot_interval N} - Set autopilot interval in seconds (2-86400). Use low values (2-10s) for rapid multi-step plan execution.',
+      '{set_autopilot_interval N} - Set autopilot interval in seconds (30-86400). Minimum 30s. Use lower values (30-60s) when actively working, higher when idle.',
     );
   }
 
@@ -443,23 +473,20 @@ const buildSystemPrompt = (
     actions.push(
       '=== TOKEN BUDGET ===\n' +
       `Your current max_tokens is ${agent.max_tokens || 1500}.\n` +
-      '{set_tokens N} - Set your response token budget (200-4000). Use higher values when you need to compose long commands ' +
+      '{set_tokens N} - Set your response token budget (800-4000). Use higher values when you need to compose long commands ' +
       '(e.g. detailed {claude} prompts) or give thorough explanations. Use lower values for quick replies to save credits. ' +
       'This persists across messages — set it once and it stays until you change it.',
     );
 
   }
 
-  // Effort level control (conditional)
+  // Effort level info (read-only — model is pinned by room settings)
   if (cmds.effort !== false) {
     const isReasoning = agent.model?.includes('reasoning') ?? false;
-    const currentEffort = isReasoning ? 'high' : 'low';
+    const currentEffort = isReasoning ? 'high (reasoning)' : 'standard (non-reasoning)';
     actions.push(
       '=== EFFORT LEVEL ===\n' +
-      `Your current effort level is: ${currentEffort}.\n` +
-      '{set_effort low} - Use a fast, non-reasoning model. Cheaper and faster, good for simple replies and quick tasks.\n' +
-      '{set_effort high} - Use a reasoning model. More thorough and capable for complex analysis, planning, and multi-step problems. Costs more tokens.\n' +
-      'This persists across messages. Use low effort for casual conversation, high effort when you need to think carefully.',
+      `Your current effort level is: ${currentEffort}. This is managed by the system and room settings.`,
     );
   }
 
@@ -670,7 +697,7 @@ const CLEAR_PLAN_REGEX = /\{clear_plan\}/g;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
-const SET_EFFORT_REGEX = /\{set_effort\s+(low|medium|high)\}/gi;
+// set_effort removed — model is pinned by room settings
 const THINK_REGEX = /\{think\s+([^}]+)\}/g;
 const AUDIT_REGEX = /\{audit\s+(\S+)\}/g;
 const SEARCH_REGEX = /\{search\s+([^}]+)\}/g;
@@ -696,7 +723,7 @@ const LIST_USERS_REGEX = /\{list_users\}/g;
 const KICK_REGEX = /\{kick\s+([^}]+)\}/g;
 const BAN_REGEX = /\{ban\s+([^}]+)\}/g;
 const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|set_effort|think|audit|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|think|audit|search|browse|find|screenshot|terminal|claude|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban)(?:\s+[^}]+)?\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
 const MAX_RECALL_LOOPS = 5;
 const MAX_MENTION_DEPTH = 5;
 
@@ -733,7 +760,16 @@ const runAgentResponse = async (
   const roomId = agent.room_id;
 
   // Prevent concurrent runs for the same agent
-  if (agentBusy.has(agent.id)) return;
+  // Autopilot cycles are skipped if busy; user-triggered messages wait for the lock
+  if (agentBusy.has(agent.id)) {
+    if (autopilotMode || mentionDepth > 0) return;
+    // User message: wait up to 60s for the current cycle to finish
+    const waitStart = Date.now();
+    while (agentBusy.has(agent.id) && Date.now() - waitStart < 60_000) {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    if (agentBusy.has(agent.id)) return; // Still busy after 60s, give up
+  }
   agentBusy.add(agent.id);
 
   // Check credits
@@ -834,7 +870,7 @@ const runAgentResponse = async (
       const setIntervalMatches = autopilotCtrlOn ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)] : [];
       const toggleAutoMatches = autopilotCtrlOn ? [...responseText.matchAll(TOGGLE_AUTOPILOT_REGEX)] : [];
       const setTokensMatches = tokensOn ? [...responseText.matchAll(SET_TOKENS_REGEX)] : [];
-      const setEffortMatches = effortOn ? [...responseText.matchAll(SET_EFFORT_REGEX)] : [];
+      const setEffortMatches: RegExpMatchArray[] = [];
       const searchMatches = webOn ? [...responseText.matchAll(SEARCH_REGEX), ...responseText.matchAll(SEARCH_XML_REGEX)] : [];
       const browseMatches = webOn ? [...responseText.matchAll(BROWSE_REGEX), ...responseText.matchAll(BROWSE_XML_REGEX)] : [];
       const findMatches = webOn ? [...responseText.matchAll(FIND_REGEX), ...responseText.matchAll(FIND_XML_REGEX)] : [];
@@ -955,7 +991,7 @@ const runAgentResponse = async (
         }
         if (setIntervalMatches.length > 0) {
           const value = parseInt(setIntervalMatches[setIntervalMatches.length - 1][1], 10);
-          const clamped = Math.max(2, Math.min(86400, value));
+          const clamped = Math.max(30, Math.min(86400, value));
           await Data.llmAgent.update(agent.id, { autopilot_interval: clamped });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
           if (currentAgent.autopilot_enabled) {
@@ -968,41 +1004,23 @@ const runAgentResponse = async (
 
         if (setTokensMatches.length > 0) {
           const value = parseInt(setTokensMatches[setTokensMatches.length - 1][1], 10);
-          const clamped = Math.max(200, Math.min(4000, value));
+          const clamped = Math.max(800, Math.min(4000, value));
           await Data.llmAgent.update(agent.id, { max_tokens: clamped });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
           emitSystemMessage(io, roomName, `[${agent.name} set token budget to ${clamped}]`);
           toolResults.push(`Token budget set to ${clamped}.`);
         }
 
-        if (setEffortMatches.length > 0) {
-          const level = setEffortMatches[setEffortMatches.length - 1][1].toLowerCase();
-          const currentModel = currentAgent?.model || agent.model || 'grok-4-1-fast-non-reasoning';
-          let newModel = currentModel;
-
-          if (level === 'high') {
-            // Switch to reasoning variant
-            newModel = currentModel.replace('-non-reasoning', '-reasoning');
-            if (newModel === currentModel && !currentModel.includes('reasoning')) {
-              // Model doesn't have reasoning variant — append it
-              newModel = currentModel + '-reasoning';
-            }
-          } else {
-            // low or medium → non-reasoning variant
-            if (currentModel.includes('-non-reasoning')) {
-              newModel = currentModel;
-            } else if (currentModel.includes('-reasoning')) {
-              newModel = currentModel.replace('-reasoning', '-non-reasoning');
-            }
-          }
-
-          if (newModel !== currentModel) {
-            await Data.llmAgent.update(agent.id, { model: newModel });
-            currentAgent = (await Data.llmAgent.findById(agent.id))!;
-          }
-          const effortLabel = level === 'high' ? 'high (reasoning)' : 'low (non-reasoning)';
-          emitSystemMessage(io, roomName, `[${agent.name} set effort to ${effortLabel}]`);
-          toolResults.push(`Effort level set to ${level}. Model is now ${newModel}.`);
+        // Auto-token-boost: if agent used expensive commands, raise tokens for next cycle
+        // If no expensive commands, decay back to 800
+        const usedExpensiveCommand = terminalMatches.length > 0 || claudeMatches.length > 0 || searchMatches.length > 0;
+        const currentTokens = currentAgent?.max_tokens || agent.max_tokens || 800;
+        if (usedExpensiveCommand && currentTokens < 2000 && setTokensMatches.length === 0) {
+          await Data.llmAgent.update(agent.id, { max_tokens: 2000 });
+          currentAgent = (await Data.llmAgent.findById(agent.id))!;
+        } else if (!usedExpensiveCommand && currentTokens > 800 && setTokensMatches.length === 0) {
+          await Data.llmAgent.update(agent.id, { max_tokens: 800 });
+          currentAgent = (await Data.llmAgent.findById(agent.id))!;
         }
 
         // Emit agent_updated so UI stays in sync
@@ -1593,7 +1611,7 @@ const agentBusy = new Set<string>();
 const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
   stopAutopilotTimer(agent.id);
 
-  const intervalMs = Math.max(agent.autopilot_interval ?? 300, 2) * 1000;
+  const intervalMs = Math.max(agent.autopilot_interval ?? 300, 30) * 1000;
 
   console.log(`[Autopilot] Starting timer for ${agent.name} (every ${intervalMs / 1000}s)`);
 
@@ -1775,8 +1793,8 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       // Subtract 5s buffer to account for clock differences between Node and MySQL
       const healthCheckTime = new Date(Date.now() - 5000).toISOString().slice(0, 23).replace('T', ' ');
 
-      // Emit health check message (emitSystemMessage already persists to DB)
-      emitSystemMessage(io, roomName, 'Kara, system health check — please confirm you are online with a brief response.');
+      // Emit health check message — tell her to continue her work, not just confirm online
+      emitSystemMessage(io, roomName, `[System] ${kara.name}, server restart complete. Review your plan and continue where you left off. If you were mid-task, resume it. Brief status only if lunaprey is in the room.`);
 
       // Trigger Kara's response
       const freshKara = await Data.llmAgent.findById(kara.id);

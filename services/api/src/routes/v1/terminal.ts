@@ -1,4 +1,4 @@
-import { existsSync, createReadStream } from 'fs';
+import { existsSync, createReadStream, readFileSync } from 'fs';
 import { join } from 'path';
 
 import tracer from '../../../../../core/lib/tracer';
@@ -7,10 +7,18 @@ import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 
 const BIN_DIR = process.env.TERMINAL_AGENT_BIN_DIR || join(__dirname, '..', '..', '..', '..', '..', '..', 'packages', 'terminal-agent', 'bin');
 
-const PLATFORM_MAP: Record<string, { file: string; contentType: string }> = {
-  win: { file: 'commslink-agent-win.exe', contentType: 'application/octet-stream' },
-  linux: { file: 'commslink-agent-linux', contentType: 'application/octet-stream' },
-  macos: { file: 'commslink-agent-macos', contentType: 'application/octet-stream' },
+// Read version from package.json at startup
+let agentVersion = 'unknown';
+try {
+  const pkgPath = join(__dirname, '..', '..', '..', '..', '..', '..', 'packages', 'terminal-agent', 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+  agentVersion = pkg.version || 'unknown';
+} catch { /* ignore */ }
+
+const PLATFORM_MAP: Record<string, { file: string; ext: string; contentType: string }> = {
+  win: { file: 'commslink-agent-win.exe', ext: '.exe', contentType: 'application/octet-stream' },
+  linux: { file: 'commslink-agent-linux', ext: '', contentType: 'application/octet-stream' },
+  macos: { file: 'commslink-agent-macos', ext: '', contentType: 'application/octet-stream' },
 };
 
 const terminalRoutes: ServerRoute[] = [
@@ -40,7 +48,7 @@ const terminalRoutes: ServerRoute[] = [
         return h
           .response(createReadStream(filePath))
           .type(platformInfo.contentType)
-          .header('Content-Disposition', `attachment; filename="${platformInfo.file}"`);
+          .header('Content-Disposition', `attachment; filename="commslink-agent-v${agentVersion}-${platformKey}${platformInfo.ext}"`);
       }),
   },
   {
