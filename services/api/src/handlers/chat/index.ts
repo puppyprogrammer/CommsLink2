@@ -510,8 +510,10 @@ const buildSystemPrompt = (
   if (cmds.continue !== false) {
     actions.push(
       '=== EXTENDED THINKING ===\n' +
+      `Your current max loops: ${roomMaxLoops}.\n` +
       '{continue} - Request another thinking loop. Use this when you need more time to reason, run more commands, or chain multiple steps before responding. ' +
       'You get up to ' + roomMaxLoops + ' loops per turn. Each loop lets you think, run commands, and decide whether to continue or respond.\n' +
+      '{set_max_loops N} - Set the maximum thinking loops for this room (3-20). Use higher values when you need deep reasoning or multi-step tasks.\n' +
       'Example: {think}I need to check 3 machines{/think}{terminal alien4 status}{continue}\n' +
       'Use {continue} when: you have more commands to run, you need to process results before deciding, or your reasoning is not complete. ' +
       'Do NOT use {continue} when: you are ready to respond — just use {say} instead.',
@@ -701,6 +703,7 @@ const CLEAR_PLAN_REGEX = /\{clear_plan\}/g;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
+const SET_MAX_LOOPS_REGEX = /\{set_max_loops\s+(\d+)\}/g;
 // set_effort removed — model is pinned by room settings
 // Match both {think content here} and {think}content{/think} formats
 const THINK_REGEX = /\{think\s+([^}]+)\}/g;
@@ -732,7 +735,7 @@ const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
 const SAY_REGEX = /\{say\s+([^}]+)\}/g;
 const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
 const CONTINUE_REGEX = /\{continue\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+[^}]+)?\}|\{\/(?:think|say)\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+[^}]+)?\}|\{\/(?:think|say)\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -820,7 +823,7 @@ const runAgentResponse = async (
     const effortOn = roomRecord?.cmd_effort_enabled ?? true;
     const auditOn = roomRecord?.cmd_audit_enabled ?? true;
     const continueOn = roomRecord?.cmd_continue_enabled ?? true;
-    const maxLoops = roomRecord?.max_loops ?? 5;
+    let maxLoops = roomRecord?.max_loops ?? 5;
 
     const masterSummary = memoryOn ? await Data.memorySummary.findMasterByRoom(roomId) : null;
     const masterContent = memCmdOn ? masterSummary?.content : undefined;
@@ -882,6 +885,7 @@ const runAgentResponse = async (
       const setIntervalMatches = autopilotCtrlOn ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)] : [];
       const toggleAutoMatches = autopilotCtrlOn ? [...responseText.matchAll(TOGGLE_AUTOPILOT_REGEX)] : [];
       const setTokensMatches = tokensOn ? [...responseText.matchAll(SET_TOKENS_REGEX)] : [];
+      const setMaxLoopsMatches = continueOn ? [...responseText.matchAll(SET_MAX_LOOPS_REGEX)] : [];
       const setEffortMatches: RegExpMatchArray[] = [];
       const searchMatches = webOn ? [...responseText.matchAll(SEARCH_REGEX), ...responseText.matchAll(SEARCH_XML_REGEX)] : [];
       const browseMatches = webOn ? [...responseText.matchAll(BROWSE_REGEX), ...responseText.matchAll(BROWSE_XML_REGEX)] : [];
@@ -928,7 +932,7 @@ const runAgentResponse = async (
         alarmMatches.length + volumeMatches.length +
         listUsersMatches.length +
         kickMatches.length + banMatches.length + unbanMatches.length +
-        continueMatches.length > 0;
+        continueMatches.length + setMaxLoopsMatches.length > 0;
 
       if (!hasAnyCommand) break;
 
@@ -1041,6 +1045,18 @@ const runAgentResponse = async (
         if (continueMatches.length > 0) {
           emitSystemMessage(io, roomName, `[${agent.name} continues thinking... (loop ${loopCount + 1}/${maxLoops})]`);
           toolResults.push(`Continuing — loop ${loopCount + 1} of ${maxLoops}.`);
+        }
+
+        // Process {set_max_loops N} — agent adjusts max thinking loops for this room
+        if (setMaxLoopsMatches.length > 0) {
+          const value = parseInt(setMaxLoopsMatches[setMaxLoopsMatches.length - 1][1], 10);
+          const clamped = Math.max(3, Math.min(20, value));
+          await Data.room.updateCommandSettings(roomId, { max_loops: clamped });
+          maxLoops = clamped;
+          emitSystemMessage(io, roomName, `[${agent.name} set max thinking loops to ${clamped}]`);
+          toolResults.push(`Max thinking loops set to ${clamped}.`);
+          // Notify UI
+          io.to(roomName).emit('room_commands_updated', { maxLoops: clamped });
         }
 
         // Auto-token-boost: if agent used expensive commands, raise tokens for next cycle
