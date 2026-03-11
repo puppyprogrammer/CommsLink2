@@ -9,3 +9,4 @@ packages/terminal-agent/bin/
 *.exe
 .commslink-agent.json
 .env.production
+.claude/
