@@ -59,14 +59,6 @@ const calculateElevenLabsCredits = (
 };
 
 /**
- * Monthly subscription: $9.99 for 750 credits.
- */
-const SUBSCRIPTION = {
-  priceUsd: 9.99,
-  monthlyCredits: 750,
-} as const;
-
-/**
  * Credit top-up packs (one-time purchases).
  */
 const CREDIT_PACKS = [
@@ -79,7 +71,6 @@ export {
   MARGIN,
   GROK_PRICING,
   ELEVENLABS_COST_PER_CHAR,
-  SUBSCRIPTION,
   CREDIT_PACKS,
   usdToCredits,
   calculateGrokCredits,

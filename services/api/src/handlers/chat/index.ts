@@ -108,7 +108,7 @@ const executeClaudePrompt = (
   prompt: string,
   roomName: string,
   agentName: string,
-  timeoutMs = 180_000,
+  timeoutMs = 900_000,
   approved = false,
   machineName?: string,
 ): Promise<string> => {
@@ -154,7 +154,7 @@ const executeClaudePrompt = (
       cleanup();
       machineSocket.off(`claude_pty_response:${execId}`, handler);
       if (machineName) checkAndCleanStaleMachine(io, machineSocketId, machineName, roomName);
-      resolve('Error: Claude prompt timed out after 3 minutes.');
+      resolve('Error: Claude prompt timed out after 15 minutes.');
     }, timeoutMs);
 
     const handler = (data: { output: string; exitCode: number }) => {
@@ -594,6 +594,9 @@ const buildSystemPrompt = (
       '  {claude! machine_name prompt} - APPROVED mode: Claude has full permissions to read, write, edit files and run commands. Only use this when the user has explicitly approved the action.\n' +
       `${machineList}\n` +
       'Sessions are persistent — Claude Code remembers previous context within the same session.\n' +
+      'ASYNC: Claude prompts run in the background. When you send a prompt, you get "Prompt sent" immediately. Claude\'s response will appear later as a [Claude response] system message. ' +
+      'CRITICAL: After sending a {claude} prompt, you MUST WAIT for the [Claude response] to appear before sending another prompt to the same machine. ' +
+      'Do NOT send multiple prompts — Claude is already working. If you do not see a response yet, just wait silently. It can take up to 15 minutes for complex tasks.\n' +
       'WORKFLOW: First use {claude ...} (restricted) to have Claude analyze/plan. Review its response. If Claude says it needs permission to make changes, ask the user for approval. If approved, use {claude! ...} to execute.\n' +
       'IMPORTANT: Use the exact machine name from the list above. Do NOT guess machine names.\n' +
       'IMPORTANT: NEVER use {claude! ...} (approved mode) without the user explicitly saying to go ahead.',
@@ -698,7 +701,9 @@ const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
 // set_effort removed — model is pinned by room settings
+// Match both {think content here} and {think}content{/think} formats
 const THINK_REGEX = /\{think\s+([^}]+)\}/g;
+const THINK_XML_REGEX = /\{think\}([\s\S]*?)\{\/think\}/g;
 const AUDIT_REGEX = /\{audit\s+(\S+)\}/g;
 const SEARCH_REGEX = /\{search\s+([^}]+)\}/g;
 const BROWSE_REGEX = /\{browse\s+([^}]+)\}/g;
@@ -1252,13 +1257,20 @@ const runAgentResponse = async (
         // Use room+machine as session key for persistent sessions
         const sessionKey = `${roomId}:${machineName}`;
 
-        try {
-          const output = await executeClaudePrompt(io, machineRecord.socket_id, sessionKey, prompt, roomName, agent.name, 180_000, approved, machineName);
-          toolResults.push(`[Claude ${machineName}]:\n${output}`);
-          emitSystemMessage(io, roomName, `[Claude ${machineName} response]:\n${output.substring(0, 4000)}`);
-        } catch (err) {
-          toolResults.push(`[Claude error]: ${(err as Error).message}`);
-        }
+        // Fire Claude prompt asynchronously — don't block the agent response cycle.
+        // The result will appear as a system message when Claude finishes.
+        // The agent can react to it on the next autopilot cycle.
+        executeClaudePrompt(io, machineRecord.socket_id, sessionKey, prompt, roomName, agent.name, 900_000, approved, machineName)
+          .then((output) => {
+            if (!output.startsWith('Error:')) {
+              // Response already emitted by executeClaudePrompt — just log
+              console.log(`[Claude async] ${machineName} completed: ${output.length} chars`);
+            }
+          })
+          .catch((err) => {
+            emitSystemMessage(io, roomName, `[Claude error on ${machineName}]: ${(err as Error).message}`);
+          });
+        toolResults.push(`[Claude ${machineName}]: Prompt sent — response will appear when ready.`);
       }
 
       // Process audit commands
@@ -1516,15 +1528,30 @@ const runAgentResponse = async (
 
     // Extract and log {think} commands before stripping — these become silent system messages (no TTS)
     if (thinkOn) {
-      const thinkMatches = [...responseText.matchAll(THINK_REGEX)];
+      // Handle both {think content} and {think}content{/think} formats
+      const thinkMatches = [...responseText.matchAll(THINK_REGEX), ...responseText.matchAll(THINK_XML_REGEX)];
       for (const m of thinkMatches) {
         const thought = m[1].trim().substring(0, 1000);
-        emitSystemMessage(io, roomName, `[${agent.name} thought: ${thought}]`);
+        if (thought) {
+          emitSystemMessage(io, roomName, `[${agent.name} thought: ${thought}]`);
+        }
       }
+      // Strip both think formats before command stripping
+      responseText = responseText.replace(THINK_XML_REGEX, '').replace(THINK_REGEX, '');
+      // Also strip orphaned {/think} closing tags
+      responseText = responseText.replace(/\{\/think\}/g, '');
     }
 
     // Strip all commands from the final response
     responseText = responseText.replace(ALL_COMMAND_REGEX, '').trim().substring(0, 2000);
+
+    // Detect leaked think content — if the spoken output looks like internal reasoning, suppress it
+    const leakedThinkPattern = /^(OBSERVE:|THINK:|ACT:|INTERVAL:|Phase \d|Highest value:|Next:|Plan:|Server restart|Autopilot \d|No lunaprey|Room idle|Stay silent|Continue PHASE|Lunaprey (active|corrected|back)|Claude (still|prompt|output)|for growth ideas)/i;
+    if (leakedThinkPattern.test(responseText.trim())) {
+      // Log as thought instead of speaking
+      emitSystemMessage(io, roomName, `[${agent.name} thought: ${responseText.trim().substring(0, 1000)}]`);
+      responseText = '';
+    }
 
     const namePrefix = new RegExp(`^${agent.name}:\\s*`, 'i');
     responseText = responseText.replace(namePrefix, '');

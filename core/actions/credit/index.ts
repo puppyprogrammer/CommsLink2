@@ -1,5 +1,5 @@
 import Data from '../../data';
-import { calculateGrokCredits, calculateElevenLabsCredits, SUBSCRIPTION } from '../../constants/creditRates';
+import { calculateGrokCredits, calculateElevenLabsCredits } from '../../constants/creditRates';
 
 /**
  * Check if a user has enough credits for an estimated operation.
@@ -88,27 +88,6 @@ const chargeElevenLabsUsage = async (
 };
 
 /**
- * Grant monthly subscription credits.
- */
-const grantMonthlyCredits = async (
-  userId: string,
-): Promise<{ credits: number; newBalance: number }> => {
-  const credits = SUBSCRIPTION.monthlyCredits;
-
-  const updated = await Data.user.addCredits(userId, credits);
-
-  await Data.creditTransaction.create({
-    user_id: userId,
-    amount: credits,
-    balance_after: updated.credit_balance,
-    type: 'subscription',
-    description: 'Monthly credit grant',
-  });
-
-  return { credits, newBalance: updated.credit_balance };
-};
-
-/**
  * Grant credits from a top-up purchase.
  */
 const grantTopUpCredits = async (
@@ -139,9 +118,6 @@ const getCreditStatus = async (userId: string) => {
 
   return {
     balance: user.credit_balance,
-    isSubscribed: user.is_premium,
-    monthlyCredits: SUBSCRIPTION.monthlyCredits,
-    billingCycleStart: user.billing_cycle_start,
   };
 };
 
@@ -149,7 +125,6 @@ export default {
   hasCredits,
   chargeGrokUsage,
   chargeElevenLabsUsage,
-  grantMonthlyCredits,
   grantTopUpCredits,
   getCreditStatus,
 };

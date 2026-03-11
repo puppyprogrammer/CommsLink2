@@ -7,31 +7,6 @@ const getStripe = (): Stripe => {
 };
 
 /**
- * Create a Stripe checkout session for a monthly subscription.
- */
-const createCheckoutSession = async (
-  userId: string,
-  email: string,
-  username: string,
-): Promise<Stripe.Checkout.Session> => {
-  const stripe = getStripe();
-  const priceId = process.env.STRIPE_PRICE_ID;
-  if (!priceId) throw new Error('STRIPE_PRICE_ID environment variable is required');
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-
-  return stripe.checkout.sessions.create({
-    payment_method_types: ['card'],
-    line_items: [{ price: priceId, quantity: 1 }],
-    mode: 'subscription',
-    success_url: `${clientUrl}?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: clientUrl,
-    customer_email: email,
-    client_reference_id: userId,
-    metadata: { userId, username },
-  });
-};
-
-/**
  * Create a Stripe checkout session for a one-time credit top-up.
  */
 const createTopUpCheckout = async (
@@ -67,21 +42,6 @@ const createTopUpCheckout = async (
 };
 
 /**
- * Create a billing portal session.
- */
-const createCustomerPortalSession = async (
-  stripeCustomerId: string,
-): Promise<Stripe.BillingPortal.Session> => {
-  const stripe = getStripe();
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-
-  return stripe.billingPortal.sessions.create({
-    customer: stripeCustomerId,
-    return_url: clientUrl,
-  });
-};
-
-/**
  * Verify and construct a webhook event.
  */
 const constructWebhookEvent = (body: Buffer, signature: string): Stripe.Event => {
@@ -93,8 +53,6 @@ const constructWebhookEvent = (body: Buffer, signature: string): Stripe.Event =>
 };
 
 export default {
-  createCheckoutSession,
   createTopUpCheckout,
-  createCustomerPortalSession,
   constructWebhookEvent,
 };

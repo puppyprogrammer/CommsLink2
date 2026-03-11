@@ -2,7 +2,6 @@ import Joi from 'joi';
 import Boom from '@hapi/boom';
 import tracer from '../../../../../core/lib/tracer';
 
-import createCheckoutAction from '../../../../../core/actions/payment/createCheckoutAction';
 import handleWebhookAction from '../../../../../core/actions/payment/handleWebhookAction';
 import stripeAdapter from '../../../../../core/adapters/stripe';
 import Data from '../../../../../core/data';
@@ -12,20 +11,6 @@ import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
 
 const paymentRoutes: ServerRoute[] = [
-  {
-    method: 'POST',
-    path: '/api/v1/payment/create-checkout',
-    options: { auth: 'jwt' },
-    handler: async (request: Request, h: ResponseToolkit) =>
-      tracer.trace('CONTROLLER.PAYMENT.CREATE_CHECKOUT', async () => {
-        const credentials = request.auth.credentials as unknown as AuthCredentials;
-        return createCheckoutAction({
-          userId: credentials.id,
-          email: credentials.email || `${credentials.username}@commslink.local`,
-          username: credentials.username,
-        });
-      }),
-  },
   {
     method: 'POST',
     path: '/api/v1/payment/buy-credits',
@@ -82,23 +67,6 @@ const paymentRoutes: ServerRoute[] = [
       }),
   },
   {
-    method: 'POST',
-    path: '/api/v1/payment/portal',
-    options: { auth: 'jwt' },
-    handler: async (request: Request, h: ResponseToolkit) =>
-      tracer.trace('CONTROLLER.PAYMENT.CREATE_PORTAL', async () => {
-        const credentials = request.auth.credentials as unknown as AuthCredentials;
-        const user = await Data.user.findById(credentials.id);
-
-        if (!user?.stripe_customer_id) {
-          throw Boom.badRequest('No subscription found');
-        }
-
-        const session = await stripeAdapter.createCustomerPortalSession(user.stripe_customer_id);
-        return { url: session.url };
-      }),
-  },
-  {
     method: 'GET',
     path: '/api/v1/payment/status',
     options: { auth: 'jwt' },
@@ -108,8 +76,6 @@ const paymentRoutes: ServerRoute[] = [
         const user = await Data.user.findById(credentials.id);
 
         return {
-          isPremium: user?.is_premium ?? false,
-          expiresAt: user?.premium_expires_at ?? null,
           creditBalance: user?.credit_balance ?? 0,
         };
       }),
