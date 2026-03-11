@@ -2715,7 +2715,17 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       console.log(`[Machine] ${socket.user.username}/${machineName} registered (${data.os || 'unknown OS'}, v${data.version || 'unknown'})`);
 
       // Check agent version and request update if outdated
-      if (data.version && expectedAgentVersion !== 'unknown' && data.version !== expectedAgentVersion) {
+      // Only request update if server version is NEWER (not equal or older)
+      const isNewer = (server: string, client: string): boolean => {
+        const s = server.split('.').map(Number);
+        const c = client.split('.').map(Number);
+        for (let i = 0; i < Math.max(s.length, c.length); i++) {
+          if ((s[i] || 0) > (c[i] || 0)) return true;
+          if ((s[i] || 0) < (c[i] || 0)) return false;
+        }
+        return false;
+      };
+      if (data.version && expectedAgentVersion !== 'unknown' && isNewer(expectedAgentVersion, data.version)) {
         const osStr = (data.os || '').toLowerCase();
         const agentPlatform = osStr.includes('win32') ? 'win' : osStr.includes('darwin') ? 'macos' : 'linux';
         const serverUrl = process.env.CLIENT_URL || 'https://commslink.net';
