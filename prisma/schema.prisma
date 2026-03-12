@@ -333,25 +333,26 @@ model claude_log {
   @@index([created_at])
 }
 
-enum WatchlistStatus {
+enum WatchStatus {
   UNWATCHED
   WATCHED
 }
 
 model watchlist_item {
-  id            String          @id @default(uuid())
-  user_id       String
-  video_id      String
-  title         String
-  channel_title String?
-  thumbnail_url String?
-  duration      String?
-  status        WatchlistStatus @default(UNWATCHED)
-  added_at      DateTime        @default(now())
-  updated_at    DateTime        @updatedAt
+  id        String      @id @default(uuid())
+  user_id   String
+  video_id  String      @unique
+  title     String?
+  channel   String?
+  thumbnail String?
+  duration  String?
+  status    WatchStatus @default(UNWATCHED)
+  added_at  DateTime    @default(now())
+  updated_at DateTime   @updatedAt
 
   user user @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@unique([user_id, video_id])
-  @@index([user_id, status])
+  @@map("watchlist_items")
+  @@index([user_id])
+  @@index([status])
 }
