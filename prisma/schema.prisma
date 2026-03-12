@@ -44,6 +44,7 @@ model user {
   scheduled_jobs       scheduled_job[]
   room_memberships         room_member[]
   payment_transactions     payment_transaction[]
+  watchlist_items          watchlist_item[]
 
   @@index([stripe_customer_id])
   @@index([username])
@@ -330,4 +331,27 @@ model claude_log {
 
   @@index([session_key])
   @@index([created_at])
+}
+
+enum WatchlistStatus {
+  UNWATCHED
+  WATCHED
+}
+
+model watchlist_item {
+  id            String          @id @default(uuid())
+  user_id       String
+  video_id      String
+  title         String
+  channel_title String?
+  thumbnail_url String?
+  duration      String?
+  status        WatchlistStatus @default(UNWATCHED)
+  added_at      DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+
+  user user @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, video_id])
+  @@index([user_id, status])
 }

@@ -7,9 +7,10 @@ import jwtHelper from '../../../../../core/helpers/jwt';
 import passwordHelper from '../../../../../core/helpers/password';
 import broadcastMessageAction from '../../../../../core/actions/chat/broadcastMessageAction';
 import creditActions from '../../../../../core/actions/credit';
-import grokAdapter from '../../../../../core/adapters/grok';
+import grokAdapter, { type ToolDefinition } from '../../../../../core/adapters/grok';
 import voiceQueue from '../../../../../core/adapters/redis/voiceQueue';
 import summarizeAction from '../../../../../core/actions/memory/summarizeAction';
+import watchlistActions from '../../../../../core/actions/watchlist';
 import webAdapter from '../../../../../core/adapters/web';
 import prisma from '../../../../../core/adapters/prisma';
 import dayjs from '../../../../../core/lib/dayjs';
@@ -152,7 +153,7 @@ const executeClaudePrompt = (
       clearTimeout(timer);
       console.log(`[claude_prompt] Got claude_pty_response for ${execId}: ${data.output.length} chars, exit=${data.exitCode}`);
       // Post Claude's response as a system message so AI and room can see it
-      emitSystemMessage(io, roomName, `[Claude ${agentName} response]:\n${data.output.substring(0, 4000)}`);
+      emitSystemMessage(io, roomName, `[Claude ${agentName} response]:\n${data.output.substring(0, 4000)}`, undefined, 'tool-result');
       resolve(data.output.substring(0, 16000));
     };
 
@@ -278,7 +279,7 @@ const formatHistoryForClient = (messages: Array<Record<string, unknown>>): Array
     ...(m.type === 'ai' ? { isAI: true } : {}),
   }));
 
-const emitSystemMessage = (io: SocketServer, roomName: string, text: string, collapsible?: string): void => {
+const emitSystemMessage = (io: SocketServer, roomName: string, text: string, collapsible?: string, systemType?: string): void => {
   const msgId = `sys-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   io.to(roomName).emit('chat_message', {
     id: msgId,
@@ -287,6 +288,7 @@ const emitSystemMessage = (io: SocketServer, roomName: string, text: string, col
     timestamp: new Date().toISOString(),
     isSystem: true,
     ...(collapsible ? { collapsible } : {}),
+    ...(systemType ? { systemType } : {}),
   });
 
   // Persist so system messages survive restart and appear in AI context
@@ -348,13 +350,32 @@ const loadPersistedRooms = async (): Promise<void> => {
 // │ Shared: Agent Response Logic            │
 // └──────────────────────────────────────────┘
 
-const parseJsonList = (raw: string | null): string[] => {
+type ListItem = { text: string; locked: boolean };
+
+/** Parse a JSON TEXT column into ListItem[]. Handles plain string arrays (legacy) and object arrays. */
+const parseJsonList = (raw: string | null): ListItem[] => {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: unknown) => {
+        if (typeof item === 'string') return { text: item, locked: false };
+        if (item && typeof item === 'object' && 'text' in item) {
+          const obj = item as { text: string; locked?: boolean };
+          return { text: obj.text, locked: !!obj.locked };
+        }
+        return { text: String(item), locked: false };
+      });
+    }
   } catch { /* legacy single string */ }
-  return raw.trim() ? [raw.trim()] : [];
+  return raw.trim() ? [{ text: raw.trim(), locked: false }] : [];
+};
+
+/** Convert ListItem[] to display strings for prompt building. Locked items get [LOCKED] prefix. */
+const listItemsToStrings = (items: ListItem[], markLocked = true): string[] => {
+  // Sort locked items first (they take priority)
+  const sorted = [...items].sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
+  return sorted.map((i) => (markLocked && i.locked ? `[LOCKED] ${i.text}` : i.text));
 };
 
 type AgentLike = {
@@ -374,6 +395,500 @@ type AgentLike = {
 };
 
 /**
+ * Build Grok tool definitions based on which commands are enabled for this agent.
+ * These let Grok use structured function calling instead of fragile brace syntax.
+ */
+const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): ToolDefinition[] => {
+  const tools: ToolDefinition[] = [];
+
+  // Always available: think and say (core output)
+  if (cmds.think !== false) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'think',
+        description: 'Log an internal thought silently. No voice is generated. Use for all reasoning, planning, and processing.',
+        parameters: { type: 'object', properties: { thought: { type: 'string', description: 'Your internal reasoning' } }, required: ['thought'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'say',
+        description: 'Speak aloud to the room. This generates voice/TTS. Use ONLY for user-facing messages.',
+        parameters: { type: 'object', properties: { message: { type: 'string', description: 'The message to speak aloud' } }, required: ['message'] },
+      },
+    });
+  }
+
+  if (cmds.terminal) {
+    const machineDesc = onlineMachines && onlineMachines.length > 0
+      ? `Online machines: ${onlineMachines.join(', ')}`
+      : 'No machines currently online.';
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'terminal',
+        description: `Execute a shell command on a connected machine. ${machineDesc}`,
+        parameters: {
+          type: 'object',
+          properties: {
+            machine: { type: 'string', description: 'Exact machine name from the online list' },
+            command: { type: 'string', description: 'Shell command to execute' },
+          },
+          required: ['machine', 'command'],
+        },
+      },
+    });
+  }
+
+  if (cmds.claude) {
+    const machineDesc = onlineMachines && onlineMachines.length > 0
+      ? `Online machines: ${onlineMachines.join(', ')}`
+      : 'No machines currently online.';
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'claude',
+        description: `Send a prompt to Claude Code on a connected machine. Use for complex coding tasks, file analysis, etc. ${machineDesc}`,
+        parameters: {
+          type: 'object',
+          properties: {
+            machine: { type: 'string', description: 'Exact machine name from the online list' },
+            prompt: { type: 'string', description: 'The full prompt to send to Claude Code. Can contain code, JSON, regex, etc.' },
+            approved: { type: 'boolean', description: 'Set true to pre-approve (skip safety check). Default false.' },
+          },
+          required: ['machine', 'prompt'],
+        },
+      },
+    });
+  }
+
+  if (cmds.web) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'search',
+        description: 'Search the web via Brave search.',
+        parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query' } }, required: ['query'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'browse',
+        description: 'Open a web page and extract its text content.',
+        parameters: { type: 'object', properties: { url: { type: 'string', description: 'URL to browse' } }, required: ['url'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'screenshot',
+        description: 'Take a visual screenshot of a web page.',
+        parameters: { type: 'object', properties: { url: { type: 'string', description: 'URL to screenshot' } }, required: ['url'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'find',
+        description: 'Search within the currently loaded page for specific text.',
+        parameters: { type: 'object', properties: { text: { type: 'string', description: 'Text to search for on the page' } }, required: ['text'] },
+      },
+    });
+  }
+
+  if (cmds.selfmod !== false) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'add_memory',
+        description: 'Save something you want to remember.',
+        parameters: { type: 'object', properties: { text: { type: 'string', description: 'Memory content' } }, required: ['text'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'remove_memory',
+        description: 'Remove a memory by exact text match. LOCKED items cannot be removed.',
+        parameters: { type: 'object', properties: { text: { type: 'string', description: 'Exact memory text to remove' } }, required: ['text'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'add_instruction',
+        description: 'Add a new instruction for yourself.',
+        parameters: { type: 'object', properties: { text: { type: 'string', description: 'Instruction content' } }, required: ['text'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'remove_instruction',
+        description: 'Remove an instruction by exact text match. LOCKED items cannot be removed.',
+        parameters: { type: 'object', properties: { text: { type: 'string', description: 'Exact instruction text to remove' } }, required: ['text'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'add_autopilot',
+        description: 'Add a new autopilot prompt.',
+        parameters: { type: 'object', properties: { text: { type: 'string', description: 'Autopilot prompt content' } }, required: ['text'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'remove_autopilot',
+        description: 'Remove an autopilot prompt by exact text match. LOCKED items cannot be removed.',
+        parameters: { type: 'object', properties: { text: { type: 'string', description: 'Exact autopilot prompt text to remove' } }, required: ['text'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'set_plan',
+        description: 'Set or replace your current plan.',
+        parameters: { type: 'object', properties: { plan: { type: 'string', description: 'Your multi-step plan' } }, required: ['plan'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'clear_plan',
+        description: 'Clear your current plan when complete.',
+        parameters: { type: 'object', properties: {}, required: [] },
+      },
+    });
+  }
+
+  if (cmds.autopilotCtrl !== false) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'toggle_autopilot',
+        description: 'Enable or disable autopilot mode.',
+        parameters: { type: 'object', properties: { enabled: { type: 'string', enum: ['on', 'off'], description: 'on or off' } }, required: ['enabled'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'set_autopilot_interval',
+        description: 'Set autopilot interval in seconds (30-86400).',
+        parameters: { type: 'object', properties: { seconds: { type: 'number', description: 'Interval in seconds (30-86400)' } }, required: ['seconds'] },
+      },
+    });
+  }
+
+  if (cmds.tokens !== false) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'set_tokens',
+        description: 'Set your response token budget (1500-4000). Set to 4000 before sending claude prompts.',
+        parameters: { type: 'object', properties: { tokens: { type: 'number', description: 'Token budget (1500-4000)' } }, required: ['tokens'] },
+      },
+    });
+  }
+
+  if (cmds.recall) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'recall',
+        description: 'Retrieve a memory summary by reference name.',
+        parameters: { type: 'object', properties: { ref: { type: 'string', description: 'Reference name from [ref:xxx] tags' } }, required: ['ref'] },
+      },
+    });
+  }
+
+  if (cmds.sql) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'sql',
+        description: 'Run a read-only MySQL query on room messages. Columns: content, type, username, created_at. Table: message.',
+        parameters: { type: 'object', properties: { query: { type: 'string', description: 'SELECT query (room_id filter applied automatically)' } }, required: ['query'] },
+      },
+    });
+  }
+
+  if (cmds.schedule !== false) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'schedule',
+        description: 'Schedule a one-time reminder.',
+        parameters: {
+          type: 'object',
+          properties: {
+            time: { type: 'string', description: 'ISO datetime: YYYY-MM-DDTHH:mm' },
+            message: { type: 'string', description: 'Reminder message' },
+          },
+          required: ['time', 'message'],
+        },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'schedule_recurring',
+        description: 'Schedule a recurring reminder.',
+        parameters: {
+          type: 'object',
+          properties: {
+            time: { type: 'string', description: 'Time in HH:mm format' },
+            frequency: { type: 'string', enum: ['daily', 'weekly', 'weekdays', 'monthly'], description: 'Recurrence pattern' },
+            message: { type: 'string', description: 'Reminder message' },
+          },
+          required: ['time', 'frequency', 'message'],
+        },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'list_schedules',
+        description: 'List all active schedules.',
+        parameters: { type: 'object', properties: {}, required: [] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'cancel_schedule',
+        description: 'Cancel schedules whose message contains the search text.',
+        parameters: { type: 'object', properties: { search: { type: 'string', description: 'Text to match in schedule messages' } }, required: ['search'] },
+      },
+    });
+  }
+
+  if (cmds.continue !== false) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'continue_loop',
+        description: 'Request another thinking loop to run more commands before responding.',
+        parameters: { type: 'object', properties: {}, required: [] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'set_max_loops',
+        description: 'Set maximum thinking loops for this room (3-20).',
+        parameters: { type: 'object', properties: { loops: { type: 'number', description: 'Max loops (3-20)' } }, required: ['loops'] },
+      },
+    });
+  }
+
+  if (cmds.moderation) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'list_users',
+        description: 'List all users currently in the room.',
+        parameters: { type: 'object', properties: {}, required: [] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'kick',
+        description: 'Kick a user from this room.',
+        parameters: { type: 'object', properties: { username: { type: 'string', description: 'Username to kick' } }, required: ['username'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'ban',
+        description: 'Ban a user from this room.',
+        parameters: { type: 'object', properties: { username: { type: 'string', description: 'Username to ban' } }, required: ['username'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'unban',
+        description: 'Unban a previously banned user.',
+        parameters: { type: 'object', properties: { username: { type: 'string', description: 'Username to unban' } }, required: ['username'] },
+      },
+    });
+  }
+
+  if (cmds.audit) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'audit',
+        description: 'View recent AI usage and credit spending.',
+        parameters: { type: 'object', properties: { scope: { type: 'string', description: 'What to audit (e.g. "credits", "usage")' } }, required: ['scope'] },
+      },
+    });
+  }
+
+  return tools;
+};
+
+/**
+ * Convert structured tool_calls from Grok into brace-format commands
+ * that the existing regex processing loop can handle.
+ */
+const toolCallsToBraceFormat = (toolCalls: Array<{ function: { name: string; arguments: string } }>): string => {
+  const parts: string[] = [];
+  for (const tc of toolCalls) {
+    const name = tc.function.name;
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(tc.function.arguments);
+    } catch { continue; }
+
+    switch (name) {
+      case 'think':
+        parts.push(`{think}${args.thought || ''}{/think}`);
+        break;
+      case 'say':
+        parts.push(`{say}${args.message || ''}{/say}`);
+        break;
+      case 'terminal':
+        parts.push(`{terminal ${args.machine} ${String(args.command).replace(/\n/g, ' ')}}`);
+        break;
+      case 'claude': {
+        // Collapse newlines — brace format is single-line, CLAUDE_REGEX uses .+ which doesn't match \n
+        const prompt = String(args.prompt).replace(/\n/g, ' ');
+        parts.push(`{claude${args.approved ? '!' : ''} ${args.machine} ${prompt}}`);
+        break;
+      }
+      case 'search':
+        parts.push(`{search ${args.query}}`);
+        break;
+      case 'browse':
+        parts.push(`{browse ${args.url}}`);
+        break;
+      case 'screenshot':
+        parts.push(`{screenshot ${args.url}}`);
+        break;
+      case 'find':
+        parts.push(`{find ${args.text}}`);
+        break;
+      case 'add_memory':
+        parts.push(`{add_memory ${String(args.text).replace(/\n/g, ' ')}}`);
+        break;
+      case 'remove_memory':
+        parts.push(`{remove_memory ${String(args.text).replace(/\n/g, ' ')}}`);
+        break;
+      case 'add_instruction':
+        parts.push(`{add_instruction ${String(args.text).replace(/\n/g, ' ')}}`);
+        break;
+      case 'remove_instruction':
+        parts.push(`{remove_instruction ${String(args.text).replace(/\n/g, ' ')}}`);
+        break;
+      case 'add_autopilot':
+        parts.push(`{add_autopilot ${String(args.text).replace(/\n/g, ' ')}}`);
+        break;
+      case 'remove_autopilot':
+        parts.push(`{remove_autopilot ${String(args.text).replace(/\n/g, ' ')}}`);
+        break;
+      case 'set_plan':
+        parts.push(`{set_plan ${String(args.plan).replace(/\n/g, ' ')}}`);
+        break;
+      case 'clear_plan':
+        parts.push('{clear_plan}');
+        break;
+      case 'toggle_autopilot':
+        parts.push(`{toggle_autopilot ${args.enabled}}`);
+        break;
+      case 'set_autopilot_interval':
+        parts.push(`{set_autopilot_interval ${args.seconds}}`);
+        break;
+      case 'set_tokens':
+        parts.push(`{set_tokens ${args.tokens}}`);
+        break;
+      case 'recall':
+        parts.push(`{recall ${args.ref}}`);
+        break;
+      case 'sql':
+        parts.push(`{sql ${args.query}}`);
+        break;
+      case 'schedule':
+        parts.push(`{schedule ${args.time} ${args.message}}`);
+        break;
+      case 'schedule_recurring':
+        parts.push(`{schedule_recurring ${args.time} ${args.frequency} ${args.message}}`);
+        break;
+      case 'list_schedules':
+        parts.push('{list_schedules}');
+        break;
+      case 'cancel_schedule':
+        parts.push(`{cancel_schedule ${args.search}}`);
+        break;
+      case 'continue_loop':
+        parts.push('{continue}');
+        break;
+      case 'set_max_loops':
+        parts.push(`{set_max_loops ${args.loops}}`);
+        break;
+      case 'list_users':
+        parts.push('{list_users}');
+        break;
+      case 'kick':
+        parts.push(`{kick ${args.username}}`);
+        break;
+      case 'ban':
+        parts.push(`{ban ${args.username}}`);
+        break;
+      case 'unban':
+        parts.push(`{unban ${args.username}}`);
+        break;
+      case 'audit':
+        parts.push(`{audit ${args.scope}}`);
+        break;
+      default:
+        break;
+    }
+  }
+  return parts.join('\n');
+};
+
+/**
+ * Collapse newlines inside multi-line {claude ...} commands in text.
+ * Uses brace-depth tracking to handle prompts containing { } characters (JSON, code, etc).
+ * Without this, CLAUDE_REGEX (.+ which doesn't match \n) fails on multi-line prompts.
+ */
+const collapseClaudeNewlines = (text: string): string => {
+  const result: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const claudeStart = text.indexOf('{claude', i);
+    if (claudeStart === -1) {
+      result.push(text.slice(i));
+      break;
+    }
+    result.push(text.slice(i, claudeStart));
+    let depth = 0;
+    let j = claudeStart;
+    while (j < text.length) {
+      if (text[j] === '{') depth++;
+      if (text[j] === '}') {
+        depth--;
+        if (depth === 0) break;
+      }
+      j++;
+    }
+    const span = text.slice(claudeStart, j + 1);
+    result.push(span.replace(/\n/g, ' '));
+    i = j + 1;
+  }
+  return result.join('');
+};
+
+/**
  * Build the system prompt for an agent, optionally with extra autopilot context.
  */
 type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean; moderation?: boolean; think?: boolean; effort?: boolean; audit?: boolean; continue?: boolean };
@@ -386,9 +901,12 @@ const buildSystemPrompt = (
   roomMaxLoops = 5,
   onlineMachines?: string[],
 ): string => {
-  const instructionLines = parseJsonList(agent.system_instructions);
-  const memoryLines = parseJsonList(agent.memories);
-  const autopilotLines = parseJsonList(agent.autopilot_prompts);
+  const instructionItems = parseJsonList(agent.system_instructions);
+  const memoryItems = parseJsonList(agent.memories);
+  const autopilotItems = parseJsonList(agent.autopilot_prompts);
+  const instructionLines = listItemsToStrings(instructionItems);
+  const memoryLines = listItemsToStrings(memoryItems);
+  const autopilotLines = listItemsToStrings(autopilotItems);
 
   const parts: string[] = [
     `You are ${agent.name}, an AI assistant in a chat room.`,
@@ -438,13 +956,14 @@ const buildSystemPrompt = (
   if (cmds.selfmod !== false) {
     actions.push(
       '=== SELF-MODIFICATION ===\n' +
-      'You can edit your own memories, instructions, and autopilot prompts. Use these to grow, learn, and adapt.\n\n' +
+      'You can edit your own memories, instructions, and autopilot prompts. Use these to grow, learn, and adapt.\n' +
+      'Items marked [LOCKED] were set by your creator and cannot be removed by you.\n\n' +
       '{add_memory text} - Save something you want to remember (about users, preferences, events, etc.)\n' +
-      '{remove_memory text} - Remove a memory (exact match of the text to remove)\n' +
+      '{remove_memory text} - Remove a memory (exact match). [LOCKED] items cannot be removed.\n' +
       '{add_instruction text} - Add a new instruction for yourself\n' +
-      '{remove_instruction text} - Remove an instruction (exact match)\n' +
+      '{remove_instruction text} - Remove an instruction (exact match). [LOCKED] items cannot be removed.\n' +
       '{add_autopilot text} - Add a new autopilot prompt (things to think about during scheduled runs)\n' +
-      '{remove_autopilot text} - Remove an autopilot prompt (exact match)\n' +
+      '{remove_autopilot text} - Remove an autopilot prompt (exact match). [LOCKED] items cannot be removed.\n' +
       '{set_plan text} - Set or replace your current plan (a holistic multi-step plan you are working on)\n' +
       '{clear_plan} - Clear your plan when it is complete',
     );
@@ -708,13 +1227,16 @@ const SET_MAX_LOOPS_REGEX = /\{set_max_loops\s+(\d+)\}/g;
 // Match both {think content here} and {think}content{/think} formats
 const THINK_REGEX = /\{think\s+([^}]+)\}/g;
 const THINK_XML_REGEX = /\{think\}([\s\S]*?)\{\/think\}/g;
+const THINK_HTML_REGEX = /<think>([\s\S]*?)<\/think>/g;
 const AUDIT_REGEX = /\{audit\s+(\S+)\}/g;
 const SEARCH_REGEX = /\{search\s+([^}]+)\}/g;
 const BROWSE_REGEX = /\{browse\s+([^}]+)\}/g;
 const FIND_REGEX = /\{find\s+([^}]+)\}/g;
 const SCREENSHOT_REGEX = /\{screenshot\s+([^}]+)\}/g;
 const TERMINAL_REGEX = /\{terminal\s+(\S+)\s+([^}]+)\}/g;
-const CLAUDE_REGEX = /\{claude(!?)\s+(\S+)\s+([^}]+)\}/g;
+// Greedy match per line: captures everything up to the last } on each line.
+// Handles prompts containing } chars (JSON, regex, code) without swallowing across commands.
+const CLAUDE_REGEX = /\{claude(!?)\s+(\S+)\s+(.+)\}/g;
 const CLAUDE_XML_REGEX = /<claude\s+(?:approved=["']true["']\s*)?(?:machine=["']([^"']+)["']\s*)?(?:prompt=["']([^"']+)["'][^>]*)?\/?>/gi;
 // XML-format fallbacks (Grok models often use XML tool-call style)
 const SEARCH_XML_REGEX = /<search(?:\s[^>]*)?>([^<]+)<\/search>/gi;
@@ -735,27 +1257,36 @@ const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
 const SAY_REGEX = /\{say\s+([^}]+)\}/g;
 const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
 const CONTINUE_REGEX = /\{continue\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+[^}]+)?\}|\{\/(?:think|say)\}|<(?:search|browse|find|screenshot|terminal|claude)[^>]*>(?:[^<]*<\/(?:search|browse|find|screenshot|terminal|claude)>)?)/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
 /**
  * Helper: add an item to a JSON list stored as a TEXT field.
+ * New items are always unlocked.
  */
 const addToJsonList = (raw: string | null, item: string): string => {
   const list = parseJsonList(raw);
-  list.push(item.trim());
+  list.push({ text: item.trim(), locked: false });
   return JSON.stringify(list);
 };
 
 /**
  * Helper: remove an item from a JSON list stored as a TEXT field.
+ * Returns { result, denied } — denied=true if the matching item is locked.
  */
-const removeFromJsonList = (raw: string | null, item: string): string | null => {
+const removeFromJsonList = (raw: string | null, item: string): { result: string | null; denied: boolean } => {
   const list = parseJsonList(raw);
   const trimmed = item.trim().toLowerCase();
-  const filtered = list.filter((l) => l.toLowerCase() !== trimmed);
-  return filtered.length > 0 ? JSON.stringify(filtered) : null;
+  const target = list.find((l) => l.text.toLowerCase() === trimmed);
+  if (target?.locked) {
+    return { result: raw, denied: true };
+  }
+  const filtered = list.filter((l) => l.text.toLowerCase() !== trimmed);
+  return {
+    result: filtered.length > 0 ? JSON.stringify(filtered) : null,
+    denied: false,
+  };
 };
 
 /**
@@ -853,8 +1384,20 @@ const runAgentResponse = async (
       continue: continueOn,
     }, maxLoops, onlineMachines);
 
-    const response = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, agentMaxTokens);
-    let responseText = response.text;
+    // Build structured tool definitions for Grok function calling
+    const cmdFlags: CommandFlags = {
+      recall: recallOn, sql: sqlOn, memory: memCmdOn, selfmod: selfmodOn,
+      autopilotCtrl: autopilotCtrlOn, web: webOn, terminal: terminalOn,
+      claude: claudeOn, schedule: scheduleOn, tokens: tokensOn,
+      moderation: moderationOn, think: thinkOn, effort: effortOn,
+      audit: auditOn, continue: continueOn,
+    };
+    const agentTools = buildToolDefinitions(cmdFlags, onlineMachines);
+
+    const response = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, agentMaxTokens, agentTools);
+    // Merge structured tool_calls into text so the existing regex loop processes them
+    const toolBrace = toolCallsToBraceFormat(response.toolCalls);
+    let responseText = toolBrace ? `${toolBrace}\n${response.text}` : response.text;
 
     creditActions.chargeGrokUsage(
       agent.creator_id,
@@ -892,6 +1435,10 @@ const runAgentResponse = async (
       const findMatches = webOn ? [...responseText.matchAll(FIND_REGEX), ...responseText.matchAll(FIND_XML_REGEX)] : [];
       const screenshotMatches = webOn ? [...responseText.matchAll(SCREENSHOT_REGEX), ...responseText.matchAll(SCREENSHOT_XML_REGEX)] : [];
       const terminalMatches = terminalOn ? [...responseText.matchAll(TERMINAL_REGEX), ...responseText.matchAll(TERMINAL_XML_REGEX)] : [];
+      // Fix multi-line {claude} commands: collapse newlines so CLAUDE_REGEX (.+) can match
+      if (claudeOn) {
+        responseText = collapseClaudeNewlines(responseText);
+      }
       // Fix common Grok mistake: {claude! machine} prompt text (prompt outside braces)
       // Rewrite to {claude! machine prompt text} before matching
       if (claudeOn) {
@@ -950,11 +1497,16 @@ const runAgentResponse = async (
         }
         for (const match of rmMemMatches) {
           const mem = match[1].trim();
-          const updated = removeFromJsonList(currentAgent.memories, mem);
-          await Data.llmAgent.update(agent.id, { memories: updated });
-          currentAgent = (await Data.llmAgent.findById(agent.id))!;
-          emitSystemMessage(io, roomName, `[${agent.name} removed memory: "${mem}"]`);
-          toolResults.push(`Memory removed: "${mem}"`);
+          const { result: updated, denied } = removeFromJsonList(currentAgent.memories, mem);
+          if (denied) {
+            emitSystemMessage(io, roomName, `[System] ${agent.name} tried to remove locked memory — denied.`);
+            toolResults.push(`Memory "${mem}" is locked and cannot be removed.`);
+          } else {
+            await Data.llmAgent.update(agent.id, { memories: updated });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+            emitSystemMessage(io, roomName, `[${agent.name} removed memory: "${mem}"]`);
+            toolResults.push(`Memory removed: "${mem}"`);
+          }
         }
         for (const match of addInstMatches) {
           const inst = match[1].trim();
@@ -966,11 +1518,16 @@ const runAgentResponse = async (
         }
         for (const match of rmInstMatches) {
           const inst = match[1].trim();
-          const updated = removeFromJsonList(currentAgent.system_instructions, inst);
-          await Data.llmAgent.update(agent.id, { system_instructions: updated });
-          currentAgent = (await Data.llmAgent.findById(agent.id))!;
-          emitSystemMessage(io, roomName, `[${agent.name} removed instruction: "${inst}"]`);
-          toolResults.push(`Instruction removed: "${inst}"`);
+          const { result: updated, denied } = removeFromJsonList(currentAgent.system_instructions, inst);
+          if (denied) {
+            emitSystemMessage(io, roomName, `[System] ${agent.name} tried to remove locked instruction — denied.`);
+            toolResults.push(`Instruction "${inst}" is locked and cannot be removed.`);
+          } else {
+            await Data.llmAgent.update(agent.id, { system_instructions: updated });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+            emitSystemMessage(io, roomName, `[${agent.name} removed instruction: "${inst}"]`);
+            toolResults.push(`Instruction removed: "${inst}"`);
+          }
         }
         for (const match of addAutoMatches) {
           const prompt = match[1].trim();
@@ -982,11 +1539,16 @@ const runAgentResponse = async (
         }
         for (const match of rmAutoMatches) {
           const prompt = match[1].trim();
-          const updated = removeFromJsonList(currentAgent.autopilot_prompts, prompt);
-          await Data.llmAgent.update(agent.id, { autopilot_prompts: updated });
-          currentAgent = (await Data.llmAgent.findById(agent.id))!;
-          emitSystemMessage(io, roomName, `[${agent.name} removed autopilot prompt: "${prompt}"]`);
-          toolResults.push(`Autopilot prompt removed: "${prompt}"`);
+          const { result: updated, denied } = removeFromJsonList(currentAgent.autopilot_prompts, prompt);
+          if (denied) {
+            emitSystemMessage(io, roomName, `[System] ${agent.name} tried to remove locked autopilot prompt — denied.`);
+            toolResults.push(`Autopilot prompt "${prompt}" is locked and cannot be removed.`);
+          } else {
+            await Data.llmAgent.update(agent.id, { autopilot_prompts: updated });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+            emitSystemMessage(io, roomName, `[${agent.name} removed autopilot prompt: "${prompt}"]`);
+            toolResults.push(`Autopilot prompt removed: "${prompt}"`);
+          }
         }
 
         // Process plan commands
@@ -1178,7 +1740,7 @@ const runAgentResponse = async (
           continue;
         }
 
-        emitSystemMessage(io, roomName, `[${agent.name} terminal → ${machineName}]: ${command}`);
+        emitSystemMessage(io, roomName, `[${agent.name} terminal → ${machineName}]: ${command}`, undefined, 'tool-result');
 
         // Find the machine
         const machineRecord = await Data.machine.findByOwnerAndName(agent.creator_id, machineName);
@@ -1279,7 +1841,7 @@ const runAgentResponse = async (
           continue;
         }
 
-        emitSystemMessage(io, roomName, `[${agent.name} claude → ${machineName}]: ${prompt}`);
+        emitSystemMessage(io, roomName, `[${agent.name} claude → ${machineName}]: ${prompt}`, undefined, 'tool-result');
 
         const machineRecord = await Data.machine.findByOwnerAndName(agent.creator_id, machineName);
         if (!machineRecord) {
@@ -1311,7 +1873,7 @@ const runAgentResponse = async (
             }
           })
           .catch((err) => {
-            emitSystemMessage(io, roomName, `[Claude error on ${machineName}]: ${(err as Error).message}`);
+            emitSystemMessage(io, roomName, `[Claude error on ${machineName}]: ${(err as Error).message}`, undefined, 'tool-result');
           });
         toolResults.push(`[Claude ${machineName}]: Prompt sent — response will appear when ready.`);
       }
@@ -1555,8 +2117,9 @@ const runAgentResponse = async (
         content: `Tool results:\n${toolResults.join('\n\n')}\n\nUse these results to formulate your response. Do not repeat commands you already issued. Do not restate what you already said above.`,
       });
 
-      const loopResponse = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, currentAgent?.max_tokens ?? agentMaxTokens);
-      responseText = loopResponse.text;
+      const loopResponse = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, currentAgent?.max_tokens ?? agentMaxTokens, agentTools);
+      const loopToolBrace = toolCallsToBraceFormat(loopResponse.toolCalls);
+      responseText = loopToolBrace ? `${loopToolBrace}\n${loopResponse.text}` : loopResponse.text;
 
       creditActions.chargeGrokUsage(
         agent.creator_id,
@@ -1571,18 +2134,18 @@ const runAgentResponse = async (
 
     // Extract and log {think} commands before stripping — these become silent system messages (no TTS)
     if (thinkOn) {
-      // Handle both {think content} and {think}content{/think} formats
-      const thinkMatches = [...responseText.matchAll(THINK_REGEX), ...responseText.matchAll(THINK_XML_REGEX)];
+      // Handle {think content}, {think}content{/think}, and <think>content</think> formats
+      const thinkMatches = [...responseText.matchAll(THINK_REGEX), ...responseText.matchAll(THINK_XML_REGEX), ...responseText.matchAll(THINK_HTML_REGEX)];
       for (const m of thinkMatches) {
         const thought = m[1].trim().substring(0, 1000);
         if (thought) {
           emitSystemMessage(io, roomName, `[${agent.name} thought: ${thought}]`);
         }
       }
-      // Strip both think formats before command stripping
-      responseText = responseText.replace(THINK_XML_REGEX, '').replace(THINK_REGEX, '');
-      // Also strip orphaned {/think} and [/think] closing tags (Grok uses both formats)
-      responseText = responseText.replace(/\{\/think\}/g, '').replace(/\[\/think\]/g, '');
+      // Strip all think formats before command stripping
+      responseText = responseText.replace(THINK_HTML_REGEX, '').replace(THINK_XML_REGEX, '').replace(THINK_REGEX, '');
+      // Also strip orphaned {/think}, [/think], and </think> closing tags
+      responseText = responseText.replace(/\{\/think\}/g, '').replace(/\[\/think\]/g, '').replace(/<\/think>/g, '');
     }
 
     // Extract {say} content — this is the ONLY text that gets spoken aloud / TTS'd.
@@ -2067,6 +2630,43 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         if (sqlCmd && roomRecord?.memory_enabled && roomRecord.cmd_sql_enabled) {
           const result = await executeSafeQuery(roomId, sqlCmd[1]);
           emitSystemMessage(io, user.currentRoom, result, 'SQL Result');
+          return;
+        }
+
+        // /watchlist [add URL | list [watched|unwatched] | remove ID | watch ID | unwatch ID | summarize ID | recommend]
+        const watchlistCmd = text.match(/^\/watchlist(?:\s+(.*))?$/i);
+        if (watchlistCmd) {
+          const args = (watchlistCmd[1] || '').trim();
+          const parts = args.split(/\s+/);
+          const sub = parts[0]?.toLowerCase() || 'list';
+          const param = parts.slice(1).join(' ');
+
+          try {
+            let result: string;
+
+            if (sub === 'add' && param) {
+              result = await watchlistActions.addToWatchlist(socket.user.id, param);
+            } else if (sub === 'list' || !args) {
+              result = await watchlistActions.listWatchlist(socket.user.id, param || undefined);
+            } else if (sub === 'remove' && param) {
+              result = await watchlistActions.removeFromWatchlist(socket.user.id, param);
+            } else if (sub === 'watch' && param) {
+              result = await watchlistActions.markWatched(socket.user.id, param);
+            } else if (sub === 'unwatch' && param) {
+              result = await watchlistActions.markUnwatched(socket.user.id, param);
+            } else if (sub === 'summarize' && param) {
+              result = await watchlistActions.summarizeVideo(socket.user.id, param);
+            } else if (sub === 'recommend') {
+              result = await watchlistActions.recommendVideos(socket.user.id);
+            } else {
+              result = '**Usage:** `/watchlist add <URL>` | `list [watched|unwatched]` | `remove <ID>` | `watch <ID>` | `unwatch <ID>` | `summarize <ID>` ⭐ | `recommend` ⭐';
+            }
+
+            emitSystemMessage(io, user.currentRoom, result, 'Watchlist');
+          } catch (err) {
+            console.error('[Watchlist] Error:', err);
+            emitSystemMessage(io, user.currentRoom, `[Watchlist] Error: ${(err as Error).message}`);
+          }
           return;
         }
       }
@@ -2589,6 +3189,33 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       });
     });
 
+    socket.on('get_room_summaries', async (data: { roomName: string }) => {
+      const roomId = getRoomId(data.roomName.toLowerCase());
+      if (!roomId) {
+        socket.emit('room_summaries', { summaries: [] });
+        return;
+      }
+      const room = activeRooms.get(data.roomName.toLowerCase());
+      if (room && room.createdBy !== socket.user.id && !socket.user.is_admin) {
+        socket.emit('room_summaries', { summaries: [] });
+        return;
+      }
+      const summaries = await Data.memorySummary.findAllByRoom(roomId);
+      socket.emit('room_summaries', {
+        summaries: summaries.map((s) => ({
+          id: s.id,
+          ref_name: s.ref_name,
+          level: s.level,
+          parent_id: s.parent_id,
+          content: s.content,
+          msg_start: s.msg_start,
+          msg_end: s.msg_end,
+          messages_covered: s.messages_covered,
+          created_at: s.created_at,
+        })),
+      });
+    });
+
     socket.on('update_room_commands', async (data: {
       roomName: string;
       cmdRecall?: boolean;
@@ -2835,7 +3462,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       if (user?.currentRoom) {
         const roomId = getRoomId(user.currentRoom);
         if (roomId) {
-          emitSystemMessage(io, user.currentRoom, `[${socket.user.username} terminal → ${data.machineName}]: ${data.command}`);
+          emitSystemMessage(io, user.currentRoom, `[${socket.user.username} terminal → ${data.machineName}]: ${data.command}`, undefined, 'tool-result');
         }
       }
 
@@ -2845,7 +3472,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
         // Also emit to chat so AI and summarizer can see it
         if (user?.currentRoom) {
-          emitSystemMessage(io, user.currentRoom, `[Terminal ${data.machineName}]:\n${output.substring(0, 2000)}`);
+          emitSystemMessage(io, user.currentRoom, `[Terminal ${data.machineName}]:\n${output.substring(0, 2000)}`, undefined, 'tool-result');
         }
       } catch (err) {
         socket.emit('terminal_panel_output', { machineName: data.machineName, output: `Error: ${(err as Error).message}`, isError: true });
@@ -2927,7 +3554,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           if (out.output && out.output !== '(no response captured)') {
             const user2 = connectedUsers.get(socket.id);
             const rn = user2?.currentRoom || 'public';
-            emitSystemMessage(io, rn, `[Claude → ${data.machineName} response]:\n${out.output.substring(0, 4000)}`);
+            emitSystemMessage(io, rn, `[Claude → ${data.machineName} response]:\n${out.output.substring(0, 4000)}`, undefined, 'tool-result');
 
             Data.claudeLog.create({
               direction: 'claude_response',
@@ -2954,7 +3581,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       // Show in chat for AI visibility
       if (roomId) {
-        emitSystemMessage(io, roomName, `[${socket.user.username} claude → ${data.machineName}]: ${data.input}`);
+        emitSystemMessage(io, roomName, `[${socket.user.username} claude → ${data.machineName}]: ${data.input}`, undefined, 'tool-result');
       }
     });
 

@@ -15,7 +15,8 @@ import scheduledJob from './scheduledJob';
 import claudeLog from './claudeLog';
 import roomMember from './roomMember';
 import paymentTransaction from './paymentTransaction';
+import watchlistItem from './watchlistItem';
 
-const Data = { user, room, thread, post, message, dailyStats, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, scheduledJob, claudeLog, roomMember, paymentTransaction };
+const Data = { user, room, thread, post, message, dailyStats, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, scheduledJob, claudeLog, roomMember, paymentTransaction, watchlistItem };
 
 export default Data;

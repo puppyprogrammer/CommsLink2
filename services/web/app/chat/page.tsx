@@ -59,7 +59,9 @@ import LanguageIcon from '@mui/icons-material/Language';
 import WebBrowserPanel from '@/components/WebBrowserPanel';
 import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
+import WatchlistPanel from '@/components/WatchlistPanel';
 import TerminalIcon from '@mui/icons-material/Terminal';
+import PlaylistPlayIcon from '@mui/icons-material/PlaylistPlay';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 
 // Models
@@ -94,6 +96,7 @@ const ChatPage = () => {
   const [webPanelOpen, setWebPanelOpen] = useState(false);
   const [webPanelData, setWebPanelData] = useState<WebPanelData | null>(null);
   const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
+  const [watchlistPanelOpen, setWatchlistPanelOpen] = useState(false);
   const [panelMachines, setPanelMachines] = useState<{ id: string; name: string; status: string; os?: string }[]>([]);
   const socketInstanceRef = useRef<ReturnType<typeof getSocket> | null>(null);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
@@ -648,6 +651,14 @@ const ChatPage = () => {
               </IconButton>
               <IconButton
                 size="small"
+                color={watchlistPanelOpen ? 'primary' : 'default'}
+                onClick={() => setWatchlistPanelOpen((prev) => !prev)}
+                title="YouTube Watchlist"
+              >
+                <PlaylistPlayIcon />
+              </IconButton>
+              <IconButton
+                size="small"
                 color={webPanelOpen ? 'primary' : 'default'}
                 onClick={() => setWebPanelOpen((prev) => !prev)}
                 title="Web Browser"
@@ -708,34 +719,41 @@ const ChatPage = () => {
                             opacity: 0.8,
                             listStyle: 'none',
                             userSelect: 'none',
+                            ...(msg.systemType === 'tool-result' ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' } : {}),
                           }}
                         >
                           {msg.collapsible} ▸
                         </summary>
-                        <Typography
-                          variant="detailText"
-                          component="pre"
-                          sx={{
-                            fontStyle: 'italic',
-                            whiteSpace: 'pre-wrap',
-                            mt: 0.5,
-                            p: 1,
-                            borderRadius: 1,
-                            backgroundColor: 'rgba(255,255,255,0.03)',
-                            fontSize: '0.7rem',
-                            maxHeight: '300px',
-                            overflow: 'auto',
-                          }}
-                        >
-                          {displayText}
-                        </Typography>
+                        {msg.collapsible === 'Watchlist' ? (
+                          <Box sx={{ mt: 0.5, p: 1, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.03)', fontSize: '0.8rem', maxHeight: '400px', overflow: 'auto' }}>
+                            <MessageContent text={displayText} />
+                          </Box>
+                        ) : (
+                          <Typography
+                            variant="detailText"
+                            component="pre"
+                            sx={{
+                              fontStyle: 'italic',
+                              whiteSpace: 'pre-wrap',
+                              mt: 0.5,
+                              p: 1,
+                              borderRadius: 1,
+                              backgroundColor: 'rgba(255,255,255,0.03)',
+                              fontSize: '0.7rem',
+                              maxHeight: '300px',
+                              overflow: 'auto',
+                            }}
+                          >
+                            {displayText}
+                          </Typography>
+                        )}
                       </details>
                     </Box>
                   );
                 }
                 return (
                   <Box key={msg.id || i} sx={{ textAlign: 'center', py: 0.25 }}>
-                    <Typography variant="detailText" sx={{ fontStyle: 'italic' }}>
+                    <Typography variant="detailText" sx={{ fontStyle: 'italic', ...(msg.systemType === 'tool-result' ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' } : {}) }}>
                       {displayText}
                     </Typography>
                   </Box>
@@ -865,6 +883,12 @@ const ChatPage = () => {
             socket={socketInstanceRef.current}
             machines={panelMachines}
             onClose={() => setTerminalPanelOpen(false)}
+          />
+        )}
+        {watchlistPanelOpen && (
+          <WatchlistPanel
+            onClose={() => setWatchlistPanelOpen(false)}
+            onCommand={(cmd) => sendMessage(cmd)}
           />
         )}
         {webPanelOpen && <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} />}
