@@ -166,24 +166,26 @@ const WebBrowserPanel: React.FC<Props> = ({ data, onClose, socket }) => {
         </IconButton>
       </div>
 
-      <div className={isBrowser ? styles.contentFlush : (data?.type === 'page' && viewMode === 'site' ? styles.contentFlush : styles.content)}>
+      <div
+        className={
+          isBrowser
+            ? styles.contentFlush
+            : data?.type === 'page' && viewMode === 'site'
+              ? styles.contentFlush
+              : styles.content
+        }
+      >
         {!data && (
           <div className={styles.empty}>
             The AI can browse the web here. Search results and page content will appear in this panel.
           </div>
         )}
 
-        {isBrowserClosed && (
-          <div className={styles.empty}>
-            Browser session closed.
-          </div>
-        )}
+        {isBrowserClosed && <div className={styles.empty}>Browser session closed.</div>}
 
         {isBrowser && (
           <div className={styles.browserView}>
-            {data.title && (
-              <div className={styles.browserTitle}>{data.title}</div>
-            )}
+            {data.title && <div className={styles.browserTitle}>{data.title}</div>}
             {data.imageBase64 ? (
               <img
                 src={`data:image/jpeg;base64,${data.imageBase64}`}

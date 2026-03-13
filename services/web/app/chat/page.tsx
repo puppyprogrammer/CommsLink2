@@ -1093,7 +1093,11 @@ const ChatPage = () => {
                 overflow: 'hidden',
               }}
             >
-              <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} socket={socketInstanceRef.current} />
+              <WebBrowserPanel
+                data={webPanelData}
+                onClose={() => setWebPanelOpen(false)}
+                socket={socketInstanceRef.current}
+              />
             </div>
           </>
         )}
