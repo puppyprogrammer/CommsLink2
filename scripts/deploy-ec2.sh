@@ -2,26 +2,33 @@
 # deploy-ec2.sh — Runs ON the EC2 instance (triggered remotely)
 # Rebuilds and restarts specified Docker services
 # Usage: ./deploy-ec2.sh [api|web|"api web"]
-set -e
 
 cd ~/CommsLink2
 
 SERVICES="${@:-api}"
 LOG="/tmp/deploy.log"
 
+# Clear old log first to prevent stale DEPLOY_COMPLETE detection
+rm -f "$LOG"
 echo "[deploy] Starting at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" > "$LOG"
 echo "[deploy] Services: $SERVICES" >> "$LOG"
 
 # Build
 for svc in $SERVICES; do
   echo "[deploy] Building $svc..." >> "$LOG"
-  docker-compose -f docker-compose.prod.yml build "$svc" >> "$LOG" 2>&1
+  if ! docker-compose -f docker-compose.prod.yml build "$svc" >> "$LOG" 2>&1; then
+    echo "DEPLOY_FAILED: build $svc failed" >> "$LOG"
+    exit 1
+  fi
 done
 
 # Restart
 for svc in $SERVICES; do
   echo "[deploy] Restarting $svc..." >> "$LOG"
-  docker-compose -f docker-compose.prod.yml up -d "$svc" >> "$LOG" 2>&1
+  if ! docker-compose -f docker-compose.prod.yml up -d "$svc" >> "$LOG" 2>&1; then
+    echo "DEPLOY_FAILED: restart $svc failed" >> "$LOG"
+    exit 1
+  fi
 done
 
 # Brief pause for startup
