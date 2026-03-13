@@ -27,13 +27,19 @@ type Props = {
   socket: Socket | null;
   machines: Machine[];
   onClose: () => void;
+  initialTab?: 'terminal' | 'claude';
 };
 
-const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose }) => {
-  const [tab, setTab] = useState<'terminal' | 'claude'>('claude');
+const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab }) => {
+  const [tab, setTab] = useState<'terminal' | 'claude'>(initialTab || 'claude');
   const [input, setInput] = useState('');
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState<string>('');
+
+  // Switch tab when parent requests it
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   const [terminalEntries, setTerminalEntries] = useState<LogEntry[]>([]);
   const [claudeEntries, setClaudeEntries] = useState<LogEntry[]>([]);

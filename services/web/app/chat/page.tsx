@@ -60,11 +60,9 @@ import LanguageIcon from '@mui/icons-material/Language';
 import WebBrowserPanel from '@/components/WebBrowserPanel';
 import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
-import WatchlistPanel from '@/components/WatchlistPanel';
 import HologramViewer from '@/components/HologramViewer';
 import ResizeHandle from '@/components/ResizeHandle';
 import TerminalIcon from '@mui/icons-material/Terminal';
-import PlaylistPlayIcon from '@mui/icons-material/PlaylistPlay';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import ViewInArIcon from '@mui/icons-material/ViewInAr';
 
@@ -101,11 +99,10 @@ const ChatPage = () => {
   const [webPanelData, setWebPanelData] = useState<WebPanelData | null>(null);
   const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
   const [terminalNotifications, setTerminalNotifications] = useState(0);
+  const [terminalTab, setTerminalTab] = useState<'terminal' | 'claude'>('claude');
   const terminalPanelOpenRef = useRef(terminalPanelOpen);
   terminalPanelOpenRef.current = terminalPanelOpen;
-  const [watchlistPanelOpen, setWatchlistPanelOpen] = useState(false);
   const [terminalWidth, setTerminalWidth] = useState(600);
-  const [watchlistWidth, setWatchlistWidth] = useState(500);
   const [webPanelWidth, setWebPanelWidth] = useState(600);
   const [hologramPanelOpen, setHologramPanelOpen] = useState(false);
   const [hologramAvatars, setHologramAvatars] = useState<
@@ -309,10 +306,14 @@ const ChatPage = () => {
       setPanelMachines(data.machines);
     });
 
-    // Track panel_log events for notification badge when terminal panel is closed
-    socket.on('panel_log', () => {
+    // Auto-open terminal panel and switch tab when AI uses terminal/claude commands
+    socket.on('panel_log', (data: { tab?: 'terminal' | 'claude' }) => {
       if (!terminalPanelOpenRef.current) {
-        setTerminalNotifications((n) => n + 1);
+        setTerminalPanelOpen(true);
+        setTerminalNotifications(0);
+      }
+      if (data?.tab) {
+        setTerminalTab(data.tab);
       }
     });
 
@@ -704,10 +705,13 @@ const ChatPage = () => {
       <Box className={classes.root}>
         <Box className={classes.chatArea}>
           <Box className={classes.chatHeader}>
-            <Typography variant="h6" sx={{ fontFamily: "'Orbitron', monospace", color: 'primary.main' }}>
+            <Typography
+              variant="subtitle1"
+              sx={{ fontFamily: "'Orbitron', monospace", color: 'primary.main', fontSize: '0.95rem' }}
+            >
               {currentRoomDisplay}
             </Typography>
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <Box sx={{ display: 'flex', gap: 0.5, position: 'absolute', right: 8 }}>
               {rooms.some((r) => r.name === currentRoom && canManageRoom(r)) && (
                 <IconButton
                   size="small"
@@ -742,14 +746,6 @@ const ChatPage = () => {
                 >
                   <TerminalIcon />
                 </Badge>
-              </IconButton>
-              <IconButton
-                size="small"
-                color={watchlistPanelOpen ? 'primary' : 'default'}
-                onClick={() => setWatchlistPanelOpen((prev) => !prev)}
-                title="YouTube Watchlist"
-              >
-                <PlaylistPlayIcon />
               </IconButton>
               <IconButton
                 size="small"
@@ -1066,23 +1062,8 @@ const ChatPage = () => {
                 socket={socketInstanceRef.current}
                 machines={panelMachines}
                 onClose={() => setTerminalPanelOpen(false)}
+                initialTab={terminalTab}
               />
-            </div>
-          </>
-        )}
-        {watchlistPanelOpen && (
-          <>
-            <ResizeHandle onResize={(d) => setWatchlistWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
-            <div
-              style={{
-                width: watchlistWidth,
-                flexShrink: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              <WatchlistPanel onClose={() => setWatchlistPanelOpen(false)} onCommand={(cmd) => sendMessage(cmd)} />
             </div>
           </>
         )}

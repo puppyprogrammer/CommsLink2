@@ -2554,8 +2554,10 @@ const runAgentResponse = async (
       }
     } else if (thinkOn && leftoverText.length > 0) {
       // When think/say is enabled, agents MUST use {say} for spoken output.
-      // Any leftover text without {say} is leaked reasoning — log as bug, never speak.
-      emitSystemMessage(io, roomName, `[${agent.name} bugged: ${leftoverText.substring(0, 1000)}]`);
+      // Any leftover text without {say} is leaked reasoning — log as thought, never speak.
+      if (leftoverText.length > 10) {
+        emitSystemMessage(io, roomName, `[${agent.name} thought: ${leftoverText.substring(0, 1000)}]`);
+      }
       responseText = '';
     } else {
       // No think/say system — fall back to leftover as speech (backwards compat)

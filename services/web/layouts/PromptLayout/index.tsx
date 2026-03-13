@@ -21,7 +21,7 @@ const PromptLayout: React.FC<PromptLayoutProps> = ({ children, title }) => {
         <Box className={classes.logoContainer}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.svg" alt="CommsLink" width={80} height={80} style={{ marginBottom: '0.5rem' }} />
-          <Typography variant="h3" sx={{ fontFamily: "'Orbitron', monospace", color: '#A020F0', fontWeight: 700 }}>
+          <Typography variant="h3" sx={{ fontFamily: "'Orbitron', monospace", color: '#A020F0', fontWeight: 400 }}>
             CommsLink
           </Typography>
           <Typography variant="detailText">Voice & Text Communication</Typography>

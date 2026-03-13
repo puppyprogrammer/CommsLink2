@@ -83,20 +83,7 @@ const SpendingBar = () => {
   const widths = getWidths();
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, mx: 'auto', gap: '2px' }}>
-      {/* Total cost label */}
-      <Typography
-        sx={{
-          fontSize: '0.55rem',
-          fontWeight: 600,
-          color: '#aaa',
-          letterSpacing: '0.05em',
-          lineHeight: 1,
-        }}
-      >
-        {formatCost(total)}/hr
-      </Typography>
-
+    <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, mx: 'auto', gap: '6px' }}>
       {/* Bar */}
       <Box
         sx={{
@@ -106,7 +93,7 @@ const SpendingBar = () => {
           overflow: 'hidden',
           backgroundColor: '#0a0a0a',
           border: '1px solid #333',
-          width: 340,
+          width: 300,
         }}
       >
         {sections.map((section, i) => {
@@ -158,6 +145,20 @@ const SpendingBar = () => {
           );
         })}
       </Box>
+
+      {/* Total cost label */}
+      <Typography
+        sx={{
+          fontSize: '0.6rem',
+          fontWeight: 600,
+          color: '#cca700',
+          letterSpacing: '0.05em',
+          lineHeight: 1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {formatCost(total)}/hr
+      </Typography>
     </Box>
   );
 };

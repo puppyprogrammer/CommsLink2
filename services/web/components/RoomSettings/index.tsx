@@ -214,6 +214,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [editPlan, setEditPlan] = useState('');
   const [editTasks, setEditTasks] = useState('');
 
+  // Memory tree collapsed state
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+
   // Fetch models and premium voices
   useEffect(() => {
     if (!open) return;
@@ -607,6 +610,171 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     </Box>
   );
 
+  const getMemoryCategory = (text: string): string => {
+    const colon = text.indexOf(':');
+    if (colon > 0 && colon < 40) {
+      const prefix = text.slice(0, colon).trim();
+      if (/^[A-Z][A-Z _/-]+$/.test(prefix)) return prefix;
+    }
+    return 'MISC';
+  };
+
+  const toggleFolder = (folder: string) => {
+    setCollapsedFolders((prev) => ({ ...prev, [folder]: !prev[folder] }));
+  };
+
+  const renderMemoryTree = (
+    memories: ListItem[],
+    setMemories: (l: ListItem[]) => void,
+    draft: string,
+    setDraft: (s: string) => void,
+  ) => {
+    // Group memories by category
+    const groups: Record<string, { item: ListItem; index: number }[]> = {};
+    memories.forEach((item, index) => {
+      const cat = getMemoryCategory(item.text);
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push({ item, index });
+    });
+
+    const sortedKeys = Object.keys(groups).sort((a, b) => (a === 'MISC' ? 1 : b === 'MISC' ? -1 : a.localeCompare(b)));
+
+    return (
+      <Box sx={{ flex: 1 }}>
+        <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', fontWeight: 600 }}>
+          Memories
+        </Typography>
+        <Box sx={{ maxHeight: 300, overflowY: 'auto', mb: 0.5, fontFamily: 'monospace', fontSize: '0.7rem' }}>
+          {sortedKeys.map((folder) => {
+            const items = groups[folder];
+            const isCollapsed = collapsedFolders[folder] !== false;
+            const lockedCount = items.filter((i) => i.item.locked).length;
+
+            return (
+              <Box key={folder}>
+                <Box
+                  onClick={() => toggleFolder(folder)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    cursor: 'pointer',
+                    py: '2px',
+                    px: 0.5,
+                    '&:hover': { bgcolor: 'action.hover' },
+                    userSelect: 'none',
+                  }}
+                >
+                  {isCollapsed ? (
+                    <span style={{ fontSize: 10, color: '#888' }}>&#9654;</span>
+                  ) : (
+                    <span style={{ fontSize: 10, color: '#888' }}>&#9660;</span>
+                  )}
+                  <span style={{ color: '#e8ab53' }}>&#128193;</span>
+                  <span style={{ color: '#ccc', fontWeight: 600 }}>{folder.toLowerCase()}</span>
+                  <span style={{ color: '#666', marginLeft: 'auto' }}>
+                    {items.length}
+                    {lockedCount > 0 ? ` (${lockedCount}🔒)` : ''}
+                  </span>
+                </Box>
+                {!isCollapsed &&
+                  items.map(({ item, index }) => {
+                    const colon = item.text.indexOf(':');
+                    const body =
+                      getMemoryCategory(item.text) !== 'MISC' && colon > 0
+                        ? item.text.slice(colon + 1).trim()
+                        : item.text;
+                    const preview = body.length > 80 ? body.slice(0, 80) + '...' : body;
+
+                    return (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          pl: 3,
+                          py: '1px',
+                          '&:hover': { bgcolor: 'action.hover' },
+                        }}
+                      >
+                        <span style={{ color: item.locked ? '#569cd6' : '#888', fontSize: 10 }}>&#128196;</span>
+                        <Typography
+                          variant="detailText"
+                          title={item.text}
+                          sx={{
+                            flex: 1,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            color: item.locked ? '#9cdcfe' : '#ccc',
+                            fontSize: '0.65rem',
+                          }}
+                        >
+                          {preview}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => toggleLock(memories, setMemories, index)}
+                          title={item.locked ? 'Unlock' : 'Lock'}
+                          sx={{ p: '1px' }}
+                        >
+                          {item.locked ? (
+                            <LockIcon sx={{ fontSize: 11, color: 'primary.main' }} />
+                          ) : (
+                            <LockOpenIcon sx={{ fontSize: 11, color: 'text.disabled' }} />
+                          )}
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => removeItem(memories, setMemories, index)}
+                          sx={{ p: '1px' }}
+                        >
+                          <DeleteIcon sx={{ fontSize: 11 }} />
+                        </IconButton>
+                      </Box>
+                    );
+                  })}
+              </Box>
+            );
+          })}
+          {memories.length === 0 && (
+            <Typography variant="detailText" sx={{ color: 'text.disabled', p: 1 }}>
+              No memories yet.
+            </Typography>
+          )}
+        </Box>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Add a memory..."
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addItem(memories, setMemories, draft, setDraft);
+            }
+          }}
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  onClick={() => addItem(memories, setMemories, draft, setDraft)}
+                  disabled={!draft.trim()}
+                >
+                  <AddIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
+    );
+  };
+
   const renderAutopilotControls = (
     enabled: boolean,
     setEnabled: (v: boolean) => void,
@@ -708,7 +876,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
       {/* Column 3: Memories */}
       <Box sx={{ flex: '1 1 180px', minWidth: 160 }}>
-        {renderItemList('Memories', 'Add a memory...', memories, setMemories, memoryDraft, setMemoryDraft)}
+        {renderMemoryTree(memories, setMemories, memoryDraft, setMemoryDraft)}
       </Box>
 
       {/* Column 4: Autopilot Prompts */}
