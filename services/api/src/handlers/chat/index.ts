@@ -919,6 +919,14 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
         parameters: { type: 'object', properties: {}, required: [] },
       },
     });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'forum_read',
+        description: 'Read all posts in a forum thread. Use this before replying to understand the conversation context.',
+        parameters: { type: 'object', properties: { thread_id: { type: 'string', description: 'UUID of the thread to read' } }, required: ['thread_id'] },
+      },
+    });
   }
 
   return tools;
@@ -1072,6 +1080,18 @@ const toolCallsToBraceFormat = (toolCalls: Array<{ function: { name: string; arg
         break;
       case 'audit':
         parts.push(`{audit ${args.scope}}`);
+        break;
+      case 'forum_thread':
+        parts.push(`{forum_thread ${String(args.title).replace(/\n/g, ' ')}}`);
+        break;
+      case 'forum_post':
+        parts.push(`{forum_post ${args.thread_id} ${String(args.content).replace(/\n/g, ' ')}}`);
+        break;
+      case 'forum_list':
+        parts.push('{forum_list}');
+        break;
+      case 'forum_read':
+        parts.push(`{forum_read ${args.thread_id}}`);
         break;
       default:
         break;
@@ -1508,7 +1528,8 @@ const CONTINUE_REGEX = /\{continue\}/g;
 const FORUM_THREAD_REGEX = /\{forum_thread\s+([^}]+)\}/g;
 const FORUM_POST_REGEX = /\{forum_post\s+(\S+)\s+([^}]+)\}/g;
 const FORUM_LIST_REGEX = /\{forum_list\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+const FORUM_READ_REGEX = /\{forum_read\s+(\S+)\}/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -1765,6 +1786,7 @@ const runAgentResponse = async (
       const forumThreadMatches = forumOn ? [...responseText.matchAll(FORUM_THREAD_REGEX)] : [];
       const forumPostMatches = forumOn ? [...responseText.matchAll(FORUM_POST_REGEX)] : [];
       const forumListMatches = forumOn ? [...responseText.matchAll(FORUM_LIST_REGEX)] : [];
+      const forumReadMatches = forumOn ? [...responseText.matchAll(FORUM_READ_REGEX)] : [];
 
       const hasAnyCommand = recallMatches.length + sqlMatches.length +
         addMemMatches.length + rmMemMatches.length +
@@ -1782,7 +1804,7 @@ const runAgentResponse = async (
         listUsersMatches.length +
         kickMatches.length + banMatches.length + unbanMatches.length +
         continueMatches.length + setMaxLoopsMatches.length +
-        forumThreadMatches.length + forumPostMatches.length + forumListMatches.length > 0;
+        forumThreadMatches.length + forumPostMatches.length + forumListMatches.length + forumReadMatches.length > 0;
 
       if (!hasAnyCommand) break;
 
@@ -2572,8 +2594,28 @@ const runAgentResponse = async (
         }
       }
 
+      for (const match of forumReadMatches) {
+        const threadId = match[1].trim();
+        try {
+          const thread = await Data.thread.findById(threadId);
+          if (!thread) {
+            toolResults.push(`Forum thread not found: ${threadId}`);
+            continue;
+          }
+          const posts = await Data.post.findByThreadId(threadId, { skip: 0, take: 50 });
+          if (posts.length === 0) {
+            toolResults.push(`Thread "${thread.title}" has no posts yet.`);
+          } else {
+            const postListing = posts.map((p) => `[${p.author_username} at ${p.created_at.toISOString()}]\n${p.content}`).join('\n\n---\n\n');
+            toolResults.push(`Thread: "${thread.title}" (${posts.length} posts)\n\n${postListing}`);
+          }
+        } catch (err) {
+          toolResults.push(`Forum read failed: ${(err as Error).message}`);
+        }
+      }
+
       // If only self-modification commands were used (no data-fetching commands), no need to re-prompt
-      const hasDataCommands = recallMatches.length + sqlMatches.length + searchMatches.length + browseMatches.length + findMatches.length + screenshotMatches.length + terminalMatches.length + claudeMatches.length + listUsersMatches.length + forumListMatches.length;
+      const hasDataCommands = recallMatches.length + sqlMatches.length + searchMatches.length + browseMatches.length + findMatches.length + screenshotMatches.length + terminalMatches.length + claudeMatches.length + listUsersMatches.length + forumListMatches.length + forumReadMatches.length;
       if (hasDataCommands === 0) break;
 
       // Re-prompt with tool results — strip commands from prior response so agent doesn't repeat them
