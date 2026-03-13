@@ -1103,7 +1103,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               },
               {
                 label: 'Autopilot Control — Toggle and set interval',
-                desc: 'AI: {toggle_autopilot on|off}, {set_autopilot_interval N} (seconds, min 5)',
+                desc: 'AI: {toggle_autopilot on|off}, {set_autopilot_interval N} (seconds, min 6)',
                 checked: cmdAutopilot,
                 key: 'cmdAutopilot' as const,
                 set: setCmdAutopilot,

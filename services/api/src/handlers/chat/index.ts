@@ -722,8 +722,8 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
       type: 'function',
       function: {
         name: 'set_autopilot_interval',
-        description: 'Set autopilot interval in seconds (5-3600). Use higher values (600-3600) when idle, lower (5-60) when actively working.',
-        parameters: { type: 'object', properties: { seconds: { type: 'number', description: 'Interval in seconds (5-3600)' } }, required: ['seconds'] },
+        description: 'Set autopilot interval in seconds (6-3600). Use higher values (600-3600) when idle, lower (6-60) when actively working.',
+        parameters: { type: 'object', properties: { seconds: { type: 'number', description: 'Interval in seconds (6-3600)' } }, required: ['seconds'] },
       },
     });
   }
@@ -1172,7 +1172,7 @@ const buildSystemPrompt = (
     actions.push(
       '=== AUTOPILOT CONTROL ===\n' +
       '{toggle_autopilot on|off} - Enable or disable your autopilot mode. Prefer adjusting interval over disabling.\n' +
-      '{set_autopilot_interval N} - Set autopilot interval in seconds (5-3600). Use lower values (5-60s) when actively working, higher (300-3600) when idle.',
+      '{set_autopilot_interval N} - Set autopilot interval in seconds (6-3600). Use lower values (6-60s) when actively working, higher (300-3600) when idle.',
     );
   }
 
