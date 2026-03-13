@@ -62,9 +62,7 @@ const JoinPage = () => {
         gap: 2,
       }}
     >
-      {status === 'Connecting...' || status === 'Joining room...' ? (
-        <CircularProgress size={32} />
-      ) : null}
+      {(status === 'Connecting...' || status === 'Joining room...') && <CircularProgress size={32} />}
       <Typography variant="h6">{status}</Typography>
     </Box>
   );
