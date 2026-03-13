@@ -27,6 +27,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import AddIcon from '@mui/icons-material/Add';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import DownloadIcon from '@mui/icons-material/Download';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -35,6 +37,9 @@ import CircleIcon from '@mui/icons-material/Circle';
 import BlockIcon from '@mui/icons-material/Block';
 import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
 import PeopleIcon from '@mui/icons-material/People';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 
 import useSession from '@/lib/session/useSession';
 import { getSocket } from '@/lib/socket';
@@ -85,21 +90,32 @@ const BROWSER_VOICES = [
 
 const DEFAULT_MODEL = 'grok-4-1-fast-non-reasoning';
 
-/** Parse stored instructions JSON or legacy single string into an array. */
-const parseList = (raw: string | null): string[] => {
+type ListItem = { text: string; locked: boolean };
+
+/** Parse stored instructions JSON or legacy single string into ListItem[]. */
+const parseList = (raw: string | null): ListItem[] => {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: unknown) => {
+        if (typeof item === 'string') return { text: item, locked: false };
+        if (item && typeof item === 'object' && 'text' in item) {
+          const obj = item as { text: string; locked?: boolean };
+          return { text: obj.text, locked: !!obj.locked };
+        }
+        return { text: String(item), locked: false };
+      });
+    }
   } catch {
     // Legacy: single string instruction
   }
-  return raw.trim() ? [raw.trim()] : [];
+  return raw.trim() ? [{ text: raw.trim(), locked: false }] : [];
 };
 
-/** Serialize list array to JSON string. */
-const serializeList = (list: string[]): string | undefined => {
-  const filtered = list.map((s) => s.trim()).filter(Boolean);
+/** Serialize ListItem[] to JSON string. */
+const serializeList = (list: ListItem[]): string | undefined => {
+  const filtered = list.filter((item) => item.text.trim());
   if (filtered.length === 0) return undefined;
   return JSON.stringify(filtered);
 };
@@ -147,6 +163,21 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [setupCode, setSetupCode] = useState('');
   const [setupStep, setSetupStep] = useState<'name' | 'download'>('name');
 
+  // Memory summaries
+  type MemorySummary = {
+    id: string;
+    ref_name: string;
+    level: number;
+    parent_id: string | null;
+    content: string;
+    msg_start: string;
+    msg_end: string;
+    messages_covered: number;
+    created_at: string;
+  };
+  const [summaries, setSummaries] = useState<MemorySummary[]>([]);
+  const [expandedSummary, setExpandedSummary] = useState<string | null>(null);
+
   // Room members
   type RoomMember = { userId: string; username: string; role: string };
   const [roomMembers, setRoomMembers] = useState<RoomMember[]>([]);
@@ -155,13 +186,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [newName, setNewName] = useState('');
   const [newVoice, setNewVoice] = useState('female');
   const [newModel, setNewModel] = useState(DEFAULT_MODEL);
-  const [newInstructions, setNewInstructions] = useState<string[]>([]);
+  const [newInstructions, setNewInstructions] = useState<ListItem[]>([]);
   const [newInstructionDraft, setNewInstructionDraft] = useState('');
-  const [newMemories, setNewMemories] = useState<string[]>([]);
+  const [newMemories, setNewMemories] = useState<ListItem[]>([]);
   const [newMemoryDraft, setNewMemoryDraft] = useState('');
   const [newAutopilot, setNewAutopilot] = useState(false);
   const [newAutopilotInterval, setNewAutopilotInterval] = useState(300);
-  const [newAutopilotPrompts, setNewAutopilotPrompts] = useState<string[]>([]);
+  const [newAutopilotPrompts, setNewAutopilotPrompts] = useState<ListItem[]>([]);
   const [newAutopilotDraft, setNewAutopilotDraft] = useState('');
   const [newPlan, setNewPlan] = useState('');
 
@@ -170,13 +201,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [editName, setEditName] = useState('');
   const [editVoice, setEditVoice] = useState('');
   const [editModel, setEditModel] = useState('');
-  const [editInstructions, setEditInstructions] = useState<string[]>([]);
+  const [editInstructions, setEditInstructions] = useState<ListItem[]>([]);
   const [editInstructionDraft, setEditInstructionDraft] = useState('');
-  const [editMemories, setEditMemories] = useState<string[]>([]);
+  const [editMemories, setEditMemories] = useState<ListItem[]>([]);
   const [editMemoryDraft, setEditMemoryDraft] = useState('');
   const [editAutopilot, setEditAutopilot] = useState(false);
   const [editAutopilotInterval, setEditAutopilotInterval] = useState(300);
-  const [editAutopilotPrompts, setEditAutopilotPrompts] = useState<string[]>([]);
+  const [editAutopilotPrompts, setEditAutopilotPrompts] = useState<ListItem[]>([]);
   const [editAutopilotDraft, setEditAutopilotDraft] = useState('');
   const [editPlan, setEditPlan] = useState('');
 
@@ -204,6 +235,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     socket.emit('get_room_agents', { roomName });
     socket.emit('get_room_memory', { roomName });
     socket.emit('get_room_machines', { roomName });
+    socket.emit('get_room_summaries', { roomName });
 
     const handleMemoryStatus = (data: {
       enabled: boolean;
@@ -335,6 +367,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setRoomMembers(data.members);
     };
 
+    const handleSummaries = (data: { summaries: MemorySummary[] }) => {
+      setSummaries(data.summaries);
+    };
+
     socket.on('room_machines', handleRoomMachines);
     socket.on('machine_permission_updated', handleMachinePermissionUpdated);
     socket.on('room_memory_status', handleMemoryStatus);
@@ -346,6 +382,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     socket.on('agent_deleted', handleDeleted);
     socket.on('agent_error', handleError);
     socket.on('room_members', handleRoomMembers);
+    socket.on('room_summaries', handleSummaries);
 
     // Fetch members
     socket.emit('get_room_members', { roomName });
@@ -362,6 +399,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       socket.off('agent_deleted', handleDeleted);
       socket.off('agent_error', handleError);
       socket.off('room_members', handleRoomMembers);
+      socket.off('room_summaries', handleSummaries);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, session?.token, roomName]);
@@ -436,15 +474,24 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     setEditPlan(agent.plan || '');
   };
 
-  const addItem = (list: string[], setList: (l: string[]) => void, draft: string, setDraft: (s: string) => void) => {
+  const addItem = (
+    list: ListItem[],
+    setList: (l: ListItem[]) => void,
+    draft: string,
+    setDraft: (s: string) => void,
+  ) => {
     const trimmed = draft.trim();
     if (!trimmed) return;
-    setList([...list, trimmed]);
+    setList([...list, { text: trimmed, locked: false }]);
     setDraft('');
   };
 
-  const removeItem = (list: string[], setList: (l: string[]) => void, index: number) => {
+  const removeItem = (list: ListItem[], setList: (l: ListItem[]) => void, index: number) => {
     setList(list.filter((_, i) => i !== index));
+  };
+
+  const toggleLock = (list: ListItem[], setList: (l: ListItem[]) => void, index: number) => {
+    setList(list.map((item, i) => (i === index ? { ...item, locked: !item.locked } : item)));
   };
 
   const renderModelSelect = (value: string, onChange: (val: string) => void) => (
@@ -483,8 +530,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const renderItemList = (
     title: string,
     placeholder: string,
-    list: string[],
-    setList: (l: string[]) => void,
+    list: ListItem[],
+    setList: (l: ListItem[]) => void,
     draft: string,
     setDraft: (s: string) => void,
   ) => (
@@ -502,14 +549,26 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               gap: 0.5,
               mb: 0.5,
               p: 0.75,
-              bgcolor: 'background.default',
+              bgcolor: item.locked ? 'action.selected' : 'background.default',
               border: '1px solid',
-              borderColor: 'divider',
+              borderColor: item.locked ? 'primary.main' : 'divider',
             }}
           >
             <Typography variant="detailText" sx={{ flex: 1, wordBreak: 'break-word' }}>
-              {item}
+              {item.text}
             </Typography>
+            <IconButton
+              size="small"
+              onClick={() => toggleLock(list, setList, i)}
+              title={item.locked ? 'Unlock (agent can remove)' : 'Lock (agent cannot remove)'}
+              sx={{ mt: -0.5 }}
+            >
+              {item.locked ? (
+                <LockIcon sx={{ fontSize: 14, color: 'primary.main' }} />
+              ) : (
+                <LockOpenIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+              )}
+            </IconButton>
             <IconButton size="small" color="error" onClick={() => removeItem(list, setList, i)} sx={{ mt: -0.5 }}>
               <DeleteIcon sx={{ fontSize: 14 }} />
             </IconButton>
@@ -588,18 +647,18 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     autopilotInterval: number,
     setAutopilotIntervalVal: (v: number) => void,
     // Column 2: Instructions
-    instructions: string[],
-    setInstructions: (l: string[]) => void,
+    instructions: ListItem[],
+    setInstructions: (l: ListItem[]) => void,
     instructionDraft: string,
     setInstructionDraft: (s: string) => void,
     // Column 3: Memories
-    memories: string[],
-    setMemories: (l: string[]) => void,
+    memories: ListItem[],
+    setMemories: (l: ListItem[]) => void,
     memoryDraft: string,
     setMemoryDraft: (s: string) => void,
     // Column 4: Autopilot Prompts
-    autopilotPrompts: string[],
-    setAutopilotPrompts: (l: string[]) => void,
+    autopilotPrompts: ListItem[],
+    setAutopilotPrompts: (l: ListItem[]) => void,
     autopilotDraft: string,
     setAutopilotDraft: (s: string) => void,
     // Column 5: Plan
@@ -865,6 +924,111 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             }
           />
         </Box>
+
+        {memoryEnabled && summaries.length > 0 && (
+          <>
+            <Divider sx={{ mb: 2 }} />
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>
+                <AccountTreeIcon sx={{ fontSize: 18, mr: 0.5, verticalAlign: 'text-bottom' }} />
+                Memory Summaries
+              </Typography>
+              <Typography variant="detailText" sx={{ mb: 1, display: 'block', color: 'text.secondary' }}>
+                Hierarchical memory: L1 chunks (20 msgs) roll up into L2 episodes, L3 eras, and L4 master summary.
+              </Typography>
+              {[4, 3, 2, 1].map((level) => {
+                const levelNames: Record<number, string> = { 1: 'Chunks', 2: 'Episodes', 3: 'Eras', 4: 'Master' };
+                const levelSummaries = summaries.filter((s) => s.level === level);
+                if (levelSummaries.length === 0) return null;
+                return (
+                  <Box key={level} sx={{ mb: 1.5 }}>
+                    <Typography
+                      variant="detailText"
+                      sx={{ fontWeight: 600, mb: 0.5, display: 'block', color: 'text.secondary' }}
+                    >
+                      L{level} — {levelNames[level]} ({levelSummaries.length})
+                    </Typography>
+                    {levelSummaries.map((s) => {
+                      const isExpanded = expandedSummary === s.id;
+                      const start = new Date(s.msg_start).toLocaleDateString();
+                      const end = new Date(s.msg_end).toLocaleDateString();
+                      const dateRange = start === end ? start : `${start} — ${end}`;
+                      return (
+                        <Paper
+                          key={s.id}
+                          variant="outlined"
+                          sx={{
+                            mb: 0.5,
+                            cursor: 'pointer',
+                            '&:hover': { borderColor: 'primary.main' },
+                          }}
+                          onClick={() => setExpandedSummary(isExpanded ? null : s.id)}
+                        >
+                          <Box
+                            sx={{
+                              px: 1.5,
+                              py: 0.75,
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Box>
+                              <Typography variant="detailText" sx={{ fontWeight: 500 }}>
+                                {s.ref_name}
+                              </Typography>
+                              <Typography variant="detailText" sx={{ color: 'text.secondary', ml: 1 }}>
+                                {dateRange} &middot; {s.messages_covered} msgs
+                              </Typography>
+                            </Box>
+                            {isExpanded ? (
+                              <ExpandLessIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                            ) : (
+                              <ExpandMoreIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                            )}
+                          </Box>
+                          {isExpanded && (
+                            <Box
+                              sx={{
+                                px: 1.5,
+                                pb: 1,
+                                borderTop: '1px solid',
+                                borderColor: 'divider',
+                              }}
+                            >
+                              <Typography
+                                variant="detailText"
+                                sx={{
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-word',
+                                  pt: 1,
+                                  fontSize: '0.8rem',
+                                  lineHeight: 1.5,
+                                  maxHeight: 300,
+                                  overflow: 'auto',
+                                }}
+                              >
+                                {s.content}
+                              </Typography>
+                              {s.parent_id && (
+                                <Typography
+                                  variant="detailText"
+                                  sx={{ color: 'text.secondary', mt: 0.5, fontSize: '0.75rem' }}
+                                >
+                                  Parent: {summaries.find((p) => p.id === s.parent_id)?.ref_name || s.parent_id}
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
+                        </Paper>
+                      );
+                    })}
+                  </Box>
+                );
+              })}
+            </Box>
+          </>
+        )}
 
         <Box sx={{ mb: 2 }}>
           <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>

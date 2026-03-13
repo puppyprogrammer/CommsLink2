@@ -15,6 +15,7 @@ export type ChatMessage = {
   isSystem?: boolean;
   imageUrl?: string;
   collapsible?: string;
+  systemType?: string;
 };
 
 export type WatchPartyState = {

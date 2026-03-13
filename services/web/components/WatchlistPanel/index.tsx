@@ -1,15 +1,7 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import {
-  IconButton,
-  Typography,
-  TextField,
-  Button,
-  Chip,
-  Tooltip,
-  CircularProgress,
-} from '@mui/material';
+import React, { useState, useEffect, useCallback } from 'react';
+import { IconButton, Typography, TextField, Button, Chip, Tooltip, CircularProgress } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -17,6 +9,8 @@ import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import RecommendIcon from '@mui/icons-material/Recommend';
+import useSession from '@/lib/session/useSession';
+import client, { authHeaders } from '@/lib/api/client';
 import styles from './WatchlistPanel.module.scss';
 
 type Props = {
@@ -25,49 +19,76 @@ type Props = {
 };
 
 type WatchlistItem = {
+  id: string;
   video_id: string;
   title: string;
   channel_title?: string;
   thumbnail_url?: string;
   duration?: string;
   status: 'WATCHED' | 'UNWATCHED';
+  added_at: string;
 };
 
 const WatchlistPanel: React.FC<Props> = ({ onClose, onCommand }) => {
+  const { session } = useSession();
+  const [items, setItems] = useState<WatchlistItem[]>([]);
   const [url, setUrl] = useState('');
-  const [filter, setFilter] = useState<'all' | 'unwatched' | 'watched'>('all');
-  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'UNWATCHED' | 'WATCHED'>('all');
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+
+  const fetchItems = useCallback(async () => {
+    if (!session?.token) return;
+    try {
+      const params = filter !== 'all' ? `?status=${filter}` : '';
+      const { data } = await client.get<WatchlistItem[]>(`/watchlist${params}`, {
+        headers: authHeaders(session.token),
+      });
+      setItems(data);
+    } catch {
+      console.error('[Watchlist] Fetch failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.token, filter]);
+
+  useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
 
   const handleAdd = useCallback(() => {
     if (!url.trim()) return;
+    setAdding(true);
     onCommand(`/watchlist add ${url.trim()}`);
     setUrl('');
-  }, [url, onCommand]);
+    setTimeout(() => {
+      fetchItems();
+      setAdding(false);
+    }, 2500);
+  }, [url, onCommand, fetchItems]);
 
-  const handleRefresh = useCallback(() => {
-    const filterArg = filter === 'all' ? '' : ` ${filter}`;
-    onCommand(`/watchlist list${filterArg}`);
-  }, [filter, onCommand]);
-
-  const handleMarkWatched = useCallback(
-    (videoId: string) => onCommand(`/watchlist watch ${videoId}`),
-    [onCommand],
-  );
-
-  const handleMarkUnwatched = useCallback(
-    (videoId: string) => onCommand(`/watchlist unwatch ${videoId}`),
+  const handleToggleStatus = useCallback(
+    (item: WatchlistItem) => {
+      const cmd = item.status === 'UNWATCHED' ? 'watch' : 'unwatch';
+      onCommand(`/watchlist ${cmd} ${item.video_id}`);
+      setItems((prev) =>
+        prev.map((i) =>
+          i.video_id === item.video_id ? { ...i, status: item.status === 'UNWATCHED' ? 'WATCHED' : 'UNWATCHED' } : i,
+        ),
+      );
+    },
     [onCommand],
   );
 
   const handleRemove = useCallback(
-    (videoId: string) => onCommand(`/watchlist remove ${videoId}`),
+    (item: WatchlistItem) => {
+      onCommand(`/watchlist remove ${item.video_id}`);
+      setItems((prev) => prev.filter((i) => i.video_id !== item.video_id));
+    },
     [onCommand],
   );
 
-  const handleSummarize = useCallback(
-    (videoId: string) => onCommand(`/watchlist summarize ${videoId}`),
-    [onCommand],
-  );
+  const handleSummarize = useCallback((videoId: string) => onCommand(`/watchlist summarize ${videoId}`), [onCommand]);
 
   const handleRecommend = useCallback(() => onCommand('/watchlist recommend'), [onCommand]);
 
@@ -86,7 +107,6 @@ const WatchlistPanel: React.FC<Props> = ({ onClose, onCommand }) => {
       </div>
 
       <div className={styles.content}>
-        {/* Add URL bar */}
         <div className={styles.addBar}>
           <TextField
             size="small"
@@ -97,19 +117,19 @@ const WatchlistPanel: React.FC<Props> = ({ onClose, onCommand }) => {
               if (e.key === 'Enter') handleAdd();
             }}
             className={styles.addInput}
+            disabled={adding}
             sx={{ '& .MuiInputBase-input': { fontSize: '0.8rem' } }}
           />
-          <Button size="small" variant="contained" onClick={handleAdd} disabled={!url.trim()}>
+          <Button size="small" variant="contained" onClick={handleAdd} disabled={!url.trim() || adding}>
             Add
           </Button>
         </div>
 
-        {/* Filter chips */}
         <div className={styles.filters}>
-          {(['all', 'unwatched', 'watched'] as const).map((f) => (
+          {(['all', 'UNWATCHED', 'WATCHED'] as const).map((f) => (
             <Chip
               key={f}
-              label={f.charAt(0).toUpperCase() + f.slice(1)}
+              label={f === 'all' ? 'All' : f === 'UNWATCHED' ? 'To Watch' : 'Watched'}
               size="small"
               color={filter === f ? 'primary' : 'default'}
               variant={filter === f ? 'filled' : 'outlined'}
@@ -117,31 +137,59 @@ const WatchlistPanel: React.FC<Props> = ({ onClose, onCommand }) => {
               sx={{ fontSize: '0.7rem' }}
             />
           ))}
-          <Button size="small" variant="text" onClick={handleRefresh} sx={{ ml: 'auto', fontSize: '0.7rem' }}>
-            Refresh List
+          <Button size="small" variant="text" onClick={fetchItems} sx={{ ml: 'auto', fontSize: '0.7rem' }}>
+            Refresh
           </Button>
         </div>
 
-        {/* Info text */}
-        <div className={styles.empty}>
-          <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 1 }}>
-            Use the commands below or type them in chat:
-          </Typography>
-          <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary', mb: 0.5 }}>
-            <code>/watchlist add &lt;URL&gt;</code> — Add a video
-          </Typography>
-          <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary', mb: 0.5 }}>
-            <code>/watchlist list</code> — Show your watchlist
-          </Typography>
-          <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary', mb: 0.5 }}>
-            <code>/watchlist watch &lt;ID&gt;</code> — Mark as watched
-          </Typography>
-          <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary', mb: 0.5 }}>
-            <code>/watchlist remove &lt;ID&gt;</code> — Remove video
-          </Typography>
-        </div>
+        {loading ? (
+          <div className={styles.loading}>
+            <CircularProgress size={24} />
+          </div>
+        ) : items.length === 0 ? (
+          <div className={styles.empty}>
+            {filter === 'all'
+              ? 'Your watchlist is empty. Paste a YouTube URL above to get started.'
+              : `No ${filter === 'UNWATCHED' ? 'unwatched' : 'watched'} videos.`}
+          </div>
+        ) : (
+          items.map((item) => (
+            <div key={item.id} className={styles.videoItem}>
+              {item.thumbnail_url && (
+                <img className={styles.thumbnail} src={item.thumbnail_url} alt={item.title} loading="lazy" />
+              )}
+              <div className={styles.videoInfo}>
+                <div className={styles.videoTitle} title={item.title}>
+                  {item.title}
+                </div>
+                {item.channel_title && <div className={styles.videoChannel}>{item.channel_title}</div>}
+                {item.duration && <div className={styles.videoDuration}>{item.duration}</div>}
+                <div className={styles.videoActions}>
+                  <Tooltip title={item.status === 'UNWATCHED' ? 'Mark watched' : 'Mark unwatched'}>
+                    <IconButton size="small" onClick={() => handleToggleStatus(item)}>
+                      {item.status === 'WATCHED' ? (
+                        <CheckCircleIcon sx={{ fontSize: 16 }} color="success" />
+                      ) : (
+                        <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="AI Summary (premium)">
+                    <IconButton size="small" onClick={() => handleSummarize(item.video_id)}>
+                      <AutoAwesomeIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Remove">
+                    <IconButton size="small" onClick={() => handleRemove(item)} color="error">
+                      <DeleteIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
 
-        {/* Premium section */}
         <div className={styles.premiumSection}>
           <div className={styles.premiumLabel}>PREMIUM AI COMMANDS</div>
           <Button
@@ -150,13 +198,11 @@ const WatchlistPanel: React.FC<Props> = ({ onClose, onCommand }) => {
             color="warning"
             startIcon={<RecommendIcon sx={{ fontSize: 16 }} />}
             onClick={handleRecommend}
+            disabled={items.length === 0}
             sx={{ fontSize: '0.7rem', mr: 1, mb: 0.5 }}
           >
             Get Recommendations
           </Button>
-          <Typography variant="body2" sx={{ fontSize: '0.7rem', color: 'text.secondary', mt: 0.5 }}>
-            Use <code>/watchlist summarize &lt;ID&gt;</code> in chat to AI-summarize a video.
-          </Typography>
         </div>
       </div>
     </div>

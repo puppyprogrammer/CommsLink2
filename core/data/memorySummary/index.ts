@@ -51,6 +51,12 @@ const setParent = async (ids: string[], parentId: string): Promise<void> => {
   });
 };
 
+const findAllByRoom = async (roomId: string): Promise<memory_summary[]> =>
+  prisma.memory_summary.findMany({
+    where: { room_id: roomId },
+    orderBy: [{ level: 'desc' }, { msg_start: 'asc' }],
+  });
+
 const deleteMasterByRoom = async (roomId: string): Promise<void> => {
   await prisma.memory_summary.deleteMany({
     where: { room_id: roomId, level: 4 },
@@ -68,6 +74,7 @@ export default {
   findOrphansByLevel,
   findMasterByRoom,
   setParent,
+  findAllByRoom,
   deleteMasterByRoom,
   deleteByRoom,
 };

@@ -3,11 +3,27 @@ type ChatMessage = {
   content: string;
 };
 
+type ToolCall = {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+};
+
+type ToolDefinition = {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
 type GrokResponse = {
   text: string;
   inputTokens: number;
   outputTokens: number;
   model: string;
+  toolCalls: ToolCall[];
 };
 
 const AVAILABLE_MODELS = [
@@ -44,6 +60,8 @@ const chatCompletion = async (
   messages: ChatMessage[],
   model?: string,
   maxTokens?: number,
+  tools?: ToolDefinition[],
+  toolChoice?: 'auto' | 'none' | 'required',
 ): Promise<GrokResponse> => {
   const apiKey = getApiKey();
 
@@ -55,18 +73,25 @@ const chatCompletion = async (
   // Clamp max_tokens to 200–4000 range, default 1500
   const tokens = Math.max(200, Math.min(4000, maxTokens || 1500));
 
+  const body: Record<string, unknown> = {
+    model: model || getModel(),
+    messages: allMessages,
+    max_tokens: tokens,
+    temperature: 0.8,
+  };
+
+  if (tools && tools.length > 0) {
+    body.tools = tools;
+    body.tool_choice = toolChoice || 'auto';
+  }
+
   const response = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: model || getModel(),
-      messages: allMessages,
-      max_tokens: tokens,
-      temperature: 0.8,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -77,15 +102,32 @@ const chatCompletion = async (
   const usedModel = model || getModel();
 
   const data = (await response.json()) as {
-    choices: Array<{ message: { content: string } }>;
+    choices: Array<{
+      message: {
+        content: string | null;
+        tool_calls?: Array<{
+          id: string;
+          type: 'function';
+          function: { name: string; arguments: string };
+        }>;
+      };
+    }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
 
+  const message = data.choices[0]?.message;
+  const toolCalls: ToolCall[] = (message?.tool_calls || []).map((tc) => ({
+    id: tc.id,
+    type: tc.type,
+    function: { name: tc.function.name, arguments: tc.function.arguments },
+  }));
+
   return {
-    text: data.choices[0]?.message?.content || 'No response generated.',
+    text: message?.content || '',
     inputTokens: data.usage?.prompt_tokens || 0,
     outputTokens: data.usage?.completion_tokens || 0,
     model: usedModel,
+    toolCalls,
   };
 };
 
@@ -164,6 +206,6 @@ const moderateImage = async (
   }
 };
 
-export type { ChatMessage, GrokResponse };
+export type { ChatMessage, GrokResponse, ToolCall, ToolDefinition };
 export { AVAILABLE_MODELS };
 export default { chatCompletion, moderateImage };

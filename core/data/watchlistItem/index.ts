@@ -1,13 +1,13 @@
 import prisma from '../../adapters/prisma';
 
-import type { watchlist_item, WatchlistStatus } from '../../../prisma/client';
+import type { watchlist_item, WatchStatus } from '../../../prisma/client';
 
 type CreateWatchlistItemDTO = {
   user_id: string;
   video_id: string;
-  title: string;
-  channel_title?: string;
-  thumbnail_url?: string;
+  title?: string;
+  channel?: string;
+  thumbnail?: string;
   duration?: string;
 };
 
@@ -16,7 +16,7 @@ const create = async (data: CreateWatchlistItemDTO): Promise<watchlist_item> =>
 
 const findByUser = async (
   userId: string,
-  status?: WatchlistStatus,
+  status?: WatchStatus,
 ): Promise<watchlist_item[]> =>
   prisma.watchlist_item.findMany({
     where: { user_id: userId, ...(status ? { status } : {}) },
@@ -27,23 +27,23 @@ const findByUserAndVideo = async (
   userId: string,
   videoId: string,
 ): Promise<watchlist_item | null> =>
-  prisma.watchlist_item.findUnique({
-    where: { user_id_video_id: { user_id: userId, video_id: videoId } },
+  prisma.watchlist_item.findFirst({
+    where: { user_id: userId, video_id: videoId },
   });
 
 const updateStatus = async (
   userId: string,
   videoId: string,
-  status: WatchlistStatus,
+  status: WatchStatus,
 ): Promise<watchlist_item> =>
   prisma.watchlist_item.update({
-    where: { user_id_video_id: { user_id: userId, video_id: videoId } },
+    where: { video_id: videoId },
     data: { status },
   });
 
 const remove = async (userId: string, videoId: string): Promise<watchlist_item> =>
   prisma.watchlist_item.delete({
-    where: { user_id_video_id: { user_id: userId, video_id: videoId } },
+    where: { video_id: videoId },
   });
 
 export type { CreateWatchlistItemDTO };

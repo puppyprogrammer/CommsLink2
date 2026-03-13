@@ -1407,6 +1407,19 @@ const runAgentResponse = async (
       roomId,
     ).catch(console.error);
 
+    // Strip think blocks BEFORE command loop — otherwise {claude} commands inside think text get executed
+    if (thinkOn) {
+      const earlyThinks = [...responseText.matchAll(THINK_REGEX), ...responseText.matchAll(THINK_XML_REGEX), ...responseText.matchAll(THINK_HTML_REGEX)];
+      for (const m of earlyThinks) {
+        const thought = m[1].trim().substring(0, 1000);
+        if (thought) {
+          emitSystemMessage(io, roomName, `[${agent.name} thought: ${thought}]`);
+        }
+      }
+      responseText = responseText.replace(THINK_HTML_REGEX, '').replace(THINK_XML_REGEX, '').replace(THINK_REGEX, '');
+      responseText = responseText.replace(/\{\/think\}/g, '').replace(/\[\/think\]/g, '').replace(/<\/think>/g, '');
+    }
+
     // Command loop: let agent fetch memories, run SQL, browse web, or modify itself before final response
     let loopCount = 0;
     // Re-fetch agent for self-modification (need mutable copy of current state)
@@ -2120,6 +2133,19 @@ const runAgentResponse = async (
       const loopResponse = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, currentAgent?.max_tokens ?? agentMaxTokens, agentTools);
       const loopToolBrace = toolCallsToBraceFormat(loopResponse.toolCalls);
       responseText = loopToolBrace ? `${loopToolBrace}\n${loopResponse.text}` : loopResponse.text;
+
+      // Strip think blocks before next command-matching iteration
+      if (thinkOn) {
+        const loopThinks = [...responseText.matchAll(THINK_REGEX), ...responseText.matchAll(THINK_XML_REGEX), ...responseText.matchAll(THINK_HTML_REGEX)];
+        for (const m of loopThinks) {
+          const thought = m[1].trim().substring(0, 1000);
+          if (thought) {
+            emitSystemMessage(io, roomName, `[${agent.name} thought: ${thought}]`);
+          }
+        }
+        responseText = responseText.replace(THINK_HTML_REGEX, '').replace(THINK_XML_REGEX, '').replace(THINK_REGEX, '');
+        responseText = responseText.replace(/\{\/think\}/g, '').replace(/\[\/think\]/g, '').replace(/<\/think>/g, '');
+      }
 
       creditActions.chargeGrokUsage(
         agent.creator_id,

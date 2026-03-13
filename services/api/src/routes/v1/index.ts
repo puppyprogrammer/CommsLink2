@@ -11,6 +11,7 @@ import { modelsRoutes } from './models';
 import { creditRoutes } from './credits';
 import { uploadRoutes } from './upload';
 import { terminalRoutes } from './terminal';
+import { watchlistRoutes } from './watchlist';
 
 /**
  * Register all v1 API routes.
@@ -30,6 +31,7 @@ const registerRoutes = (server: Server): void => {
     ...creditRoutes,
     ...uploadRoutes,
     ...terminalRoutes,
+    ...watchlistRoutes,
   ]);
 };
 

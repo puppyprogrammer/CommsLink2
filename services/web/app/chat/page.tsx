@@ -719,13 +719,25 @@ const ChatPage = () => {
                             opacity: 0.8,
                             listStyle: 'none',
                             userSelect: 'none',
-                            ...(msg.systemType === 'tool-result' ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' } : {}),
+                            ...(msg.systemType === 'tool-result'
+                              ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' }
+                              : {}),
                           }}
                         >
                           {msg.collapsible} ▸
                         </summary>
                         {msg.collapsible === 'Watchlist' ? (
-                          <Box sx={{ mt: 0.5, p: 1, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.03)', fontSize: '0.8rem', maxHeight: '400px', overflow: 'auto' }}>
+                          <Box
+                            sx={{
+                              mt: 0.5,
+                              p: 1,
+                              borderRadius: 1,
+                              backgroundColor: 'rgba(255,255,255,0.03)',
+                              fontSize: '0.8rem',
+                              maxHeight: '400px',
+                              overflow: 'auto',
+                            }}
+                          >
                             <MessageContent text={displayText} />
                           </Box>
                         ) : (
@@ -742,6 +754,9 @@ const ChatPage = () => {
                               fontSize: '0.7rem',
                               maxHeight: '300px',
                               overflow: 'auto',
+                              ...(msg.systemType === 'tool-result'
+                                ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' }
+                                : {}),
                             }}
                           >
                             {displayText}
@@ -753,7 +768,15 @@ const ChatPage = () => {
                 }
                 return (
                   <Box key={msg.id || i} sx={{ textAlign: 'center', py: 0.25 }}>
-                    <Typography variant="detailText" sx={{ fontStyle: 'italic', ...(msg.systemType === 'tool-result' ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' } : {}) }}>
+                    <Typography
+                      variant="detailText"
+                      sx={{
+                        fontStyle: 'italic',
+                        ...(msg.systemType === 'tool-result'
+                          ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' }
+                          : {}),
+                      }}
+                    >
                       {displayText}
                     </Typography>
                   </Box>
@@ -886,10 +909,7 @@ const ChatPage = () => {
           />
         )}
         {watchlistPanelOpen && (
-          <WatchlistPanel
-            onClose={() => setWatchlistPanelOpen(false)}
-            onCommand={(cmd) => sendMessage(cmd)}
-          />
+          <WatchlistPanel onClose={() => setWatchlistPanelOpen(false)} onCommand={(cmd) => sendMessage(cmd)} />
         )}
         {webPanelOpen && <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} />}
       </Box>

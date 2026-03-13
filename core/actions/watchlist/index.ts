@@ -20,8 +20,8 @@ const addToWatchlist = async (userId: string, url: string): Promise<string> => {
     user_id: userId,
     video_id: metadata.videoId,
     title: metadata.title,
-    channel_title: metadata.channelTitle,
-    thumbnail_url: metadata.thumbnailUrl,
+    channel: metadata.channelTitle,
+    thumbnail: metadata.thumbnailUrl,
     duration: metadata.duration,
   });
 
@@ -46,7 +46,7 @@ const listWatchlist = async (userId: string, statusFilter?: string): Promise<str
   const lines = items.map((item, i) => {
     const statusIcon = item.status === 'WATCHED' ? '✅' : '⬜';
     const dur = item.duration ? ` (${item.duration})` : '';
-    const ch = item.channel_title ? ` — ${item.channel_title}` : '';
+    const ch = item.channel ? ` — ${item.channel}` : '';
     return `${statusIcon} ${i + 1}. **${item.title}**${dur}${ch}\n   ID: \`${item.video_id}\``;
   });
 
@@ -126,7 +126,7 @@ const recommendVideos = async (userId: string): Promise<string> => {
   const items = await Data.watchlistItem.findByUser(userId);
   if (items.length === 0) return 'Add some videos to your watchlist first so I can make recommendations.';
 
-  const titles = items.map((i) => `- ${i.title}${i.channel_title ? ` (${i.channel_title})` : ''}`).join('\n');
+  const titles = items.map((i) => `- ${i.title}${i.channel ? ` (${i.channel})` : ''}`).join('\n');
 
   const prompt = `Based on this YouTube watchlist, recommend 5 videos or channels the user might enjoy. Explain briefly why each is a good fit.\n\nWatchlist:\n${titles}`;
 

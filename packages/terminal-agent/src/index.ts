@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.6.8';
+const AGENT_VERSION = '1.7.5';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -453,190 +453,162 @@ const connect = (config: SavedConfig): void => {
     }
 
     if (data.collectResponse && data.execId) {
-      // AI mode: send prompt, poll with /btw to detect completion, /copy to capture response.
-      // Claude runs with --dangerously-skip-permissions so no permission prompts exist.
-      // Strategy: /btw polling is the PRIMARY completion detection mechanism.
-      // We do NOT use inactivity detection — Claude's TUI is too noisy for that to work reliably.
+      // AI mode: use `claude -p` (print mode) for clean text output.
+      // No TUI, no ANSI, no /btw polling, no /copy clipboard scraping.
+      // Just spawn a process, read stdout, done.
       const execId = data.execId;
-      let collected = '';
-      let finished = false;
-      let disposable: { dispose: () => void } | null = null;
-      let btwPollTimer: ReturnType<typeof setInterval> | null = null;
-      let totalTimer: ReturnType<typeof setTimeout> | null = null;
       const MAX_WAIT_MS = 900_000; // 15 min absolute max
-      const BTW_POLL_START_MS = 60_000; // Start /btw polling after 60s
-      const BTW_POLL_INTERVAL_MS = 60_000; // Poll every 60s
+      const HEARTBEAT_INTERVAL = 30_000; // 30s between heartbeat checks
+      const HUNG_THRESHOLD = 120_000; // 2 min no output = probably hung
 
-      // Read clipboard contents (platform-specific)
-      const readClipboard = (): Promise<string> => {
-        return new Promise((resolve) => {
-          const cmd = platform() === 'win32'
-            ? 'powershell -command "Get-Clipboard"'
-            : platform() === 'darwin'
-              ? 'pbpaste'
-              : 'xclip -selection clipboard -o 2>/dev/null || xsel --clipboard --output 2>/dev/null';
+      log(`[Claude Print] Spawning claude -p for ${execId}: ${userInput.substring(0, 100)}...`);
 
-          exec(cmd, { timeout: 5_000 }, (error, stdout) => {
-            resolve(error ? '' : stdout.trim());
+      let stdout = '';
+      let stderr = '';
+      let finished = false;
+      let lastOutputTime = Date.now();
+      const startTime = Date.now();
+      let heartbeatCount = 0;
+
+      const cleanup = (): void => {
+        clearInterval(heartbeatTimer);
+      };
+
+      // On Windows, spawn cmd.exe directly with /c instead of using shell: true
+      // shell: true wraps as cmd.exe /d /s /c "..." which can cause stdin piping issues
+      // where cmd.exe consumes stdin before the child process reads it
+      const isWin = platform() === 'win32';
+      const claudeProc = isWin
+        ? spawn('cmd.exe', ['/c', 'claude', '-p', '--dangerously-skip-permissions'], {
+            cwd: homedir(),
+            env: process.env as Record<string, string>,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          })
+        : spawn('claude', ['-p', '--dangerously-skip-permissions'], {
+            cwd: homedir(),
+            env: process.env as Record<string, string>,
+            stdio: ['pipe', 'pipe', 'pipe'],
           });
-        });
+
+      log(`[Claude Print] Process spawned, pid=${claudeProc.pid}`);
+
+      // Write prompt to stdin and close it so Claude knows input is complete
+      // Small delay on Windows to let the process initialize before writing stdin
+      const writeStdin = (): void => {
+        try {
+          claudeProc.stdin.write(userInput + '\n');
+          claudeProc.stdin.end();
+          log(`[Claude Print] stdin written (${userInput.length} chars) and closed`);
+        } catch (stdinErr) {
+          log(`[Claude Print] stdin write error: ${stdinErr}`);
+        }
       };
+      if (isWin) {
+        setTimeout(writeStdin, 500);
+      } else {
+        writeStdin();
+      }
 
-      // Strip ANSI escape sequences for clean output (fallback only)
-      const stripAnsi = (s: string): string =>
-        s
-          .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-          .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-          .replace(/\x1b[^[\]].?/g, '')
-          // eslint-disable-next-line no-control-regex
-          .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
-          .replace(/[ \t]+/g, ' ')
-          .replace(/\n{3,}/g, '\n\n');
+      claudeProc.stdout.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        stdout += text;
+        lastOutputTime = Date.now();
+        heartbeatCount = 0; // Reset consecutive silent heartbeats
+        // Mirror progress to web panel
+        socket.emit('claude_session_output', { sessionKey: data.sessionKey, data: text });
+      });
 
-      const cleanup = () => {
-        if (btwPollTimer) { clearInterval(btwPollTimer); btwPollTimer = null; }
-        if (totalTimer) { clearTimeout(totalTimer); totalTimer = null; }
-        if (disposable) { disposable.dispose(); disposable = null; }
-      };
+      claudeProc.stderr.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        stderr += text;
+        lastOutputTime = Date.now();
+        log(`[Claude Print] stderr: ${text.substring(0, 200)}`);
+        socket.emit('claude_debug', { execId, type: 'stderr', content: text.substring(0, 500) });
+      });
 
-      const captureAndEmit = () => {
+      // Heartbeat: check every 30s if Claude is still producing output
+      const heartbeatTimer = setInterval(() => {
+        if (finished) { cleanup(); return; }
+
+        const silentMs = Date.now() - lastOutputTime;
+        const elapsedS = Math.round((Date.now() - startTime) / 1000);
+
+        if (silentMs >= HUNG_THRESHOLD) {
+          // No output for 2+ minutes — Claude is likely hung
+          heartbeatCount++;
+          if (heartbeatCount >= 2) {
+            // 2 consecutive hung heartbeats (4+ min silence) — kill it
+            cleanup();
+            finished = true;
+            log(`[Claude Print] Hung detected for ${execId}, killing after ${elapsedS}s. stderr: ${stderr.substring(0, 200)}`);
+            try { claudeProc.kill(); } catch { /* ignore */ }
+            const stderrMsg = stderr.trim() ? `\nstderr: ${stderr.trim().substring(0, 500)}` : '';
+            const output = stdout.trim() || `(Claude hung — no output for ${Math.round(silentMs / 1000)}s${stderrMsg})`;
+            const responsePayload = { output: output.substring(0, 16000), exitCode: 1 };
+            socket.emit(`claude_pty_response:${execId}`, responsePayload);
+            socket.emit('claude_pty_response', responsePayload);
+            return;
+          }
+          // First hung heartbeat — warn but keep waiting
+          log(`[Claude Print] No output for ${Math.round(silentMs / 1000)}s on ${execId}`);
+          socket.emit('claude_session_output', {
+            sessionKey: data.sessionKey,
+            data: `\n⚠ [Heartbeat ${elapsedS}s] No output for ${Math.round(silentMs / 1000)}s — Claude may be hung\n`,
+          });
+          socket.emit('claude_debug', {
+            execId,
+            type: 'heartbeat',
+            status: 'silent',
+            elapsedSeconds: elapsedS,
+            silentSeconds: Math.round(silentMs / 1000),
+          });
+        } else {
+          // Claude produced output recently — it's alive
+          log(`[Claude Print] Heartbeat OK for ${execId} at ${elapsedS}s (${stdout.length} chars so far)`);
+          socket.emit('claude_session_output', {
+            sessionKey: data.sessionKey,
+            data: `\n✓ [Heartbeat ${elapsedS}s] Claude is working... (${stdout.length} chars)\n`,
+          });
+        }
+      }, HEARTBEAT_INTERVAL);
+
+      claudeProc.on('close', (code: number | null) => {
+        if (finished) return;
         finished = true;
         cleanup();
 
-        // Use /copy to get Claude's clean response text via clipboard
-        // Clear any leftover text on the input line first (Escape → Ctrl+U → /copy with delays)
-        log(`[Claude PTY Collect] Sending /copy to grab response for ${execId}`);
-        try {
-          if (activePty) activePty.write('\x1b'); // Escape
-        } catch { /* PTY may be dead */ }
-
-        setTimeout(() => {
-          try {
-            if (activePty) activePty.write('\x15'); // Ctrl+U
-          } catch { /* ignore */ }
-
-          setTimeout(() => {
-            try {
-              if (activePty) activePty.write('/copy\r');
-            } catch { /* ignore */ }
-
-            setTimeout(() => {
-              readClipboard().then((clipboardContent) => {
-                log(`[Claude PTY Collect] Clipboard for ${execId}: ${clipboardContent.length} chars`);
-                const output = clipboardContent || stripAnsi(collected).trim() || '(no response captured)';
-                log(`[Claude PTY Collect] done for ${execId}, ${output.length} chars`);
-                const responsePayload = { output: output.substring(0, 16000), exitCode: 0 };
-                socket.emit(`claude_pty_response:${execId}`, responsePayload);
-                socket.emit('claude_pty_response', responsePayload);
-              }).catch((err) => {
-                log(`[Claude PTY Collect] clipboard read failed: ${err}`);
-                const output = stripAnsi(collected).trim() || '(no response captured)';
-                const responsePayload = { output: output.substring(0, 16000), exitCode: 1 };
-                socket.emit(`claude_pty_response:${execId}`, responsePayload);
-                socket.emit('claude_pty_response', responsePayload);
-              });
-            }, 2000);
-          }, 300);
-        }, 300);
-      };
-
-      // /btw polling: ask Claude if it's done, parse the response
-      let isBtwPolling = false;
-      let btwResponseBuffer = '';
-
-      const doBtwPoll = () => {
-        if (finished || isBtwPolling || !activePty) return;
-        isBtwPolling = true;
-        btwResponseBuffer = '';
-
-        log(`[Claude PTY Collect] Sending /btw status check for ${execId}`);
-        // Clear any leftover text on the input line, then wait before sending /btw
-        try { activePty.write('\x1b'); } catch { isBtwPolling = false; return; }  // Escape
-        setTimeout(() => {
-          if (!activePty || finished) { isBtwPolling = false; return; }
-          try { activePty.write('\x15'); } catch { isBtwPolling = false; return; }  // Ctrl+U
-          setTimeout(() => {
-            if (!activePty || finished) { isBtwPolling = false; return; }
-            try { activePty.write('/btw are you done? reply only YES or NO\r'); } catch { isBtwPolling = false; return; }
-          }, 300);
-        }, 300);
-
-        // Timeout in case /btw doesn't respond (30s — Claude may need time to process)
-        const btwTimeout = setTimeout(() => {
-          log(`[Claude PTY Collect] /btw timed out for ${execId}`);
-          isBtwPolling = false;
-        }, 30_000);
-
-        // Store timeout ref so we can clear it from the data handler
-        const checkBtwDone = () => {
-          const stripped = stripAnsi(btwResponseBuffer).toLowerCase();
-          if (stripped.includes('press space') || stripped.includes('press enter') || stripped.includes('to dismiss')) {
-            clearTimeout(btwTimeout);
-
-            const isDone = stripped.includes('yes');
-            log(`[Claude PTY Collect] /btw response: done=${isDone} for ${execId}`);
-
-            // Dismiss the /btw overlay
-            if (activePty) activePty.write(' ');
-            isBtwPolling = false;
-
-            if (isDone) {
-              // Stop all polling immediately — Claude confirmed done
-              finished = true;
-              cleanup();
-              log(`[Claude PTY Collect] Claude confirmed done, capturing in 2s for ${execId}`);
-              setTimeout(() => captureAndEmit(), 2000);
-            }
-          }
-        };
-
-        // The main onData handler below routes chunks to btwResponseBuffer when isBtwPolling=true
-      };
-
-      // Single onData handler — routes to /btw parsing when polling, otherwise just collects
-      disposable = activePty.onData((chunk: string) => {
-        collected += chunk;
-
-        if (isBtwPolling) {
-          btwResponseBuffer += chunk;
-          // Check if /btw response is complete
-          const stripped = stripAnsi(btwResponseBuffer).toLowerCase();
-          if (stripped.includes('press space') || stripped.includes('press enter') || stripped.includes('to dismiss')) {
-            const isDone = stripped.includes('yes');
-            log(`[Claude PTY Collect] /btw response: done=${isDone} for ${execId}`);
-
-            if (activePty) activePty.write(' '); // dismiss /btw overlay
-            isBtwPolling = false;
-
-            if (isDone) {
-              // Stop all polling immediately — Claude confirmed done
-              finished = true;
-              cleanup();
-              log(`[Claude PTY Collect] Claude confirmed done, capturing in 2s for ${execId}`);
-              setTimeout(() => captureAndEmit(), 2000);
-            }
-          }
-        }
+        const elapsedS = Math.round((Date.now() - startTime) / 1000);
+        const output = stdout.trim() || stderr.trim() || '(no response)';
+        log(`[Claude Print] done for ${execId}, exit=${code}, ${output.length} chars, ${elapsedS}s`);
+        const responsePayload = { output: output.substring(0, 16000), exitCode: code || 0 };
+        socket.emit(`claude_pty_response:${execId}`, responsePayload);
+        socket.emit('claude_pty_response', responsePayload);
       });
 
-      // Start /btw polling after initial wait
-      setTimeout(() => {
+      claudeProc.on('error', (err: Error) => {
         if (finished) return;
-        log(`[Claude PTY Collect] Starting /btw polling for ${execId}`);
-        doBtwPoll(); // First poll at 15s
-        btwPollTimer = setInterval(doBtwPoll, BTW_POLL_INTERVAL_MS);
-      }, BTW_POLL_START_MS);
+        finished = true;
+        cleanup();
+
+        log(`[Claude Print] spawn error for ${execId}: ${err.message}`);
+        const responsePayload = { output: `Error: ${err.message}`, exitCode: 1 };
+        socket.emit(`claude_pty_response:${execId}`, responsePayload);
+        socket.emit('claude_pty_response', responsePayload);
+      });
 
       // Absolute timeout
-      totalTimer = setTimeout(() => {
+      setTimeout(() => {
         if (!finished) {
-          log(`[Claude PTY Collect] Absolute timeout for ${execId}`);
-          captureAndEmit();
+          finished = true;
+          cleanup();
+          log(`[Claude Print] Absolute timeout for ${execId}`);
+          try { claudeProc.kill(); } catch { /* ignore */ }
+          const output = stdout.trim() || '(timed out — no response)';
+          const responsePayload = { output: output.substring(0, 16000), exitCode: 1 };
+          socket.emit(`claude_pty_response:${execId}`, responsePayload);
+          socket.emit('claude_pty_response', responsePayload);
         }
       }, MAX_WAIT_MS);
-
-      // Write the prompt into the PTY
-      activePty.write(userInput + '\r');
     } else {
       // Web panel mode: just type into the PTY, output is mirrored in real-time
       activePty.write(userInput + '\r');
