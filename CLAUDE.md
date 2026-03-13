@@ -83,6 +83,30 @@ docker compose up -d              # Start all services
 
 ## Deployment Workflow
 
+### Automated (preferred — required for AI agents)
+
+```bash
+bash scripts/deploy.sh <services> "<commit message>"
+```
+
+Examples:
+```bash
+bash scripts/deploy.sh api "Fix chat handler bug"
+bash scripts/deploy.sh web "Update terminal panel UI"
+bash scripts/deploy.sh "api web" "Full stack update"
+```
+
+The script handles everything in one command:
+1. Git commit (safety snapshot)
+2. SCP changed files to EC2
+3. Trigger docker rebuild on EC2 (detached — no timeout issues)
+4. Poll for completion (15s intervals, 10min max)
+5. Git push to GitHub
+
+**AI agents (Kara/Claude) MUST use this script.** Never run individual SSH, SCP, or docker-compose commands to production.
+
+### Manual (for special cases)
+
 1. **Edit locally** in `H:\Development\CommsLink2`
 2. **SCP changed files to EC2**: `scp -i PuppyCo.pem <files> ec2-user@3.134.145.169:~/CommsLink2/<path>`
 3. **Rebuild on EC2**:

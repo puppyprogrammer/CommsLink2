@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogActions,
   Tooltip,
+  Badge,
 } from '@mui/material';
 
 // Material UI icons
@@ -96,6 +97,9 @@ const ChatPage = () => {
   const [webPanelOpen, setWebPanelOpen] = useState(false);
   const [webPanelData, setWebPanelData] = useState<WebPanelData | null>(null);
   const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
+  const [terminalNotifications, setTerminalNotifications] = useState(0);
+  const terminalPanelOpenRef = useRef(terminalPanelOpen);
+  terminalPanelOpenRef.current = terminalPanelOpen;
   const [watchlistPanelOpen, setWatchlistPanelOpen] = useState(false);
   const [panelMachines, setPanelMachines] = useState<{ id: string; name: string; status: string; os?: string }[]>([]);
   const socketInstanceRef = useRef<ReturnType<typeof getSocket> | null>(null);
@@ -282,6 +286,13 @@ const ChatPage = () => {
     socket.emit('get_machines');
     socket.on('machines_list', (data: { machines: { id: string; name: string; status: string; os?: string }[] }) => {
       setPanelMachines(data.machines);
+    });
+
+    // Track panel_log events for notification badge when terminal panel is closed
+    socket.on('panel_log', () => {
+      if (!terminalPanelOpenRef.current) {
+        setTerminalNotifications((n) => n + 1);
+      }
     });
 
     // Chat cleared by admin/room creator
@@ -644,10 +655,27 @@ const ChatPage = () => {
               <IconButton
                 size="small"
                 color={terminalPanelOpen ? 'primary' : 'default'}
-                onClick={() => setTerminalPanelOpen((prev) => !prev)}
+                onClick={() => {
+                  setTerminalPanelOpen((prev) => !prev);
+                  setTerminalNotifications(0);
+                }}
                 title="Terminal / Claude"
               >
-                <TerminalIcon />
+                <Badge
+                  badgeContent={terminalNotifications}
+                  color="error"
+                  max={99}
+                  sx={{
+                    '& .MuiBadge-badge': {
+                      fontSize: '0.6rem',
+                      minWidth: 16,
+                      height: 16,
+                      padding: '0 4px',
+                    },
+                  }}
+                >
+                  <TerminalIcon />
+                </Badge>
               </IconButton>
               <IconButton
                 size="small"

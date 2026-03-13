@@ -333,6 +333,18 @@ model claude_log {
   @@index([created_at])
 }
 
+model panel_log {
+  id         String   @id @default(uuid())
+  room_id    String
+  tab        String   // 'terminal' or 'claude'
+  entry_type String   // 'command', 'output', 'prompt', 'status', 'response', 'error'
+  text       String   @db.Text
+  machine    String?
+  created_at DateTime @default(now())
+
+  @@index([room_id, tab, created_at])
+}
+
 enum WatchStatus {
   UNWATCHED
   WATCHED

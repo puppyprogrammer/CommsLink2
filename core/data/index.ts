@@ -16,7 +16,8 @@ import claudeLog from './claudeLog';
 import roomMember from './roomMember';
 import paymentTransaction from './paymentTransaction';
 import watchlistItem from './watchlistItem';
+import panelLog from './panelLog';
 
-const Data = { user, room, thread, post, message, dailyStats, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, scheduledJob, claudeLog, roomMember, paymentTransaction, watchlistItem };
+const Data = { user, room, thread, post, message, dailyStats, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, scheduledJob, claudeLog, roomMember, paymentTransaction, watchlistItem, panelLog };
 
 export default Data;

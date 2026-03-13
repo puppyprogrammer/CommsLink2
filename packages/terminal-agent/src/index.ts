@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.8.2';
+const AGENT_VERSION = '1.8.3';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -456,54 +456,122 @@ const connect = (config: SavedConfig): void => {
     }
 
     if (data.collectResponse && data.execId) {
-      // AI mode: use claude -p for clean text output, with periodic status updates
+      // AI mode: use claude -p with stream-json for real-time structured events
       const execId = data.execId;
       const MAX_WAIT_MS = 900_000; // 15 min absolute max
-      const STATUS_INTERVAL = 45_000; // 45s between status updates
+      const STATUS_INTERVAL = 30_000; // 30s between status updates (if no tool events)
       const HUNG_THRESHOLD = 120_000; // 2 min no output = probably hung
 
-      log(`[Claude Print] Spawning claude -p for ${execId}: ${userInput.substring(0, 100)}...`);
+      log(`[Claude Stream] Spawning claude -p --stream-json for ${execId}: ${userInput.substring(0, 100)}...`);
 
-      let stdout = '';
       let stderr = '';
       let finished = false;
       let lastOutputTime = Date.now();
-      let lastStatusLen = 0; // track how much stdout we reported last time
       const startTime = Date.now();
       let heartbeatCount = 0;
+      let finalResult = ''; // extracted from result event
+      let lastActivity = ''; // human-readable description of what Claude is doing
+      let toolCallCount = 0;
+      let lineBuffer = ''; // partial JSON line buffer
 
       const cleanup = (): void => {
         clearInterval(statusTimer);
       };
 
-      // On Windows, spawn cmd.exe directly with /c instead of using shell: true
-      // IMPORTANT: strip CLAUDECODE env var — otherwise Claude refuses to launch
-      // ("cannot be launched inside another Claude Code session")
+      // Parse a stream-json event and extract status info
+      const parseStreamEvent = (line: string): void => {
+        if (!line.trim()) return;
+        try {
+          const event = JSON.parse(line);
+          lastOutputTime = Date.now();
+          heartbeatCount = 0;
+
+          if (event.type === 'assistant' && event.message) {
+            const msg = event.message;
+            // Check for tool use in content blocks
+            if (msg.content && Array.isArray(msg.content)) {
+              for (const block of msg.content) {
+                if (block.type === 'tool_use') {
+                  toolCallCount++;
+                  const toolName = block.name || 'unknown';
+                  const input = block.input || {};
+                  // Build human-readable status from tool call
+                  if (toolName === 'Read') {
+                    lastActivity = `Reading ${input.file_path || 'file'}`;
+                  } else if (toolName === 'Write') {
+                    lastActivity = `Writing ${input.file_path || 'file'}`;
+                  } else if (toolName === 'Edit') {
+                    lastActivity = `Editing ${input.file_path || 'file'}`;
+                  } else if (toolName === 'Bash') {
+                    const cmd = (input.command || '').substring(0, 80);
+                    lastActivity = `Running: ${cmd}`;
+                  } else if (toolName === 'Glob') {
+                    lastActivity = `Searching files: ${input.pattern || ''}`;
+                  } else if (toolName === 'Grep') {
+                    lastActivity = `Searching for: ${input.pattern || ''}`;
+                  } else if (toolName === 'Agent') {
+                    lastActivity = `Spawning agent: ${input.description || ''}`;
+                  } else {
+                    lastActivity = `Using tool: ${toolName}`;
+                  }
+                  log(`[Claude Stream] Tool #${toolCallCount}: ${lastActivity}`);
+
+                  // Emit real-time status for each tool call
+                  const elapsedS = Math.round((Date.now() - startTime) / 1000);
+                  socket.emit('claude_btw_status', {
+                    execId,
+                    status: `[Tool #${toolCallCount}] ${lastActivity}`,
+                    elapsedSeconds: elapsedS,
+                  });
+                } else if (block.type === 'text' && block.text) {
+                  // Partial text output from assistant
+                  lastActivity = 'Composing response...';
+                }
+              }
+            }
+          } else if (event.type === 'result') {
+            // Final result — extract clean text
+            if (event.result) {
+              finalResult = typeof event.result === 'string' ? event.result : JSON.stringify(event.result);
+            }
+            log(`[Claude Stream] Got result event, ${finalResult.length} chars`);
+          } else if (event.type === 'system') {
+            lastActivity = 'Initializing...';
+            log(`[Claude Stream] System event: ${JSON.stringify(event).substring(0, 200)}`);
+          }
+        } catch (parseErr) {
+          // Not valid JSON — might be partial line, log and ignore
+          log(`[Claude Stream] Parse error on line: ${line.substring(0, 200)}`);
+        }
+      };
+
+      // Strip CLAUDECODE env var — otherwise Claude refuses to launch
       const cleanEnv = { ...process.env } as Record<string, string>;
       delete cleanEnv.CLAUDECODE;
       const isWin = platform() === 'win32';
+      const claudeArgs = ['-p', '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'];
       const claudeProc = isWin
-        ? spawn('cmd.exe', ['/c', 'claude', '-p', '--dangerously-skip-permissions'], {
+        ? spawn('cmd.exe', ['/c', 'claude', ...claudeArgs], {
             cwd: process.cwd(),
             env: cleanEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
           })
-        : spawn('claude', ['-p', '--dangerously-skip-permissions'], {
+        : spawn('claude', claudeArgs, {
             cwd: process.cwd(),
             env: cleanEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
           });
 
-      log(`[Claude Print] Process spawned, pid=${claudeProc.pid}`);
+      log(`[Claude Stream] Process spawned, pid=${claudeProc.pid}`);
 
       // Write prompt to stdin — small delay on Windows for process init
       const writeStdin = (): void => {
         try {
           claudeProc.stdin.write(userInput + '\n');
           claudeProc.stdin.end();
-          log(`[Claude Print] stdin written (${userInput.length} chars) and closed`);
+          log(`[Claude Stream] stdin written (${userInput.length} chars) and closed`);
         } catch (stdinErr) {
-          log(`[Claude Print] stdin write error: ${stdinErr}`);
+          log(`[Claude Stream] stdin write error: ${stdinErr}`);
         }
       };
       if (isWin) {
@@ -512,22 +580,27 @@ const connect = (config: SavedConfig): void => {
         writeStdin();
       }
 
+      // Parse stdout as newline-delimited JSON events
       claudeProc.stdout.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
-        stdout += text;
-        lastOutputTime = Date.now();
-        heartbeatCount = 0;
-        socket.emit('claude_session_output', { sessionKey: data.sessionKey, data: text });
+        lineBuffer += text;
+        // Process complete lines
+        const lines = lineBuffer.split('\n');
+        // Keep last element (may be incomplete)
+        lineBuffer = lines.pop() || '';
+        for (const line of lines) {
+          parseStreamEvent(line);
+        }
       });
 
       claudeProc.stderr.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         stderr += text;
         lastOutputTime = Date.now();
-        log(`[Claude Print] stderr: ${text.substring(0, 200)}`);
+        log(`[Claude Stream] stderr: ${text.substring(0, 200)}`);
       });
 
-      // Status updates every 45s: show what Claude has produced so far
+      // Periodic status updates — only fires if no tool events have reported recently
       const statusTimer = setInterval(() => {
         if (finished) { cleanup(); return; }
 
@@ -539,43 +612,26 @@ const connect = (config: SavedConfig): void => {
           if (heartbeatCount >= 2) {
             cleanup();
             finished = true;
-            log(`[Claude Print] Hung detected for ${execId}, killing after ${elapsedS}s`);
+            log(`[Claude Stream] Hung detected for ${execId}, killing after ${elapsedS}s`);
             try { claudeProc.kill(); } catch { /* ignore */ }
-            const stderrMsg = stderr.trim() ? `\nstderr: ${stderr.trim().substring(0, 500)}` : '';
-            const output = stdout.trim() || `(Claude hung — no output for ${Math.round(silentMs / 1000)}s${stderrMsg})`;
+            const output = finalResult.trim() || `(Claude hung — no output for ${Math.round(silentMs / 1000)}s)`;
             const responsePayload = { output: output.substring(0, 16000), exitCode: 1 };
             socket.emit(`claude_pty_response:${execId}`, responsePayload);
             socket.emit('claude_pty_response', responsePayload);
             return;
           }
-          log(`[Claude Print] No output for ${Math.round(silentMs / 1000)}s on ${execId}`);
+          log(`[Claude Stream] No events for ${Math.round(silentMs / 1000)}s on ${execId}`);
         }
 
-        // Emit status update with the last ~500 chars of new output
-        if (stdout.length > lastStatusLen) {
-          const newContent = stdout.substring(lastStatusLen);
-          // Get last ~500 chars, trimmed to last complete line
-          const preview = newContent.length > 500
-            ? '...' + newContent.substring(newContent.length - 500)
-            : newContent;
-          const previewLines = preview.split('\n').filter((l: string) => l.trim()).slice(-8).join('\n');
-          lastStatusLen = stdout.length;
-
-          socket.emit('claude_btw_status', {
-            execId,
-            status: previewLines.trim().substring(0, 1000),
-            elapsedSeconds: elapsedS,
-          });
-        } else {
-          // No new output — just report alive/silent
-          socket.emit('claude_btw_status', {
-            execId,
-            status: silentMs > 30_000
-              ? `Waiting for output... (silent for ${Math.round(silentMs / 1000)}s, ${stdout.length} chars total)`
-              : `Working... (${stdout.length} chars so far)`,
-            elapsedSeconds: elapsedS,
-          });
-        }
+        // Emit a periodic status
+        const statusMsg = lastActivity
+          ? `${lastActivity} (${toolCallCount} tools used)`
+          : `Working... (${toolCallCount} tools used)`;
+        socket.emit('claude_btw_status', {
+          execId,
+          status: statusMsg,
+          elapsedSeconds: elapsedS,
+        });
       }, STATUS_INTERVAL);
 
       claudeProc.on('close', (code: number | null) => {
@@ -583,9 +639,15 @@ const connect = (config: SavedConfig): void => {
         finished = true;
         cleanup();
 
+        // Process any remaining buffer
+        if (lineBuffer.trim()) {
+          parseStreamEvent(lineBuffer);
+          lineBuffer = '';
+        }
+
         const elapsedS = Math.round((Date.now() - startTime) / 1000);
-        const output = stdout.trim() || stderr.trim() || '(no response)';
-        log(`[Claude Print] done for ${execId}, exit=${code}, ${output.length} chars, ${elapsedS}s`);
+        const output = finalResult.trim() || stderr.trim() || '(no response)';
+        log(`[Claude Stream] done for ${execId}, exit=${code}, ${output.length} chars, ${elapsedS}s, ${toolCallCount} tools`);
         const responsePayload = { output: output.substring(0, 16000), exitCode: code || 0 };
         socket.emit(`claude_pty_response:${execId}`, responsePayload);
         socket.emit('claude_pty_response', responsePayload);
@@ -596,7 +658,7 @@ const connect = (config: SavedConfig): void => {
         finished = true;
         cleanup();
 
-        log(`[Claude Print] spawn error for ${execId}: ${err.message}`);
+        log(`[Claude Stream] spawn error for ${execId}: ${err.message}`);
         const responsePayload = { output: `Error: ${err.message}`, exitCode: 1 };
         socket.emit(`claude_pty_response:${execId}`, responsePayload);
         socket.emit('claude_pty_response', responsePayload);
@@ -607,9 +669,9 @@ const connect = (config: SavedConfig): void => {
         if (!finished) {
           finished = true;
           cleanup();
-          log(`[Claude Print] Absolute timeout for ${execId}`);
+          log(`[Claude Stream] Absolute timeout for ${execId}`);
           try { claudeProc.kill(); } catch { /* ignore */ }
-          const output = stdout.trim() || '(timed out — no response)';
+          const output = finalResult.trim() || '(timed out — no response)';
           const responsePayload = { output: output.substring(0, 16000), exitCode: 1 };
           socket.emit(`claude_pty_response:${execId}`, responsePayload);
           socket.emit('claude_pty_response', responsePayload);

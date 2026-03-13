@@ -154,6 +154,7 @@ const executeClaudePrompt = (
       console.log(`[claude_prompt] Got claude_pty_response for ${execId}: ${data.output.length} chars, exit=${data.exitCode}`);
       // Post Claude's response as a system message so AI and room can see it
       emitSystemMessage(io, roomName, `[Claude ${agentName} response]:\n${data.output.substring(0, 4000)}`, undefined, 'claude-response');
+      emitPanelLog(io, roomName, 'claude', 'response', data.output.substring(0, 4000), machineName || 'unknown');
       resolve(data.output.substring(0, 16000));
     };
 
@@ -218,6 +219,22 @@ const findByUserId = (userId: string): ConnectedUser | undefined => {
 /** Get the room UUID for a given room name key. */
 const getRoomId = (roomName: string): string | undefined => {
   return activeRooms.get(roomName)?.id;
+};
+
+/** Emit a panel_log event to the room AND persist to database. */
+const emitPanelLog = (
+  io: SocketServer,
+  roomName: string,
+  tab: 'terminal' | 'claude',
+  entryType: string,
+  text: string,
+  machine?: string,
+): void => {
+  io.to(roomName).emit('panel_log', { tab, type: entryType, text, machine });
+  const roomId = getRoomId(roomName);
+  if (roomId) {
+    Data.panelLog.create({ room_id: roomId, tab, entry_type: entryType, text: text.substring(0, 8000), machine }).catch(() => {});
+  }
 };
 
 const leaveCurrentRoom = (socket: AuthenticatedSocket): void => {
@@ -1793,6 +1810,7 @@ const runAgentResponse = async (
         }
 
         emitSystemMessage(io, roomName, `[${agent.name} terminal → ${machineName}]: ${command}`, undefined, 'terminal');
+        emitPanelLog(io, roomName, 'terminal', 'command', `[${agent.name} → ${machineName}] ${command}`, machineName);
 
         // Find the machine
         const machineRecord = await Data.machine.findByOwnerAndName(agent.creator_id, machineName);
@@ -1863,6 +1881,7 @@ const runAgentResponse = async (
         try {
           const output = await executeTerminalCommand(io, machineRecord.socket_id, command, 30_000, machineName, roomName);
           toolResults.push(`[Terminal ${machineName}]:\n${output}`);
+          emitPanelLog(io, roomName, 'terminal', 'output', output.substring(0, 2000), machineName);
         } catch (err) {
           toolResults.push(`[Terminal error]: ${(err as Error).message}`);
         }
@@ -1894,6 +1913,7 @@ const runAgentResponse = async (
         }
 
         emitSystemMessage(io, roomName, `[${agent.name} claude → ${machineName}]: ${prompt}`, undefined, 'claude-prompt');
+        emitPanelLog(io, roomName, 'claude', 'prompt', `[${agent.name} → ${machineName}] ${prompt}`, machineName);
 
         const machineRecord = await Data.machine.findByOwnerAndName(agent.creator_id, machineName);
         if (!machineRecord) {
@@ -3461,6 +3481,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         const secs = elapsed % 60;
         const timeStr = mins > 0 ? `${mins}m${secs}s` : `${secs}s`;
         emitSystemMessage(io, rn, `[Claude ${machineName} status @ ${timeStr}]: ${statusData.status.substring(0, 2000)}`, undefined, 'claude-response');
+        emitPanelLog(io, rn, 'claude', 'status', `[${timeStr}] ${statusData.status.substring(0, 2000)}`, machineName);
       });
 
       // Auto-grant permission in all rooms owned by this user
@@ -3489,6 +3510,23 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     socket.on('get_machines', async () => {
       const machines = await Data.machine.findByOwner(socket.user.id);
       socket.emit('machines_list', { machines });
+    });
+
+    socket.on('get_panel_logs', async (data: { tab: 'terminal' | 'claude' }) => {
+      const user = connectedUsers.get(socket.id);
+      const roomId = user?.currentRoom ? getRoomId(user.currentRoom) : undefined;
+      if (!roomId) {
+        socket.emit('panel_logs', { tab: data.tab, entries: [] });
+        return;
+      }
+      const rows = await Data.panelLog.findRecent(roomId, data.tab, 150);
+      const entries = rows.map((r: { entry_type: string; text: string; machine: string | null; created_at: Date }) => ({
+        type: r.entry_type,
+        text: r.text,
+        machine: r.machine,
+        timestamp: r.created_at.getTime(),
+      }));
+      socket.emit('panel_logs', { tab: data.tab, entries });
     });
 
     socket.on('delete_machine', async (data: { machineId: string }) => {
@@ -3549,6 +3587,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         const roomId = getRoomId(user.currentRoom);
         if (roomId) {
           emitSystemMessage(io, user.currentRoom, `[${socket.user.username} terminal → ${data.machineName}]: ${data.command}`, undefined, 'terminal');
+          emitPanelLog(io, user.currentRoom, 'terminal', 'command', `[${socket.user.username} → ${data.machineName}] ${data.command}`, data.machineName);
         }
       }
 
@@ -3559,6 +3598,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         // Also emit to chat so AI and summarizer can see it
         if (user?.currentRoom) {
           emitSystemMessage(io, user.currentRoom, `[Terminal ${data.machineName}]:\n${output.substring(0, 2000)}`, undefined, 'terminal');
+          emitPanelLog(io, user.currentRoom, 'terminal', 'output', output.substring(0, 2000), data.machineName);
         }
       } catch (err) {
         socket.emit('terminal_panel_output', { machineName: data.machineName, output: `Error: ${(err as Error).message}`, isError: true });
@@ -3641,6 +3681,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             const user2 = connectedUsers.get(socket.id);
             const rn = user2?.currentRoom || 'public';
             emitSystemMessage(io, rn, `[Claude → ${data.machineName} response]:\n${out.output.substring(0, 4000)}`, undefined, 'claude-response');
+            emitPanelLog(io, rn, 'claude', 'response', out.output.substring(0, 4000), data.machineName);
 
             Data.claudeLog.create({
               direction: 'claude_response',
@@ -3668,6 +3709,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       // Show in chat for AI visibility
       if (roomId) {
         emitSystemMessage(io, roomName, `[${socket.user.username} claude → ${data.machineName}]: ${data.input}`, undefined, 'claude-prompt');
+        emitPanelLog(io, roomName, 'claude', 'prompt', `[${socket.user.username} → ${data.machineName}] ${data.input}`, data.machineName);
       }
     });
 
