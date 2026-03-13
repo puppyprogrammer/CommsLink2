@@ -15,6 +15,7 @@ import ForumIcon from '@mui/icons-material/Forum';
 import PersonIcon from '@mui/icons-material/Person';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LogoutIcon from '@mui/icons-material/Logout';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 // Libraries
 import useSession from '@/lib/session/useSession';
@@ -38,6 +39,7 @@ type DashboardLayoutProps = {
 const navItems = [
   { label: 'Chat', href: '/chat', icon: <ChatIcon /> },
   { label: 'Forum', href: '/forum', icon: <ForumIcon /> },
+  { label: 'About', href: '/about', icon: <InfoOutlinedIcon /> },
 ];
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBarExtra, onChatClick }) => {

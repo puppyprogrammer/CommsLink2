@@ -11,7 +11,7 @@ import grokAdapter, { type ToolDefinition } from '../../../../../core/adapters/g
 import voiceQueue from '../../../../../core/adapters/redis/voiceQueue';
 import summarizeAction from '../../../../../core/actions/memory/summarizeAction';
 import watchlistActions from '../../../../../core/actions/watchlist';
-import webAdapter from '../../../../../core/adapters/web';
+import webAdapter, { browserSessionManager } from '../../../../../core/adapters/web';
 import prisma from '../../../../../core/adapters/prisma';
 import dayjs from '../../../../../core/lib/dayjs';
 
@@ -597,6 +597,78 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
         parameters: { type: 'object', properties: { text: { type: 'string', description: 'Text to search for on the page' } }, required: ['text'] },
       },
     });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_go',
+        description: 'Navigate the persistent browser to a URL. The user can see the browser live.',
+        parameters: { type: 'object', properties: { url: { type: 'string', description: 'URL to navigate to' } }, required: ['url'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_click',
+        description: 'Click an element by visible text or CSS selector.',
+        parameters: { type: 'object', properties: { target: { type: 'string', description: 'Text content or CSS selector of element to click' } }, required: ['target'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_type',
+        description: 'Type text into an input field.',
+        parameters: { type: 'object', properties: { selector: { type: 'string', description: 'CSS selector of the input field' }, text: { type: 'string', description: 'Text to type' } }, required: ['selector', 'text'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_scroll',
+        description: 'Scroll the page up or down.',
+        parameters: { type: 'object', properties: { direction: { type: 'string', enum: ['up', 'down'], description: 'Scroll direction' } }, required: ['direction'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_back',
+        description: 'Go back in browser history.',
+        parameters: { type: 'object', properties: {} },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_forward',
+        description: 'Go forward in browser history.',
+        parameters: { type: 'object', properties: {} },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_extract',
+        description: 'Extract readable text and links from the current page for analysis.',
+        parameters: { type: 'object', properties: {} },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_wait',
+        description: 'Wait for page content to load (max 10 seconds).',
+        parameters: { type: 'object', properties: { seconds: { type: 'number', description: 'Seconds to wait (max 10)' } }, required: ['seconds'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'web_close',
+        description: 'Close the browser session.',
+        parameters: { type: 'object', properties: {} },
+      },
+    });
   }
 
   if (cmds.selfmod !== false) {
@@ -997,6 +1069,33 @@ const toolCallsToBraceFormat = (toolCalls: Array<{ function: { name: string; arg
       case 'find':
         parts.push(`{find ${args.text}}`);
         break;
+      case 'web_go':
+        parts.push(`{web_go ${args.url}}`);
+        break;
+      case 'web_click':
+        parts.push(`{web_click ${args.target}}`);
+        break;
+      case 'web_type':
+        parts.push(`{web_type ${args.selector} ${args.text}}`);
+        break;
+      case 'web_scroll':
+        parts.push(`{web_scroll ${args.direction}}`);
+        break;
+      case 'web_back':
+        parts.push(`{web_back}`);
+        break;
+      case 'web_forward':
+        parts.push(`{web_forward}`);
+        break;
+      case 'web_extract':
+        parts.push(`{web_extract}`);
+        break;
+      case 'web_wait':
+        parts.push(`{web_wait ${args.seconds}}`);
+        break;
+      case 'web_close':
+        parts.push(`{web_close}`);
+        break;
       case 'add_memory':
         parts.push(`{add_memory ${String(args.text).replace(/\n/g, ' ')}}`);
         break;
@@ -1323,10 +1422,21 @@ const buildSystemPrompt = (
     actions.push(
       '=== WEB BROWSING ===\n' +
       'IMPORTANT: Commands use curly braces with the content inside. Do NOT use XML/HTML tags.\n' +
-      '{search your query here} - Search the web via Brave. Example: {search latest AI news 2026}\n' +
-      '{browse https://example.com} - Open a web page and extract its text content. Example: {browse https://discord.com/}\n' +
-      '{screenshot https://example.com} - Take a visual screenshot of a web page (shows rendered page with images/CSS). Example: {screenshot https://reddit.com}\n' +
-      '{find text to find} - Search within the currently loaded page for specific text. Example: {find pricing}',
+      '{search your query here} - Search the web via Brave (text results). Example: {search latest AI news 2026}\n' +
+      '\n--- Persistent Browser (user can see this live) ---\n' +
+      '{web_go https://example.com} - Navigate browser to URL (auto-screenshots to user)\n' +
+      '{web_click Sign In} - Click element by visible text or CSS selector\n' +
+      '{web_type #email hello@test.com} - Type text into an input field (CSS selector then text)\n' +
+      '{web_scroll down} - Scroll page up or down\n' +
+      '{web_back} / {web_forward} - Browser history navigation\n' +
+      '{web_extract} - Read page text + links for analysis (returns content to you)\n' +
+      '{web_wait 3} - Wait for page to load (max 10s)\n' +
+      '{web_close} - Close the browser session\n' +
+      'The user can see the browser in real-time as you navigate. Prefer {web_go} over {browse} for interactive browsing.\n' +
+      '\n--- Legacy (still available) ---\n' +
+      '{browse url} - Fetch static page text (no JS rendering)\n' +
+      '{screenshot url} - One-shot screenshot (opens fresh browser)\n' +
+      '{find text} - Search within last {browse} result',
     );
   }
 
@@ -1529,7 +1639,16 @@ const FORUM_THREAD_REGEX = /\{forum_thread\s+([^}]+)\}/g;
 const FORUM_POST_REGEX = /\{forum_post\s+(\S+)\s+([^}]+)\}/g;
 const FORUM_LIST_REGEX = /\{forum_list\}/g;
 const FORUM_READ_REGEX = /\{forum_read\s+(\S+)\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+const WEB_GO_REGEX = /\{web_go\s+([^}]+)\}/g;
+const WEB_CLICK_REGEX = /\{web_click\s+([^}]+)\}/g;
+const WEB_TYPE_REGEX = /\{web_type\s+(\S+)\s+([^}]+)\}/g;
+const WEB_SCROLL_REGEX = /\{web_scroll\s+(up|down)\}/gi;
+const WEB_BACK_REGEX = /\{web_back\}/g;
+const WEB_FORWARD_REGEX = /\{web_forward\}/g;
+const WEB_EXTRACT_REGEX = /\{web_extract\}/g;
+const WEB_WAIT_REGEX = /\{web_wait\s+(\d+)\}/g;
+const WEB_CLOSE_REGEX = /\{web_close\}/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -1787,6 +1906,15 @@ const runAgentResponse = async (
       const forumPostMatches = forumOn ? [...responseText.matchAll(FORUM_POST_REGEX)] : [];
       const forumListMatches = forumOn ? [...responseText.matchAll(FORUM_LIST_REGEX)] : [];
       const forumReadMatches = forumOn ? [...responseText.matchAll(FORUM_READ_REGEX)] : [];
+      const webGoMatches = webOn ? [...responseText.matchAll(WEB_GO_REGEX)] : [];
+      const webClickMatches = webOn ? [...responseText.matchAll(WEB_CLICK_REGEX)] : [];
+      const webTypeMatches = webOn ? [...responseText.matchAll(WEB_TYPE_REGEX)] : [];
+      const webScrollMatches = webOn ? [...responseText.matchAll(WEB_SCROLL_REGEX)] : [];
+      const webBackMatches = webOn ? [...responseText.matchAll(WEB_BACK_REGEX)] : [];
+      const webForwardMatches = webOn ? [...responseText.matchAll(WEB_FORWARD_REGEX)] : [];
+      const webExtractMatches = webOn ? [...responseText.matchAll(WEB_EXTRACT_REGEX)] : [];
+      const webWaitMatches = webOn ? [...responseText.matchAll(WEB_WAIT_REGEX)] : [];
+      const webCloseMatches = webOn ? [...responseText.matchAll(WEB_CLOSE_REGEX)] : [];
 
       const hasAnyCommand = recallMatches.length + sqlMatches.length +
         addMemMatches.length + rmMemMatches.length +
@@ -1804,7 +1932,9 @@ const runAgentResponse = async (
         listUsersMatches.length +
         kickMatches.length + banMatches.length + unbanMatches.length +
         continueMatches.length + setMaxLoopsMatches.length +
-        forumThreadMatches.length + forumPostMatches.length + forumListMatches.length + forumReadMatches.length > 0;
+        forumThreadMatches.length + forumPostMatches.length + forumListMatches.length + forumReadMatches.length +
+        webGoMatches.length + webClickMatches.length + webTypeMatches.length + webScrollMatches.length +
+        webBackMatches.length + webForwardMatches.length + webExtractMatches.length + webWaitMatches.length + webCloseMatches.length > 0;
 
       if (!hasAnyCommand) break;
 
@@ -2165,6 +2295,131 @@ const runAgentResponse = async (
         } catch (err) {
           toolResults.push(`[Screenshot error]: ${(err as Error).message}`);
         }
+      }
+
+      // Process persistent browser commands
+      const webBrowserUsed = webGoMatches.length + webClickMatches.length + webTypeMatches.length +
+        webScrollMatches.length + webBackMatches.length + webForwardMatches.length +
+        webExtractMatches.length + webWaitMatches.length + webCloseMatches.length > 0;
+
+      const emitBrowserUpdate = async (session: Awaited<ReturnType<typeof browserSessionManager.getOrCreate>>) => {
+        try {
+          const imgBase64 = await session.screenshot();
+          const currentUrl = session.getUrl();
+          const title = await session.getTitle();
+          io.to(roomName).emit('web_panel_update', {
+            type: 'browser',
+            url: currentUrl,
+            title,
+            imageBase64: imgBase64,
+          });
+        } catch { /* screenshot failed, non-critical */ }
+      };
+
+      for (const match of webGoMatches) {
+        const url = match[1].trim();
+        emitSystemMessage(io, roomName, `[${agent.name} navigating to: ${url}]`);
+        try {
+          const session = await browserSessionManager.getOrCreate(roomId);
+          await session.navigate(url);
+          await emitBrowserUpdate(session);
+          toolResults.push(`[Browser] Navigated to ${url}`);
+        } catch (err) {
+          toolResults.push(`[Browser error]: ${(err as Error).message}`);
+        }
+      }
+
+      for (const match of webClickMatches) {
+        const target = match[1].trim();
+        emitSystemMessage(io, roomName, `[${agent.name} clicking: ${target}]`);
+        try {
+          const session = await browserSessionManager.getOrCreate(roomId);
+          const result = await session.click(target);
+          await emitBrowserUpdate(session);
+          toolResults.push(`[Browser] ${result}`);
+        } catch (err) {
+          toolResults.push(`[Browser click error]: ${(err as Error).message}`);
+        }
+      }
+
+      for (const match of webTypeMatches) {
+        const selector = match[1].trim();
+        const text = match[2].trim();
+        emitSystemMessage(io, roomName, `[${agent.name} typing into ${selector}]`);
+        try {
+          const session = await browserSessionManager.getOrCreate(roomId);
+          await session.type(selector, text);
+          await emitBrowserUpdate(session);
+          toolResults.push(`[Browser] Typed "${text}" into ${selector}`);
+        } catch (err) {
+          toolResults.push(`[Browser type error]: ${(err as Error).message}`);
+        }
+      }
+
+      for (const match of webScrollMatches) {
+        const direction = match[1].trim().toLowerCase() as 'up' | 'down';
+        try {
+          const session = await browserSessionManager.getOrCreate(roomId);
+          await session.scroll(direction);
+          await emitBrowserUpdate(session);
+          toolResults.push(`[Browser] Scrolled ${direction}`);
+        } catch (err) {
+          toolResults.push(`[Browser scroll error]: ${(err as Error).message}`);
+        }
+      }
+
+      for (const _match of webBackMatches) {
+        try {
+          const session = await browserSessionManager.getOrCreate(roomId);
+          await session.back();
+          await emitBrowserUpdate(session);
+          toolResults.push(`[Browser] Went back`);
+        } catch (err) {
+          toolResults.push(`[Browser back error]: ${(err as Error).message}`);
+        }
+      }
+
+      for (const _match of webForwardMatches) {
+        try {
+          const session = await browserSessionManager.getOrCreate(roomId);
+          await session.forward();
+          await emitBrowserUpdate(session);
+          toolResults.push(`[Browser] Went forward`);
+        } catch (err) {
+          toolResults.push(`[Browser forward error]: ${(err as Error).message}`);
+        }
+      }
+
+      for (const _match of webExtractMatches) {
+        try {
+          const session = await browserSessionManager.getOrCreate(roomId);
+          const pageContent = await session.extract();
+          const linkList = pageContent.links.length > 0
+            ? '\n\nLinks on page:\n' + pageContent.links.map((l) => `[${l.index}] ${l.text} → ${l.href}`).join('\n')
+            : '';
+          toolResults.push(`[Page: ${pageContent.title}]\n${pageContent.text.substring(0, 4000)}${linkList}`);
+          await emitBrowserUpdate(session);
+        } catch (err) {
+          toolResults.push(`[Browser extract error]: ${(err as Error).message}`);
+        }
+      }
+
+      for (const match of webWaitMatches) {
+        const seconds = Math.min(parseInt(match[1], 10) || 3, 10);
+        try {
+          const session = await browserSessionManager.getOrCreate(roomId);
+          await session.wait(seconds);
+          await emitBrowserUpdate(session);
+          toolResults.push(`[Browser] Waited ${seconds}s`);
+        } catch (err) {
+          toolResults.push(`[Browser wait error]: ${(err as Error).message}`);
+        }
+      }
+
+      for (const _match of webCloseMatches) {
+        browserSessionManager.destroy(roomId);
+        io.to(roomName).emit('web_panel_update', { type: 'browser_closed' });
+        toolResults.push(`[Browser] Session closed`);
       }
 
       // Process terminal commands
@@ -2615,7 +2870,7 @@ const runAgentResponse = async (
       }
 
       // If only self-modification commands were used (no data-fetching commands), no need to re-prompt
-      const hasDataCommands = recallMatches.length + sqlMatches.length + searchMatches.length + browseMatches.length + findMatches.length + screenshotMatches.length + terminalMatches.length + claudeMatches.length + listUsersMatches.length + forumListMatches.length + forumReadMatches.length;
+      const hasDataCommands = recallMatches.length + sqlMatches.length + searchMatches.length + browseMatches.length + findMatches.length + screenshotMatches.length + terminalMatches.length + claudeMatches.length + listUsersMatches.length + forumListMatches.length + forumReadMatches.length + webGoMatches.length + webClickMatches.length + webExtractMatches.length;
       if (hasDataCommands === 0) break;
 
       // Re-prompt with tool results — strip commands from prior response so agent doesn't repeat them
@@ -4537,6 +4792,40 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       } catch (err) {
         socket.emit('agent_error', { error: `Hologram load failed: ${(err as Error).message}` });
       }
+    });
+
+    // ┌──────────────────────────────────────────┐
+    // │ Persistent Browser (user controls)      │
+    // └──────────────────────────────────────────┘
+    socket.on('web_navigate', async (data: { url: string }) => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+      const navRoomId = getRoomId(user.currentRoom);
+      if (!navRoomId) return;
+      try {
+        const session = await browserSessionManager.getOrCreate(navRoomId);
+        await session.navigate(data.url);
+        const imgBase64 = await session.screenshot();
+        const title = await session.getTitle();
+        io.to(user.currentRoom).emit('web_panel_update', {
+          type: 'browser',
+          url: session.getUrl(),
+          title,
+          imageBase64: imgBase64,
+        });
+      } catch (err) {
+        socket.emit('web_panel_update', { type: 'browser', url: data.url, title: 'Error', imageBase64: '' });
+        console.error('[WebNavigate] Error:', (err as Error).message);
+      }
+    });
+
+    socket.on('web_close_session', () => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+      const closeRoomId = getRoomId(user.currentRoom);
+      if (!closeRoomId) return;
+      browserSessionManager.destroy(closeRoomId);
+      io.to(user.currentRoom).emit('web_panel_update', { type: 'browser_closed' });
     });
 
     // ┌──────────────────────────────────────────┐

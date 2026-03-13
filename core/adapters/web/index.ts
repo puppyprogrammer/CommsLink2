@@ -175,5 +175,6 @@ const screenshotPage = async (url: string): Promise<string> => {
   }
 };
 
+export { browserSessionManager } from './browserSession';
 export type { SearchResult, PageContent };
 export default { search, fetchPage, findInPage, screenshotPage };
