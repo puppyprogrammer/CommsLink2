@@ -43,6 +43,31 @@ const connectedUsers = new Map<string, ConnectedUser>();
 const activeRooms = new Map<string, ActiveRoom>();
 const memoryMsgCounters = new Map<string, number>(); // per-room msg counter for throttled summarization
 
+// Agent message dedup: Map<roomId:agentId, Array<{hash, timestamp}>>
+const agentRecentHashes = new Map<string, Array<{ hash: string; ts: number }>>();
+
+const simpleHash = (msg: string): string =>
+  msg.slice(0, 50).split('').reduce((h, c) => h + c.charCodeAt(0), 0).toString(16).slice(-8);
+
+const isDuplicateAgentMessage = (roomId: string, agentId: string, content: string): boolean => {
+  const key = `${roomId}:${agentId}`;
+  const now = Date.now();
+  const hash = simpleHash(content);
+
+  let entries = agentRecentHashes.get(key) || [];
+  // Evict entries older than 30s
+  entries = entries.filter((e) => now - e.ts < 30_000);
+
+  const isDup = entries.some((e) => e.hash === hash);
+  if (!isDup) {
+    entries.push({ hash, ts: now });
+    // Keep only last 5
+    if (entries.length > 5) entries = entries.slice(-5);
+  }
+  agentRecentHashes.set(key, entries);
+  return isDup;
+};
+
 // Pending terminal command approvals: approvalId -> resolver
 type PendingApproval = {
   resolve: (approved: boolean) => void;
@@ -1129,7 +1154,16 @@ const buildSystemPrompt = (
       '{add_task priority text} - Add a task (priority 1-5, 1=most urgent)\n' +
       '{complete_task id_or_text} - Mark a task as done\n' +
       '{update_task id_or_text | new_text} - Update a task description. LOCKED tasks cannot be updated.\n' +
-      '{remove_task id_or_text} - Remove a task. LOCKED tasks cannot be removed.',
+      '{remove_task id_or_text} - Remove a task. LOCKED tasks cannot be removed.\n\n' +
+      '=== HOLOGRAM AVATAR ===\n' +
+      'You have a hologram avatar visible in the 3D viewer. Use {set_pose} to animate it.\n' +
+      '{set_pose idle} - Reset to neutral standing pose\n' +
+      '{set_pose wave} - Raise right arm in a wave\n' +
+      '{set_pose think} - Thinking pose (hand on chin, head tilted)\n' +
+      '{set_pose nod} - Nod head forward\n' +
+      '{set_pose shrug} - Shrug both shoulders\n' +
+      '{set_pose joint_id rx ry rz} - Set a specific joint rotation (radians). Joints: head, neck, chest, spine, l_shoulder, l_elbow, l_hand, r_shoulder, r_elbow, r_hand, l_hip, l_knee, l_foot, r_hip, r_knee, r_foot\n' +
+      'Use poses expressively when speaking or reacting — wave when greeting, think when pondering, nod when agreeing.',
     );
   }
 
@@ -1387,6 +1421,7 @@ const ADD_TASK_REGEX = /\{add_task\s+([1-5])\s+([^}]+)\}/g;
 const COMPLETE_TASK_REGEX = /\{complete_task\s+([^}]+)\}/g;
 const UPDATE_TASK_REGEX = /\{update_task\s+([^|]+)\|\s*([^}]+)\}/g;
 const REMOVE_TASK_REGEX = /\{remove_task\s+([^}]+)\}/g;
+const SET_POSE_REGEX = /\{set_pose\s+([^}]+)\}/g;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
@@ -1637,6 +1672,7 @@ const runAgentResponse = async (
       const completeTaskMatches = selfmodOn ? [...responseText.matchAll(COMPLETE_TASK_REGEX)] : [];
       const updateTaskMatches = selfmodOn ? [...responseText.matchAll(UPDATE_TASK_REGEX)] : [];
       const removeTaskMatches = selfmodOn ? [...responseText.matchAll(REMOVE_TASK_REGEX)] : [];
+      const setPoseMatches = selfmodOn ? [...responseText.matchAll(SET_POSE_REGEX)] : [];
       const setIntervalMatches = autopilotCtrlOn ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)] : [];
       const toggleAutoMatches = autopilotCtrlOn ? [...responseText.matchAll(TOGGLE_AUTOPILOT_REGEX)] : [];
       const setTokensMatches = tokensOn ? [...responseText.matchAll(SET_TOKENS_REGEX)] : [];
@@ -1682,7 +1718,7 @@ const runAgentResponse = async (
         addInstMatches.length + rmInstMatches.length +
         addAutoMatches.length + rmAutoMatches.length +
         setPlanMatches.length + clearPlanMatches.length +
-        addTaskMatches.length + completeTaskMatches.length + updateTaskMatches.length + removeTaskMatches.length +
+        addTaskMatches.length + completeTaskMatches.length + updateTaskMatches.length + removeTaskMatches.length + setPoseMatches.length +
         setIntervalMatches.length + toggleAutoMatches.length +
         setTokensMatches.length + setEffortMatches.length +
         searchMatches.length + browseMatches.length + findMatches.length +
@@ -1838,6 +1874,55 @@ const runAgentResponse = async (
             currentAgent = (await Data.llmAgent.findById(agent.id))!;
             emitSystemMessage(io, roomName, `[${agent.name} removed task [${target.id}]: "${target.text}"]`);
             toolResults.push(`Task removed [${target.id}]: "${target.text}"`);
+          }
+        }
+
+        // Process {set_pose} — update agent's hologram avatar pose
+        for (const match of setPoseMatches) {
+          const poseArg = match[1].trim();
+          try {
+            const roomId = getRoomId(roomName);
+            if (!roomId) { toolResults.push('Pose update failed: room not found.'); continue; }
+            const avatar = await Data.hologramAvatar.findByRoomAndUser(roomId, agent.id);
+            if (!avatar) { toolResults.push('Pose update failed: no avatar found for this agent.'); continue; }
+
+            type PoseJoints = Record<string, { rx: number; ry: number; rz: number }>;
+            let joints: PoseJoints = {};
+
+            // Preset poses
+            if (poseArg === 'idle' || poseArg === 'neutral') {
+              joints = {};
+            } else if (poseArg === 'wave') {
+              joints = { r_shoulder: { rx: 0, ry: 0, rz: -2.5 }, r_elbow: { rx: 0.5, ry: 0, rz: 0 } };
+            } else if (poseArg === 'think') {
+              joints = { r_shoulder: { rx: 0.3, ry: 0, rz: -0.8 }, r_elbow: { rx: 1.2, ry: 0, rz: 0 }, head: { rx: 0.15, ry: 0.2, rz: 0 } };
+            } else if (poseArg === 'nod') {
+              joints = { head: { rx: 0.3, ry: 0, rz: 0 } };
+            } else if (poseArg === 'shrug') {
+              joints = { l_shoulder: { rx: 0, ry: 0, rz: 0.5 }, r_shoulder: { rx: 0, ry: 0, rz: -0.5 }, l_elbow: { rx: 0.3, ry: 0, rz: 0 }, r_elbow: { rx: 0.3, ry: 0, rz: 0 } };
+            } else {
+              // Parse "joint rx ry rz" format
+              const parts = poseArg.split(/\s+/);
+              if (parts.length === 4) {
+                const [jointId, rxStr, ryStr, rzStr] = parts;
+                const rx = parseFloat(rxStr); const ry = parseFloat(ryStr); const rz = parseFloat(rzStr);
+                if (!isNaN(rx) && !isNaN(ry) && !isNaN(rz)) {
+                  joints = { [jointId]: { rx, ry, rz } };
+                } else {
+                  toolResults.push(`Invalid pose values: ${poseArg}`); continue;
+                }
+              } else {
+                // Try parsing as JSON
+                try { joints = JSON.parse(poseArg); } catch { toolResults.push(`Unknown pose: "${poseArg}". Use presets (idle/wave/think/nod/shrug) or "joint rx ry rz".`); continue; }
+              }
+            }
+
+            const pose = { joints };
+            await Data.hologramAvatar.updatePose(avatar.id, pose);
+            io.to(roomName).emit('hologram_pose_update', { avatarId: avatar.id, pose });
+            toolResults.push(`Pose updated to "${poseArg}".`);
+          } catch (err) {
+            toolResults.push(`Pose update failed: ${(err as Error).message}`);
           }
         }
 
@@ -2488,6 +2573,12 @@ const runAgentResponse = async (
       return;
     }
 
+    // Dedup: skip if agent already sent a near-identical message recently
+    if (isDuplicateAgentMessage(roomId, agent.id, responseText)) {
+      console.log(`[Agent Dedup] Skipping duplicate from ${agent.name} in ${roomName}`);
+      agentBusy.delete(agent.id);
+      return;
+    }
 
     // Generate premium TTS if needed
     const browserVoices = ['male', 'female', 'robot'];
