@@ -3398,6 +3398,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       autopilotInterval?: number;
       autopilotPrompts?: string;
       plan?: string | null;
+      tasks?: string | null;
     }) => {
       const agent = await Data.llmAgent.findById(data.agentId);
       if (!agent) {
@@ -3415,6 +3416,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         autopilot_interval: data.autopilotInterval,
         autopilot_prompts: data.autopilotPrompts ?? null,
         plan: data.plan ?? null,
+        tasks: data.tasks ?? null,
       });
 
       // Restart or stop autopilot timer

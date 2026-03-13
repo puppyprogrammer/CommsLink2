@@ -61,6 +61,7 @@ type Agent = {
   autopilot_interval: number;
   autopilot_prompts: string | null;
   plan: string | null;
+  tasks: string | null;
 };
 
 type GrokModel = {
@@ -195,6 +196,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [newAutopilotPrompts, setNewAutopilotPrompts] = useState<ListItem[]>([]);
   const [newAutopilotDraft, setNewAutopilotDraft] = useState('');
   const [newPlan, setNewPlan] = useState('');
+  const [newTasks, setNewTasks] = useState('');
 
   // Edit form
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
@@ -210,6 +212,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [editAutopilotPrompts, setEditAutopilotPrompts] = useState<ListItem[]>([]);
   const [editAutopilotDraft, setEditAutopilotDraft] = useState('');
   const [editPlan, setEditPlan] = useState('');
+  const [editTasks, setEditTasks] = useState('');
 
   // Fetch models and premium voices
   useEffect(() => {
@@ -337,6 +340,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setNewAutopilotPrompts([]);
       setNewAutopilotDraft('');
       setNewPlan('');
+      setNewTasks('');
       setError('');
     };
 
@@ -432,6 +436,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       autopilotInterval: newAutopilotInterval,
       autopilotPrompts: serializeList(newAutopilotPrompts),
       plan: newPlan.trim() || null,
+      tasks: newTasks.trim() || null,
     });
   };
 
@@ -449,6 +454,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       autopilotInterval: editAutopilotInterval,
       autopilotPrompts: serializeList(editAutopilotPrompts),
       plan: editPlan.trim() || null,
+      tasks: editTasks.trim() || null,
     });
   };
 
@@ -472,6 +478,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     setEditAutopilotPrompts(parseList(agent.autopilot_prompts));
     setEditAutopilotDraft('');
     setEditPlan(agent.plan || '');
+    setEditTasks(agent.tasks || '');
   };
 
   const addItem = (
@@ -664,6 +671,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     // Column 5: Plan
     planValue: string,
     setPlan: (v: string) => void,
+    // Column 6: Tasks
+    tasksValue: string,
+    setTasks: (v: string) => void,
   ) => (
     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
       {/* Column 1: Settings */}
@@ -730,6 +740,26 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           placeholder="No plan set. The AI will set one when needed."
           value={planValue}
           onChange={(e) => setPlan(e.target.value)}
+        />
+      </Box>
+
+      {/* Column 6: Tasks */}
+      <Box sx={{ flex: '1 1 180px', minWidth: 160 }}>
+        <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', fontWeight: 600 }}>
+          Tasks
+        </Typography>
+        <Typography variant="caption" sx={{ display: 'block', mb: 0.5, opacity: 0.7 }}>
+          JSON array of tasks. The AI manages these via commands.
+        </Typography>
+        <TextField
+          fullWidth
+          size="small"
+          multiline
+          minRows={4}
+          maxRows={10}
+          placeholder="No tasks. The AI will create tasks when needed."
+          value={tasksValue}
+          onChange={(e) => setTasks(e.target.value)}
         />
       </Box>
     </Box>
@@ -1065,8 +1095,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                   ]
                 : []),
               {
-                label: 'Self-Modification — Memories, instructions, prompts, plan',
-                desc: 'AI: {add_memory}, {remove_memory}, {add_instruction}, {remove_instruction}, {add_autopilot}, {remove_autopilot}, {set_plan}, {clear_plan}',
+                label: 'Self-Modification — Memories, instructions, prompts, plan, tasks',
+                desc: 'AI: {add_memory}, {remove_memory}, {add_instruction}, {remove_instruction}, {add_autopilot}, {remove_autopilot}, {set_plan}, {clear_plan}, {add_task}, {complete_task}, {update_task}, {remove_task}',
                 checked: cmdSelfmod,
                 key: 'cmdSelfmod' as const,
                 set: setCmdSelfmod,
@@ -1276,6 +1306,11 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           const instructions = parseList(agent.system_instructions);
           const memories = parseList(agent.memories);
           const autopilotPrompts = parseList(agent.autopilot_prompts);
+          let taskCount = 0;
+          try {
+            const parsed = JSON.parse(agent.tasks || '[]');
+            if (Array.isArray(parsed)) taskCount = parsed.filter((t: { status?: string }) => t.status === 'pending').length;
+          } catch { /* ignore */ }
           return (
             <Paper
               key={agent.id}
@@ -1313,6 +1348,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 {`${instructions.length} instruction${instructions.length !== 1 ? 's' : ''}, `}
                 {`${memories.length} memor${memories.length !== 1 ? 'ies' : 'y'}, `}
                 {`${autopilotPrompts.length} autopilot prompt${autopilotPrompts.length !== 1 ? 's' : ''}`}
+                {taskCount > 0 && `, ${taskCount} pending task${taskCount !== 1 ? 's' : ''}`}
               </Typography>
             </Paper>
           );
@@ -1349,6 +1385,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               setNewAutopilotDraft,
               newPlan,
               setNewPlan,
+              newTasks,
+              setNewTasks,
             )}
             <Button variant="contained" size="small" onClick={handleCreate} disabled={!newName.trim()} sx={{ mt: 1 }}>
               Add Agent
@@ -1670,6 +1708,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             setEditAutopilotDraft,
             editPlan,
             setEditPlan,
+            editTasks,
+            setEditTasks,
           )}
         </DialogContent>
         <DialogActions>
