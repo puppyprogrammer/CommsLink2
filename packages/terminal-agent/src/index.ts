@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.8.3';
+const AGENT_VERSION = '1.8.4';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -651,6 +651,14 @@ const connect = (config: SavedConfig): void => {
         const responsePayload = { output: output.substring(0, 16000), exitCode: code || 0 };
         socket.emit(`claude_pty_response:${execId}`, responsePayload);
         socket.emit('claude_pty_response', responsePayload);
+
+        // Also emit as a completion status so the panel always shows the final result
+        // (survives API restarts that destroy per-prompt response handlers)
+        socket.emit('claude_btw_status', {
+          execId,
+          status: `COMPLETED (${toolCallCount} tools, exit ${code || 0}): ${output.substring(0, 4000)}`,
+          elapsedSeconds: elapsedS,
+        });
       });
 
       claudeProc.on('error', (err: Error) => {
