@@ -26,7 +26,7 @@ model user {
   use_premium_voice Boolean @default(false)
   hear_own_voice    Boolean @default(false)
 
-  credit_balance      Int       @default(0)
+  credit_balance      Int       @default(10000)
   subscription_tier   String?
   billing_cycle_start DateTime?
   last_room_id        String?
