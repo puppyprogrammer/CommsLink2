@@ -982,9 +982,7 @@ const ChatPage = () => {
         {settingsOpen && <SettingsPanel />}
         {terminalPanelOpen && (
           <>
-            <ResizeHandle
-              onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))}
-            />
+            <ResizeHandle onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
             <div
               style={{
                 width: terminalWidth,
@@ -1004,9 +1002,7 @@ const ChatPage = () => {
         )}
         {watchlistPanelOpen && (
           <>
-            <ResizeHandle
-              onResize={(d) => setWatchlistWidth((w) => Math.max(300, Math.min(1200, w + d)))}
-            />
+            <ResizeHandle onResize={(d) => setWatchlistWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
             <div
               style={{
                 width: watchlistWidth,
@@ -1022,9 +1018,7 @@ const ChatPage = () => {
         )}
         {webPanelOpen && (
           <>
-            <ResizeHandle
-              onResize={(d) => setWebPanelWidth((w) => Math.max(300, Math.min(1200, w + d)))}
-            />
+            <ResizeHandle onResize={(d) => setWebPanelWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
             <div
               style={{
                 width: webPanelWidth,
