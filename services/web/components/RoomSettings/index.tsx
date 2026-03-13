@@ -32,6 +32,7 @@ import LockOpenIcon from '@mui/icons-material/LockOpen';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import DownloadIcon from '@mui/icons-material/Download';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import LinkIcon from '@mui/icons-material/Link';
 import ComputerIcon from '@mui/icons-material/Computer';
 import CircleIcon from '@mui/icons-material/Circle';
 import BlockIcon from '@mui/icons-material/Block';
@@ -140,6 +141,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const { toast } = useToast();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [error, setError] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [models, setModels] = useState<GrokModel[]>([]);
   const [premiumVoices, setPremiumVoices] = useState<PremiumVoice[]>([]);
@@ -408,6 +410,17 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setSummaries(data.summaries);
     };
 
+    const handleInviteCreated = (data: { success: boolean; token?: string; error?: string }) => {
+      if (data.success && data.token) {
+        const link = `${window.location.origin}/join/${data.token}`;
+        setInviteLink(link);
+        navigator.clipboard.writeText(link).then(() => toast('Invite link copied to clipboard!'));
+      } else {
+        toast(data.error || 'Failed to create invite');
+      }
+    };
+
+    socket.on('invite_created', handleInviteCreated);
     socket.on('room_machines', handleRoomMachines);
     socket.on('machine_permission_updated', handleMachinePermissionUpdated);
     socket.on('room_memory_status', handleMemoryStatus);
@@ -437,6 +450,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       socket.off('agent_error', handleError);
       socket.off('room_members', handleRoomMembers);
       socket.off('room_summaries', handleSummaries);
+      socket.off('invite_created', handleInviteCreated);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, session?.token, roomName]);
@@ -1666,6 +1680,48 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           >
             Add Agent
           </Button>
+        )}
+        {/* Invite Link */}
+        {canManageRoom && roomName.toLowerCase() !== 'public' && (
+          <>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <LinkIcon sx={{ fontSize: 16 }} /> Invite Link
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<LinkIcon sx={{ fontSize: 14 }} />}
+                onClick={() => {
+                  if (!session?.token) return;
+                  const socket = getSocket(session.token);
+                  socket.emit('create_invite', { roomName });
+                }}
+              >
+                Create Invite Link
+              </Button>
+              {inviteLink && (
+                <IconButton
+                  size="small"
+                  title="Copy invite link"
+                  onClick={() => {
+                    navigator.clipboard.writeText(inviteLink).then(() => toast('Copied!'));
+                  }}
+                >
+                  <ContentCopyIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              )}
+            </Box>
+            {inviteLink && (
+              <Typography
+                variant="caption"
+                sx={{ mt: 0.5, display: 'block', color: 'text.secondary', wordBreak: 'break-all' }}
+              >
+                {inviteLink}
+              </Typography>
+            )}
+          </>
         )}
         {/* Room Members */}
         {canManageRoom && roomMembers.length > 0 && (

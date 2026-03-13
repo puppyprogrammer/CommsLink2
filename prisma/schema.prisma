@@ -86,6 +86,7 @@ model room {
   members             room_member[]
   hologram_avatars     hologram_avatar[]
   threads             thread[]
+  invites             room_invite[]
 
   @@index([name])
 }
@@ -394,6 +395,21 @@ model watchlist_item {
   @@map("watchlist_items")
   @@index([user_id])
   @@index([status])
+}
+
+model room_invite {
+  id         String    @id @default(uuid())
+  room_id    String
+  token      String    @unique
+  created_by String
+  expires_at DateTime?
+  uses_left  Int?
+  created_at DateTime  @default(now())
+
+  room room @relation(fields: [room_id], references: [id], onDelete: Cascade)
+
+  @@index([room_id])
+  @@index([token])
 }
 
 model agent_template {

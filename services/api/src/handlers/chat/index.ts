@@ -1,6 +1,7 @@
 import { Server as SocketServer, Socket } from 'socket.io';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { randomUUID } from 'crypto';
 
 import Data from '../../../../../core/data';
 import jwtHelper from '../../../../../core/helpers/jwt';
@@ -234,6 +235,39 @@ const getRoomList = (): RoomListItem[] =>
     isPublic: name === 'public',
     createdBy: room.createdBy,
   }));
+
+/**
+ * Get room list filtered for a specific user (only rooms they are a member of, plus public).
+ *
+ * @param userId - User UUID.
+ * @returns Filtered room list.
+ */
+const getRoomListForUser = async (userId: string): Promise<RoomListItem[]> => {
+  const memberships = await Data.roomMember.findByUser(userId);
+  const memberRoomIds = new Set(memberships.filter((m) => m.role !== 'banned').map((m) => m.room_id));
+  const allRooms = getRoomList();
+  return allRooms.filter((r) => r.isPublic || memberRoomIds.has(r.id));
+};
+
+/**
+ * Broadcast room_list_update to each connected socket with their own filtered view.
+ *
+ * @param io - Socket.IO server instance.
+ */
+const broadcastRoomListUpdate = async (io: SocketServer): Promise<void> => {
+  // Cache per-user to avoid duplicate DB calls for multi-tab users
+  const userCache = new Map<string, RoomListItem[]>();
+  for (const [socketId, userData] of connectedUsers.entries()) {
+    const sock = io.sockets.sockets.get(socketId);
+    if (!sock) continue;
+    let filtered = userCache.get(userData.userId);
+    if (!filtered) {
+      filtered = await getRoomListForUser(userData.userId);
+      userCache.set(userData.userId, filtered);
+    }
+    sock.emit('room_list_update', { rooms: filtered });
+  }
+};
 
 const getRoomUsers = (roomName: string): ConnectedUser[] => {
   const room = activeRooms.get(roomName);
@@ -3312,14 +3346,14 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         // Find the active room matching this DB id
         for (const [name, room] of activeRooms.entries()) {
           if (room.id === dbUser.last_room_id) {
-            // For password-protected rooms, check membership
-            if (room.passwordHash) {
+            // All non-public rooms require membership
+            if (name === 'public') {
+              targetRoom = name;
+            } else {
               const membership = await Data.roomMember.findByRoomAndUser(room.id, socket.user.id);
               if (membership && membership.role !== 'banned') {
                 targetRoom = name;
               }
-            } else {
-              targetRoom = name;
             }
             break;
           }
@@ -3349,7 +3383,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     initRoom().catch(console.error);
 
     io.emit('roster_update', Array.from(connectedUsers.values()));
-    io.emit('room_list_update', { rooms: getRoomList() });
+    broadcastRoomListUpdate(io).catch(console.error);
 
     // ┌──────────────────────────────────────────┐
     // │ Chat Message                            │
@@ -3748,7 +3782,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         watchParty: null,
       });
 
-      io.emit('room_list_update', { rooms: getRoomList() });
+      broadcastRoomListUpdate(io).catch(console.error);
     });
 
     // ┌──────────────────────────────────────────┐
@@ -3801,7 +3835,93 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         watchParty: jwp ? { videoId: jwp.videoId, state: jwp.state, currentTime: getEffectiveTime(jwp) } : null,
       });
 
-      io.emit('room_list_update', { rooms: getRoomList() });
+      broadcastRoomListUpdate(io).catch(console.error);
+    });
+
+    // ┌──────────────────────────────────────────┐
+    // │ Create Invite Link                      │
+    // └──────────────────────────────────────────┘
+    socket.on('create_invite', async (data: { roomName: string }) => {
+      const normalizedName = data.roomName.toLowerCase();
+      const room = activeRooms.get(normalizedName);
+      if (!room) {
+        socket.emit('invite_created', { success: false, error: 'Room not found' });
+        return;
+      }
+
+      // Only room creator or admin can create invites
+      const dbUser = await Data.user.findById(socket.user.id);
+      if (room.createdBy !== socket.user.id && !dbUser?.is_admin) {
+        socket.emit('invite_created', { success: false, error: 'Only room owner can create invites' });
+        return;
+      }
+
+      const token = randomUUID();
+      await Data.roomInvite.create(room.id, token, socket.user.id);
+
+      socket.emit('invite_created', { success: true, token, roomName: normalizedName });
+    });
+
+    // ┌──────────────────────────────────────────┐
+    // │ Join via Invite Token                    │
+    // └──────────────────────────────────────────┘
+    socket.on('join_by_invite', async (data: { token: string }) => {
+      const invite = await Data.roomInvite.findByToken(data.token);
+      if (!invite) {
+        socket.emit('room_join_error', { error: 'Invalid or expired invite link' });
+        return;
+      }
+
+      // Check expiry
+      if (invite.expires_at && new Date() > invite.expires_at) {
+        socket.emit('room_join_error', { error: 'This invite link has expired' });
+        return;
+      }
+
+      // Find the active room
+      let targetName: string | null = null;
+      for (const [name, room] of activeRooms.entries()) {
+        if (room.id === invite.room_id) {
+          targetName = name;
+          break;
+        }
+      }
+      if (!targetName) {
+        socket.emit('room_join_error', { error: 'Room no longer exists' });
+        return;
+      }
+
+      const room = activeRooms.get(targetName)!;
+
+      // Check ban status
+      const membership = await Data.roomMember.findByRoomAndUser(room.id, socket.user.id);
+      if (membership?.role === 'banned') {
+        socket.emit('room_join_error', { error: 'You are banned from this room' });
+        return;
+      }
+
+      // Add as member (bypasses password)
+      await Data.roomMember.addMember(room.id, socket.user.id);
+
+      // Consume invite use if limited
+      if (invite.uses_left !== null) {
+        await Data.roomInvite.consumeUse(invite.id);
+      }
+
+      // Join the room
+      await joinRoom(socket, targetName);
+      Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
+
+      const joinHistory = await Data.message.findByRoomForUI(room.id);
+      const wp = room.watchParty;
+      socket.emit('room_joined', {
+        roomName: room.displayName,
+        users: getRoomUsers(targetName),
+        messages: formatHistoryForClient(joinHistory.reverse()),
+        watchParty: wp ? { videoId: wp.videoId, state: wp.state, currentTime: getEffectiveTime(wp) } : null,
+      });
+
+      broadcastRoomListUpdate(io).catch(console.error);
     });
 
     // ┌──────────────────────────────────────────┐
@@ -3816,11 +3936,11 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         return;
       }
 
-      // For password-protected rooms, check membership (or if it's public)
-      if (normalizedName !== 'public' && room.passwordHash) {
+      // All non-public rooms require membership
+      if (normalizedName !== 'public') {
         const membership = await Data.roomMember.findByRoomAndUser(room.id, socket.user.id);
         if (!membership || membership.role === 'banned') {
-          socket.emit('room_join_error', { error: 'Password required for this room' });
+          socket.emit('room_join_error', { error: 'You are not a member of this room' });
           return;
         }
       }
@@ -3839,7 +3959,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         watchParty: swp ? { videoId: swp.videoId, state: swp.state, currentTime: getEffectiveTime(swp) } : null,
       });
 
-      io.emit('room_list_update', { rooms: getRoomList() });
+      broadcastRoomListUpdate(io).catch(console.error);
     });
 
     // ┌──────────────────────────────────────────┐
@@ -4557,7 +4677,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       activeRooms.delete(normalizedName);
       Data.room.deleteByName(normalizedName).catch(console.error);
 
-      io.emit('room_list_update', { rooms: getRoomList() });
+      broadcastRoomListUpdate(io).catch(console.error);
     });
 
     // ┌──────────────────────────────────────────┐
@@ -4622,7 +4742,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       }
 
       emitSystemMessage(io, normalizedName, `[System] ${data.userId} was kicked from the room.`);
-      io.emit('room_list_update', { rooms: getRoomList() });
+      broadcastRoomListUpdate(io).catch(console.error);
     });
 
     socket.on('ban_member', async (data: { roomName: string; userId: string }) => {
@@ -4667,7 +4787,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       }
 
       emitSystemMessage(io, normalizedName, `[System] A user was banned from the room.`);
-      io.emit('room_list_update', { rooms: getRoomList() });
+      broadcastRoomListUpdate(io).catch(console.error);
     });
 
     socket.on('unban_member', async (data: { roomName: string; userId: string }) => {
@@ -4860,7 +4980,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       }).catch(console.error);
 
       io.emit('roster_update', Array.from(connectedUsers.values()));
-      io.emit('room_list_update', { rooms: getRoomList() });
+      broadcastRoomListUpdate(io).catch(console.error);
     });
   });
 };

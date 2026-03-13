@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 
 // Node modules
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -30,6 +30,7 @@ type LoginForm = yup.InferType<typeof schema>;
 
 const LoginPage = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { mutate } = useSession();
   const [error, setError] = useState('');
 
@@ -57,7 +58,8 @@ const LoginPage = () => {
       }
 
       await mutate();
-      router.push('/chat');
+      const returnUrl = searchParams?.get('returnUrl');
+      router.push(returnUrl && returnUrl.startsWith('/') ? returnUrl : '/chat');
     } catch {
       setError('Something went wrong');
     }
