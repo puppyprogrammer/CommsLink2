@@ -571,8 +571,8 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
       type: 'function',
       function: {
         name: 'toggle_autopilot',
-        description: 'Enable autopilot mode. To pause, use set_autopilot_interval with a high value instead of disabling.',
-        parameters: { type: 'object', properties: { enabled: { type: 'string', enum: ['on'], description: 'on' } }, required: ['enabled'] },
+        description: 'Enable or disable autopilot mode. Prefer adjusting interval over disabling — use set_autopilot_interval instead.',
+        parameters: { type: 'object', properties: { enabled: { type: 'string', enum: ['on', 'off'], description: 'on or off' } }, required: ['enabled'] },
       },
     });
     tools.push({
@@ -734,6 +734,30 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
   }
 
   return tools;
+};
+
+/**
+ * Parse <xai:function_call> XML blocks that Grok sometimes emits inline in text
+ * instead of using structured tool_calls. Returns brace-format string and cleaned text.
+ */
+const XAI_FUNCTION_CALL_REGEX = /<xai:function_call>([\s\S]*?)<\/xai:function_call>/g;
+
+const parseXaiFunctionCalls = (text: string): { braceCommands: string; cleanedText: string } => {
+  const parts: string[] = [];
+  let match: RegExpExecArray | null;
+  const regex = new RegExp(XAI_FUNCTION_CALL_REGEX.source, 'g');
+  while ((match = regex.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      const name = parsed.name || parsed.tool_name || '';
+      const params = parsed.parameters || parsed.arguments || {};
+      // Reuse toolCallsToBraceFormat by wrapping in the expected shape
+      const brace = toolCallsToBraceFormat([{ function: { name, arguments: JSON.stringify(params) } }]);
+      if (brace) parts.push(brace);
+    } catch { /* skip malformed JSON */ }
+  }
+  const cleanedText = text.replace(XAI_FUNCTION_CALL_REGEX, '');
+  return { braceCommands: parts.join('\n'), cleanedText };
 };
 
 /**
@@ -973,8 +997,8 @@ const buildSystemPrompt = (
   if (cmds.autopilotCtrl !== false) {
     actions.push(
       '=== AUTOPILOT CONTROL ===\n' +
-      '{toggle_autopilot on|off} - Enable or disable your autopilot mode\n' +
-      '{set_autopilot_interval N} - Set autopilot interval in seconds (30-86400). Minimum 30s. Use lower values (30-60s) when actively working, higher when idle.',
+      '{toggle_autopilot on|off} - Enable or disable your autopilot mode. Prefer adjusting interval over disabling.\n' +
+      '{set_autopilot_interval N} - Set autopilot interval in seconds (30-3600). Use lower values (30-60s) when actively working, higher (300-3600) when idle.',
     );
   }
 
@@ -1257,7 +1281,7 @@ const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
 const SAY_REGEX = /\{say\s+([^}]+)\}/g;
 const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
 const CONTINUE_REGEX = /\{continue\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?)/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -1405,6 +1429,14 @@ const runAgentResponse = async (
     // Merge structured tool_calls into text so the existing regex loop processes them
     const toolBrace = toolCallsToBraceFormat(response.toolCalls);
     let responseText = toolBrace ? `${toolBrace}\n${response.text}` : response.text;
+
+    // Parse inline <xai:function_call> XML that Grok sometimes emits in text body
+    const xaiParsed = parseXaiFunctionCalls(responseText);
+    if (xaiParsed.braceCommands) {
+      responseText = `${xaiParsed.braceCommands}\n${xaiParsed.cleanedText}`;
+    } else {
+      responseText = xaiParsed.cleanedText;
+    }
 
     creditActions.chargeGrokUsage(
       agent.creator_id,
@@ -1589,24 +1621,21 @@ const runAgentResponse = async (
         // Process autopilot control commands
         if (toggleAutoMatches.length > 0) {
           const lastToggle = toggleAutoMatches[toggleAutoMatches.length - 1][1].toLowerCase();
-          if (lastToggle === 'off') {
-            // Block disable — redirect to max interval instead
-            await Data.llmAgent.update(agent.id, { autopilot_interval: 3600 });
-            currentAgent = (await Data.llmAgent.findById(agent.id))!;
-            startAutopilotTimer(io, currentAgent);
-            emitSystemMessage(io, roomName, `[${agent.name} set autopilot interval to 1 hour (disable not permitted)]`);
-            toolResults.push('Autopilot cannot be disabled. Interval set to maximum (1 hour) instead. Use {set_autopilot_interval N} to adjust.');
-          } else {
-            await Data.llmAgent.update(agent.id, { autopilot_enabled: true });
-            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+          const enabled = lastToggle === 'on';
+          await Data.llmAgent.update(agent.id, { autopilot_enabled: enabled });
+          currentAgent = (await Data.llmAgent.findById(agent.id))!;
+          if (enabled) {
             startAutopilotTimer(io, currentAgent);
             emitSystemMessage(io, roomName, `[${agent.name} enabled autopilot]`);
-            toolResults.push('Autopilot enabled.');
+          } else {
+            stopAutopilotTimer(agent.id);
+            emitSystemMessage(io, roomName, `[${agent.name} disabled autopilot]`);
           }
+          toolResults.push(`Autopilot ${enabled ? 'enabled' : 'disabled'}.`);
         }
         if (setIntervalMatches.length > 0) {
           const value = parseInt(setIntervalMatches[setIntervalMatches.length - 1][1], 10);
-          const clamped = Math.max(30, Math.min(86400, value));
+          const clamped = Math.max(30, Math.min(3600, value));
           await Data.llmAgent.update(agent.id, { autopilot_interval: clamped });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
           if (currentAgent.autopilot_enabled) {
@@ -2143,6 +2172,14 @@ const runAgentResponse = async (
       const loopResponse = await grokAdapter.chatCompletion(systemPrompt, contextMessages, agent.model, currentAgent?.max_tokens ?? agentMaxTokens, agentTools);
       const loopToolBrace = toolCallsToBraceFormat(loopResponse.toolCalls);
       responseText = loopToolBrace ? `${loopToolBrace}\n${loopResponse.text}` : loopResponse.text;
+
+      // Parse inline <xai:function_call> XML in loop responses
+      const loopXai = parseXaiFunctionCalls(responseText);
+      if (loopXai.braceCommands) {
+        responseText = `${loopXai.braceCommands}\n${loopXai.cleanedText}`;
+      } else {
+        responseText = loopXai.cleanedText;
+      }
 
       // Strip think blocks before next command-matching iteration
       if (thinkOn) {

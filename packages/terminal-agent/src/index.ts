@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.7.5';
+const AGENT_VERSION = '1.8.2';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -259,12 +259,15 @@ const launchInteractiveClaude = (socket: Socket, machineName: string): void => {
   // Spawn Claude in a real pseudo-terminal (PTY)
   // This gives Claude a real TTY so it renders the full TUI with colors, thinking, etc.
   // We can read output (mirror to web) AND write input (remote commands) at the same time.
+  // Strip CLAUDECODE env var to avoid "nested session" error
+  const ptyEnv = { ...process.env } as Record<string, string>;
+  delete ptyEnv.CLAUDECODE;
   const ptyProcess = pty.spawn(shell, ['--dangerously-skip-permissions'], {
     name: 'xterm-256color',
     cols: (process.stdout as { columns?: number }).columns || 120,
     rows: (process.stdout as { rows?: number }).rows || 40,
-    cwd: homedir(),
-    env: process.env as Record<string, string>,
+    cwd: process.cwd(),
+    env: ptyEnv,
   });
 
   activePty = ptyProcess;
@@ -453,12 +456,10 @@ const connect = (config: SavedConfig): void => {
     }
 
     if (data.collectResponse && data.execId) {
-      // AI mode: use `claude -p` (print mode) for clean text output.
-      // No TUI, no ANSI, no /btw polling, no /copy clipboard scraping.
-      // Just spawn a process, read stdout, done.
+      // AI mode: use claude -p for clean text output, with periodic status updates
       const execId = data.execId;
       const MAX_WAIT_MS = 900_000; // 15 min absolute max
-      const HEARTBEAT_INTERVAL = 30_000; // 30s between heartbeat checks
+      const STATUS_INTERVAL = 45_000; // 45s between status updates
       const HUNG_THRESHOLD = 120_000; // 2 min no output = probably hung
 
       log(`[Claude Print] Spawning claude -p for ${execId}: ${userInput.substring(0, 100)}...`);
@@ -467,33 +468,35 @@ const connect = (config: SavedConfig): void => {
       let stderr = '';
       let finished = false;
       let lastOutputTime = Date.now();
+      let lastStatusLen = 0; // track how much stdout we reported last time
       const startTime = Date.now();
       let heartbeatCount = 0;
 
       const cleanup = (): void => {
-        clearInterval(heartbeatTimer);
+        clearInterval(statusTimer);
       };
 
       // On Windows, spawn cmd.exe directly with /c instead of using shell: true
-      // shell: true wraps as cmd.exe /d /s /c "..." which can cause stdin piping issues
-      // where cmd.exe consumes stdin before the child process reads it
+      // IMPORTANT: strip CLAUDECODE env var — otherwise Claude refuses to launch
+      // ("cannot be launched inside another Claude Code session")
+      const cleanEnv = { ...process.env } as Record<string, string>;
+      delete cleanEnv.CLAUDECODE;
       const isWin = platform() === 'win32';
       const claudeProc = isWin
         ? spawn('cmd.exe', ['/c', 'claude', '-p', '--dangerously-skip-permissions'], {
-            cwd: homedir(),
-            env: process.env as Record<string, string>,
+            cwd: process.cwd(),
+            env: cleanEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
           })
         : spawn('claude', ['-p', '--dangerously-skip-permissions'], {
-            cwd: homedir(),
-            env: process.env as Record<string, string>,
+            cwd: process.cwd(),
+            env: cleanEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
           });
 
       log(`[Claude Print] Process spawned, pid=${claudeProc.pid}`);
 
-      // Write prompt to stdin and close it so Claude knows input is complete
-      // Small delay on Windows to let the process initialize before writing stdin
+      // Write prompt to stdin — small delay on Windows for process init
       const writeStdin = (): void => {
         try {
           claudeProc.stdin.write(userInput + '\n');
@@ -513,8 +516,7 @@ const connect = (config: SavedConfig): void => {
         const text = chunk.toString();
         stdout += text;
         lastOutputTime = Date.now();
-        heartbeatCount = 0; // Reset consecutive silent heartbeats
-        // Mirror progress to web panel
+        heartbeatCount = 0;
         socket.emit('claude_session_output', { sessionKey: data.sessionKey, data: text });
       });
 
@@ -523,24 +525,21 @@ const connect = (config: SavedConfig): void => {
         stderr += text;
         lastOutputTime = Date.now();
         log(`[Claude Print] stderr: ${text.substring(0, 200)}`);
-        socket.emit('claude_debug', { execId, type: 'stderr', content: text.substring(0, 500) });
       });
 
-      // Heartbeat: check every 30s if Claude is still producing output
-      const heartbeatTimer = setInterval(() => {
+      // Status updates every 45s: show what Claude has produced so far
+      const statusTimer = setInterval(() => {
         if (finished) { cleanup(); return; }
 
         const silentMs = Date.now() - lastOutputTime;
         const elapsedS = Math.round((Date.now() - startTime) / 1000);
 
         if (silentMs >= HUNG_THRESHOLD) {
-          // No output for 2+ minutes — Claude is likely hung
           heartbeatCount++;
           if (heartbeatCount >= 2) {
-            // 2 consecutive hung heartbeats (4+ min silence) — kill it
             cleanup();
             finished = true;
-            log(`[Claude Print] Hung detected for ${execId}, killing after ${elapsedS}s. stderr: ${stderr.substring(0, 200)}`);
+            log(`[Claude Print] Hung detected for ${execId}, killing after ${elapsedS}s`);
             try { claudeProc.kill(); } catch { /* ignore */ }
             const stderrMsg = stderr.trim() ? `\nstderr: ${stderr.trim().substring(0, 500)}` : '';
             const output = stdout.trim() || `(Claude hung — no output for ${Math.round(silentMs / 1000)}s${stderrMsg})`;
@@ -549,28 +548,35 @@ const connect = (config: SavedConfig): void => {
             socket.emit('claude_pty_response', responsePayload);
             return;
           }
-          // First hung heartbeat — warn but keep waiting
           log(`[Claude Print] No output for ${Math.round(silentMs / 1000)}s on ${execId}`);
-          socket.emit('claude_session_output', {
-            sessionKey: data.sessionKey,
-            data: `\n⚠ [Heartbeat ${elapsedS}s] No output for ${Math.round(silentMs / 1000)}s — Claude may be hung\n`,
-          });
-          socket.emit('claude_debug', {
+        }
+
+        // Emit status update with the last ~500 chars of new output
+        if (stdout.length > lastStatusLen) {
+          const newContent = stdout.substring(lastStatusLen);
+          // Get last ~500 chars, trimmed to last complete line
+          const preview = newContent.length > 500
+            ? '...' + newContent.substring(newContent.length - 500)
+            : newContent;
+          const previewLines = preview.split('\n').filter((l: string) => l.trim()).slice(-8).join('\n');
+          lastStatusLen = stdout.length;
+
+          socket.emit('claude_btw_status', {
             execId,
-            type: 'heartbeat',
-            status: 'silent',
+            status: previewLines.trim().substring(0, 1000),
             elapsedSeconds: elapsedS,
-            silentSeconds: Math.round(silentMs / 1000),
           });
         } else {
-          // Claude produced output recently — it's alive
-          log(`[Claude Print] Heartbeat OK for ${execId} at ${elapsedS}s (${stdout.length} chars so far)`);
-          socket.emit('claude_session_output', {
-            sessionKey: data.sessionKey,
-            data: `\n✓ [Heartbeat ${elapsedS}s] Claude is working... (${stdout.length} chars)\n`,
+          // No new output — just report alive/silent
+          socket.emit('claude_btw_status', {
+            execId,
+            status: silentMs > 30_000
+              ? `Waiting for output... (silent for ${Math.round(silentMs / 1000)}s, ${stdout.length} chars total)`
+              : `Working... (${stdout.length} chars so far)`,
+            elapsedSeconds: elapsedS,
           });
         }
-      }, HEARTBEAT_INTERVAL);
+      }, STATUS_INTERVAL);
 
       claudeProc.on('close', (code: number | null) => {
         if (finished) return;

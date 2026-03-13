@@ -700,6 +700,19 @@ const ChatPage = () => {
               const displayName = msg.sender || msg.username || 'Unknown';
               const displayText = msg.text || msg.content || '';
 
+              // Infer systemType from message text when not set (e.g. loaded from DB)
+              const sysType =
+                msg.systemType ||
+                (msg.isSystem && displayText
+                  ? /^\[.+claude\s*→/i.test(displayText)
+                    ? 'claude-prompt'
+                    : /^\[Claude\b/i.test(displayText)
+                      ? 'claude-response'
+                      : /^\[.+terminal\s*→|^\[Terminal\b/i.test(displayText)
+                        ? 'terminal'
+                        : undefined
+                  : undefined);
+
               if (msg.isSystem) {
                 if (msg.collapsible) {
                   return (
@@ -719,9 +732,13 @@ const ChatPage = () => {
                             opacity: 0.8,
                             listStyle: 'none',
                             userSelect: 'none',
-                            ...(msg.systemType === 'tool-result'
+                            ...(sysType === 'claude-prompt'
                               ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' }
-                              : {}),
+                              : sysType === 'claude-response'
+                                ? { color: '#f0883e', textShadow: '0 0 6px rgba(240, 136, 62, 0.4)' }
+                                : sysType === 'terminal'
+                                  ? { color: '#bc8cff', textShadow: '0 0 6px rgba(188, 140, 255, 0.4)' }
+                                  : {}),
                           }}
                         >
                           {msg.collapsible} ▸
@@ -742,7 +759,6 @@ const ChatPage = () => {
                           </Box>
                         ) : (
                           <Typography
-                            variant="detailText"
                             component="pre"
                             sx={{
                               fontStyle: 'italic',
@@ -754,9 +770,22 @@ const ChatPage = () => {
                               fontSize: '0.7rem',
                               maxHeight: '300px',
                               overflow: 'auto',
-                              ...(msg.systemType === 'tool-result'
-                                ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' }
-                                : {}),
+                              color:
+                                sysType === 'claude-prompt'
+                                  ? '#3fb950'
+                                  : sysType === 'claude-response'
+                                    ? '#f0883e'
+                                    : sysType === 'terminal'
+                                      ? '#bc8cff'
+                                      : '#858585',
+                              textShadow:
+                                sysType === 'claude-prompt'
+                                  ? '0 0 6px rgba(63, 185, 80, 0.4)'
+                                  : sysType === 'claude-response'
+                                    ? '0 0 6px rgba(240, 136, 62, 0.4)'
+                                    : sysType === 'terminal'
+                                      ? '0 0 6px rgba(188, 140, 255, 0.4)'
+                                      : 'none',
                             }}
                           >
                             {displayText}
@@ -769,12 +798,25 @@ const ChatPage = () => {
                 return (
                   <Box key={msg.id || i} sx={{ textAlign: 'center', py: 0.25 }}>
                     <Typography
-                      variant="detailText"
                       sx={{
+                        fontSize: '0.875rem',
                         fontStyle: 'italic',
-                        ...(msg.systemType === 'tool-result'
-                          ? { color: '#3fb950', textShadow: '0 0 6px rgba(63, 185, 80, 0.4)' }
-                          : {}),
+                        color:
+                          sysType === 'claude-prompt'
+                            ? '#3fb950'
+                            : sysType === 'claude-response'
+                              ? '#f0883e'
+                              : sysType === 'terminal'
+                                ? '#bc8cff'
+                                : '#858585',
+                        textShadow:
+                          sysType === 'claude-prompt'
+                            ? '0 0 6px rgba(63, 185, 80, 0.4)'
+                            : sysType === 'claude-response'
+                              ? '0 0 6px rgba(240, 136, 62, 0.4)'
+                              : sysType === 'terminal'
+                                ? '0 0 6px rgba(188, 140, 255, 0.4)'
+                                : 'none',
                       }}
                     >
                       {displayText}
