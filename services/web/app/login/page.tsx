@@ -1,7 +1,7 @@
 'use client';
 
 // React modules
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 
 // Node modules
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -103,4 +103,10 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+const LoginPageWrapper = () => (
+  <Suspense>
+    <LoginPage />
+  </Suspense>
+);
+
+export default LoginPageWrapper;
