@@ -982,8 +982,18 @@ const ChatPage = () => {
         {settingsOpen && <SettingsPanel />}
         {terminalPanelOpen && (
           <>
-            <ResizeHandle onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
-            <div style={{ width: terminalWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <ResizeHandle
+              onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))}
+            />
+            <div
+              style={{
+                width: terminalWidth,
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
               <TerminalPanel
                 socket={socketInstanceRef.current}
                 machines={panelMachines}
@@ -994,16 +1004,36 @@ const ChatPage = () => {
         )}
         {watchlistPanelOpen && (
           <>
-            <ResizeHandle onResize={(d) => setWatchlistWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
-            <div style={{ width: watchlistWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <ResizeHandle
+              onResize={(d) => setWatchlistWidth((w) => Math.max(300, Math.min(1200, w + d)))}
+            />
+            <div
+              style={{
+                width: watchlistWidth,
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
               <WatchlistPanel onClose={() => setWatchlistPanelOpen(false)} onCommand={(cmd) => sendMessage(cmd)} />
             </div>
           </>
         )}
         {webPanelOpen && (
           <>
-            <ResizeHandle onResize={(d) => setWebPanelWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
-            <div style={{ width: webPanelWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <ResizeHandle
+              onResize={(d) => setWebPanelWidth((w) => Math.max(300, Math.min(1200, w + d)))}
+            />
+            <div
+              style={{
+                width: webPanelWidth,
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
               <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} />
             </div>
           </>
