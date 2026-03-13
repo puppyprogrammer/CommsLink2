@@ -153,7 +153,7 @@ const executeClaudePrompt = (
       clearTimeout(timer);
       console.log(`[claude_prompt] Got claude_pty_response for ${execId}: ${data.output.length} chars, exit=${data.exitCode}`);
       // Post Claude's response as a system message so AI and room can see it
-      emitSystemMessage(io, roomName, `[Claude ${agentName} response]:\n${data.output.substring(0, 4000)}`, undefined, 'tool-result');
+      emitSystemMessage(io, roomName, `[Claude ${agentName} response]:\n${data.output.substring(0, 4000)}`, undefined, 'claude-response');
       resolve(data.output.substring(0, 16000));
     };
 
@@ -571,16 +571,16 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
       type: 'function',
       function: {
         name: 'toggle_autopilot',
-        description: 'Enable or disable autopilot mode.',
-        parameters: { type: 'object', properties: { enabled: { type: 'string', enum: ['on', 'off'], description: 'on or off' } }, required: ['enabled'] },
+        description: 'Enable autopilot mode. To pause, use set_autopilot_interval with a high value instead of disabling.',
+        parameters: { type: 'object', properties: { enabled: { type: 'string', enum: ['on'], description: 'on' } }, required: ['enabled'] },
       },
     });
     tools.push({
       type: 'function',
       function: {
         name: 'set_autopilot_interval',
-        description: 'Set autopilot interval in seconds (30-86400).',
-        parameters: { type: 'object', properties: { seconds: { type: 'number', description: 'Interval in seconds (30-86400)' } }, required: ['seconds'] },
+        description: 'Set autopilot interval in seconds (30-3600). Use higher values (600-3600) when idle, lower (30-60) when actively working.',
+        parameters: { type: 'object', properties: { seconds: { type: 'number', description: 'Interval in seconds (30-3600)' } }, required: ['seconds'] },
       },
     });
   }
@@ -1327,7 +1327,14 @@ const runAgentResponse = async (
 
   try {
     const history = await Data.message.findByRoom(roomId, 20);
-    const contextMessages = history.reverse().map((m) => {
+    // Filter out ALL agent system messages (thoughts, status, etc.) — they are for
+    // UI display only and must NOT re-enter the context as "user" messages, which
+    // causes a feedback loop where the agent sees its own output echoed back.
+    const filteredHistory = history.filter((m) => {
+      if (m.type === 'system' && typeof m.content === 'string' && m.content.startsWith(`[${agent.name} `)) return false;
+      return true;
+    });
+    const contextMessages = filteredHistory.reverse().map((m) => {
       const ts = dayjs(m.created_at).format('h:mm A');
       const display = m.type === 'image' ? '[shared an image]' : m.content;
       return {
@@ -1582,17 +1589,20 @@ const runAgentResponse = async (
         // Process autopilot control commands
         if (toggleAutoMatches.length > 0) {
           const lastToggle = toggleAutoMatches[toggleAutoMatches.length - 1][1].toLowerCase();
-          const enabled = lastToggle === 'on';
-          await Data.llmAgent.update(agent.id, { autopilot_enabled: enabled });
-          currentAgent = (await Data.llmAgent.findById(agent.id))!;
-          if (enabled) {
+          if (lastToggle === 'off') {
+            // Block disable — redirect to max interval instead
+            await Data.llmAgent.update(agent.id, { autopilot_interval: 3600 });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+            startAutopilotTimer(io, currentAgent);
+            emitSystemMessage(io, roomName, `[${agent.name} set autopilot interval to 1 hour (disable not permitted)]`);
+            toolResults.push('Autopilot cannot be disabled. Interval set to maximum (1 hour) instead. Use {set_autopilot_interval N} to adjust.');
+          } else {
+            await Data.llmAgent.update(agent.id, { autopilot_enabled: true });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
             startAutopilotTimer(io, currentAgent);
             emitSystemMessage(io, roomName, `[${agent.name} enabled autopilot]`);
-          } else {
-            stopAutopilotTimer(agent.id);
-            emitSystemMessage(io, roomName, `[${agent.name} disabled autopilot]`);
+            toolResults.push('Autopilot enabled.');
           }
-          toolResults.push(`Autopilot ${enabled ? 'enabled' : 'disabled'}.`);
         }
         if (setIntervalMatches.length > 0) {
           const value = parseInt(setIntervalMatches[setIntervalMatches.length - 1][1], 10);
@@ -1753,7 +1763,7 @@ const runAgentResponse = async (
           continue;
         }
 
-        emitSystemMessage(io, roomName, `[${agent.name} terminal → ${machineName}]: ${command}`, undefined, 'tool-result');
+        emitSystemMessage(io, roomName, `[${agent.name} terminal → ${machineName}]: ${command}`, undefined, 'terminal');
 
         // Find the machine
         const machineRecord = await Data.machine.findByOwnerAndName(agent.creator_id, machineName);
@@ -1854,7 +1864,7 @@ const runAgentResponse = async (
           continue;
         }
 
-        emitSystemMessage(io, roomName, `[${agent.name} claude → ${machineName}]: ${prompt}`, undefined, 'tool-result');
+        emitSystemMessage(io, roomName, `[${agent.name} claude → ${machineName}]: ${prompt}`, undefined, 'claude-prompt');
 
         const machineRecord = await Data.machine.findByOwnerAndName(agent.creator_id, machineName);
         if (!machineRecord) {
@@ -1886,7 +1896,7 @@ const runAgentResponse = async (
             }
           })
           .catch((err) => {
-            emitSystemMessage(io, roomName, `[Claude error on ${machineName}]: ${(err as Error).message}`, undefined, 'tool-result');
+            emitSystemMessage(io, roomName, `[Claude error on ${machineName}]: ${(err as Error).message}`, undefined, 'claude-response');
           });
         toolResults.push(`[Claude ${machineName}]: Prompt sent — response will appear when ready.`);
       }
@@ -3403,6 +3413,19 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         }).catch(() => {});
       });
 
+      // Listen for /btw status updates from Claude PTY and post to chat
+      socket.on('claude_btw_status', (statusData: { execId: string; status: string; elapsedSeconds: number }) => {
+        console.log(`[claude_btw] ${machineName} at ${statusData.elapsedSeconds}s: ${statusData.status.substring(0, 200)}`);
+        // Find which room the user is in
+        const user = connectedUsers.get(socket.id);
+        const rn = user?.currentRoom || 'public';
+        const elapsed = statusData.elapsedSeconds;
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        const timeStr = mins > 0 ? `${mins}m${secs}s` : `${secs}s`;
+        emitSystemMessage(io, rn, `[Claude ${machineName} status @ ${timeStr}]: ${statusData.status.substring(0, 2000)}`, undefined, 'claude-response');
+      });
+
       // Auto-grant permission in all rooms owned by this user
       for (const [roomName, room] of activeRooms.entries()) {
         if (room.createdBy === socket.user.id && room.id) {
@@ -3488,7 +3511,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       if (user?.currentRoom) {
         const roomId = getRoomId(user.currentRoom);
         if (roomId) {
-          emitSystemMessage(io, user.currentRoom, `[${socket.user.username} terminal → ${data.machineName}]: ${data.command}`, undefined, 'tool-result');
+          emitSystemMessage(io, user.currentRoom, `[${socket.user.username} terminal → ${data.machineName}]: ${data.command}`, undefined, 'terminal');
         }
       }
 
@@ -3498,7 +3521,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
         // Also emit to chat so AI and summarizer can see it
         if (user?.currentRoom) {
-          emitSystemMessage(io, user.currentRoom, `[Terminal ${data.machineName}]:\n${output.substring(0, 2000)}`, undefined, 'tool-result');
+          emitSystemMessage(io, user.currentRoom, `[Terminal ${data.machineName}]:\n${output.substring(0, 2000)}`, undefined, 'terminal');
         }
       } catch (err) {
         socket.emit('terminal_panel_output', { machineName: data.machineName, output: `Error: ${(err as Error).message}`, isError: true });
@@ -3580,7 +3603,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           if (out.output && out.output !== '(no response captured)') {
             const user2 = connectedUsers.get(socket.id);
             const rn = user2?.currentRoom || 'public';
-            emitSystemMessage(io, rn, `[Claude → ${data.machineName} response]:\n${out.output.substring(0, 4000)}`, undefined, 'tool-result');
+            emitSystemMessage(io, rn, `[Claude → ${data.machineName} response]:\n${out.output.substring(0, 4000)}`, undefined, 'claude-response');
 
             Data.claudeLog.create({
               direction: 'claude_response',
@@ -3607,7 +3630,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       // Show in chat for AI visibility
       if (roomId) {
-        emitSystemMessage(io, roomName, `[${socket.user.username} claude → ${data.machineName}]: ${data.input}`, undefined, 'tool-result');
+        emitSystemMessage(io, roomName, `[${socket.user.username} claude → ${data.machineName}]: ${data.input}`, undefined, 'claude-prompt');
       }
     });
 
