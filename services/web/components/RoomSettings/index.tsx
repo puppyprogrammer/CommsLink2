@@ -1309,8 +1309,11 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           let taskCount = 0;
           try {
             const parsed = JSON.parse(agent.tasks || '[]');
-            if (Array.isArray(parsed)) taskCount = parsed.filter((t: { status?: string }) => t.status === 'pending').length;
-          } catch { /* ignore */ }
+            if (Array.isArray(parsed))
+              taskCount = parsed.filter((t: { status?: string }) => t.status === 'pending').length;
+          } catch {
+            /* ignore */
+          }
           return (
             <Paper
               key={agent.id}
