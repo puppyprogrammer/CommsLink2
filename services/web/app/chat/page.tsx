@@ -719,21 +719,21 @@ const ChatPage = () => {
               {rooms.some((r) => r.name === currentRoom && canManageRoom(r)) && (
                 <IconButton
                   size="small"
-                  color={roomSettingsOpen ? 'primary' : 'default'}
                   onClick={() => openRoomSettings(currentRoomDisplay)}
                   title="Room Settings"
+                  sx={{ color: roomSettingsOpen ? 'primary.main' : '#858585' }}
                 >
                   <TuneIcon />
                 </IconButton>
               )}
               <IconButton
                 size="small"
-                color={terminalPanelOpen ? 'primary' : 'default'}
                 onClick={() => {
                   setTerminalPanelOpen((prev) => !prev);
                   setTerminalNotifications(0);
                 }}
                 title="Terminal / Claude"
+                sx={{ color: terminalPanelOpen ? 'primary.main' : '#858585' }}
               >
                 <Badge
                   badgeContent={terminalNotifications}
@@ -753,33 +753,33 @@ const ChatPage = () => {
               </IconButton>
               <IconButton
                 size="small"
-                color={webPanelOpen ? 'primary' : 'default'}
                 onClick={() => setWebPanelOpen((prev) => !prev)}
                 title="Web Browser"
+                sx={{ color: webPanelOpen ? 'primary.main' : '#858585' }}
               >
                 <LanguageIcon />
               </IconButton>
               <IconButton
                 size="small"
-                color={forumPanelOpen ? 'primary' : 'default'}
                 onClick={() => setForumPanelOpen((prev) => !prev)}
                 title="Room Forum"
+                sx={{ color: forumPanelOpen ? 'primary.main' : '#858585' }}
               >
                 <ForumIcon />
               </IconButton>
               <IconButton
                 size="small"
-                color={hologramPanelOpen ? 'primary' : 'default'}
                 onClick={() => setHologramPanelOpen((prev) => !prev)}
                 title="Hologram Avatars"
+                sx={{ color: hologramPanelOpen ? 'primary.main' : '#858585' }}
               >
                 <ViewInArIcon />
               </IconButton>
               <IconButton
                 size="small"
-                color={settingsOpen ? 'primary' : 'default'}
                 onClick={() => setSettingsOpen((prev) => !prev)}
                 title="Voice Settings"
+                sx={{ color: settingsOpen ? 'primary.main' : '#858585' }}
               >
                 <SettingsIcon />
               </IconButton>
