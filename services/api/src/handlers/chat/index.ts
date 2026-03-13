@@ -1943,7 +1943,7 @@ const runAgentResponse = async (
         }
         if (setIntervalMatches.length > 0) {
           const value = parseInt(setIntervalMatches[setIntervalMatches.length - 1][1], 10);
-          const clamped = Math.max(30, Math.min(3600, value));
+          const clamped = Math.max(6, Math.min(3600, value));
           await Data.llmAgent.update(agent.id, { autopilot_interval: clamped });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
           if (currentAgent.autopilot_enabled) {
@@ -2653,7 +2653,7 @@ const agentBusy = new Set<string>();
 const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
   stopAutopilotTimer(agent.id);
 
-  const intervalMs = Math.max(agent.autopilot_interval ?? 300, 30) * 1000;
+  const intervalMs = Math.max(agent.autopilot_interval ?? 300, 6) * 1000;
 
   console.log(`[Autopilot] Starting timer for ${agent.name} (every ${intervalMs / 1000}s)`);
 
