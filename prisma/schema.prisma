@@ -235,6 +235,7 @@ model memory_summary {
   msg_start        DateTime
   msg_end          DateTime
   messages_covered Int
+  embedding        Json?    // Stub for future vector search (array of floats)
   created_at       DateTime @default(now())
 
   room     room             @relation(fields: [room_id], references: [id], onDelete: Cascade)

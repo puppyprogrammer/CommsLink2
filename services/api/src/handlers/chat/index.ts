@@ -37,6 +37,7 @@ if (expectedAgentVersion === 'unknown') {
 // In-memory state
 const connectedUsers = new Map<string, ConnectedUser>();
 const activeRooms = new Map<string, ActiveRoom>();
+const memoryMsgCounters = new Map<string, number>(); // per-room msg counter for throttled summarization
 
 // Pending terminal command approvals: approvalId -> resolver
 type PendingApproval = {
@@ -1404,8 +1405,20 @@ const runAgentResponse = async (
     const continueOn = roomRecord?.cmd_continue_enabled ?? true;
     let maxLoops = roomRecord?.max_loops ?? 5;
 
-    const masterSummary = memoryOn ? await Data.memorySummary.findMasterByRoom(roomId) : null;
-    const masterContent = memCmdOn ? masterSummary?.content : undefined;
+    // Build room memory context: L4 master + L3 eras + L2 episodes
+    let memoryContext: string | undefined;
+    if (memoryOn && memCmdOn) {
+      const [master, l3s, l2s] = await Promise.all([
+        Data.memorySummary.findMasterByRoom(roomId),
+        Data.memorySummary.findByRoomAndLevel(roomId, 3),
+        Data.memorySummary.findByRoomAndLevel(roomId, 2),
+      ]);
+      const sections: string[] = [];
+      if (master) sections.push(`[Master Overview]\n${master.content}`);
+      if (l3s.length > 0) sections.push(`[Eras]\n${l3s.map((s) => `[${s.ref_name}] ${s.content}`).join('\n')}`);
+      if (l2s.length > 0) sections.push(`[Episodes]\n${l2s.map((s) => `[${s.ref_name}] ${s.content}`).join('\n')}`);
+      if (sections.length > 0) memoryContext = sections.join('\n\n');
+    }
 
     // Fetch online machines for terminal/claude prompt context
     const onlineMachines = (terminalOn || claudeOn)
@@ -1414,7 +1427,7 @@ const runAgentResponse = async (
 
     const agentMaxTokens = agent.max_tokens ?? 1500;
 
-    const systemPrompt = buildSystemPrompt(agent, autopilotMode, masterContent, {
+    const systemPrompt = buildSystemPrompt(agent, autopilotMode, memoryContext, {
       recall: recallOn,
       sql: sqlOn,
       memory: memCmdOn,
@@ -2812,14 +2825,18 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         }
       }
 
-      // Trigger memory summarization if enabled (fire-and-forget)
-      const currentRoomName = user.currentRoom;
-      Data.room.findById(roomId).then((roomRecord) => {
-        if (roomRecord?.memory_enabled && roomRecord.created_by) {
-          const notify = (txt: string) => emitSystemMessage(io, currentRoomName, txt);
-          summarizeAction.triggerSummarization(roomId, roomRecord.created_by, notify).catch(console.error);
-        }
-      }).catch(console.error);
+      // Trigger memory summarization every 5th message (fire-and-forget)
+      const msgCount = memoryMsgCounters.get(roomId) ?? 0;
+      memoryMsgCounters.set(roomId, msgCount + 1);
+      if ((msgCount + 1) % 5 === 0) {
+        const currentRoomName = user.currentRoom;
+        Data.room.findById(roomId).then((roomRecord) => {
+          if (roomRecord?.memory_enabled && roomRecord.created_by) {
+            const notify = (txt: string) => emitSystemMessage(io, currentRoomName, txt);
+            summarizeAction.triggerSummarization(roomId, roomRecord.created_by, notify).catch(console.error);
+          }
+        }).catch(console.error);
+      }
     });
 
     // ┌──────────────────────────────────────────┐

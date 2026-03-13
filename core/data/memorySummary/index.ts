@@ -67,6 +67,19 @@ const deleteByRoom = async (roomId: string): Promise<void> => {
   await prisma.memory_summary.deleteMany({ where: { room_id: roomId } });
 };
 
+/** Delete L1 summaries older than a given date that already have a parent (rolled up). */
+const deleteExpiredL1 = async (roomId: string, olderThan: Date): Promise<number> => {
+  const result = await prisma.memory_summary.deleteMany({
+    where: {
+      room_id: roomId,
+      level: 1,
+      parent_id: { not: null },
+      created_at: { lt: olderThan },
+    },
+  });
+  return result.count;
+};
+
 export default {
   create,
   findByRoomAndRef,
@@ -77,4 +90,5 @@ export default {
   findAllByRoom,
   deleteMasterByRoom,
   deleteByRoom,
+  deleteExpiredL1,
 };

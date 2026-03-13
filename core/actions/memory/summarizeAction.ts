@@ -78,6 +78,13 @@ const triggerSummarization = async (
   activeLocks.add(roomId);
 
   try {
+    // TTL cleanup: delete rolled-up L1 summaries older than 7 days
+    const ttlCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const expired = await Data.memorySummary.deleteExpiredL1(roomId, ttlCutoff);
+    if (expired > 0) {
+      console.log(`[Memory] Cleaned up ${expired} expired L1 summaries for room ${roomId}`);
+    }
+
     // L1: chunk 20 unsummarized messages
     const unsummarizedCount = await Data.message.countUnsummarized(roomId);
     if (unsummarizedCount < CHUNK_SIZE) {
