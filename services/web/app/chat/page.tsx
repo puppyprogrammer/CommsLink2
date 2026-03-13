@@ -62,7 +62,6 @@ import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
 import WatchlistPanel from '@/components/WatchlistPanel';
 import HologramViewer from '@/components/HologramViewer';
-import HologramEditor from '@/components/HologramEditor';
 import ResizeHandle from '@/components/ResizeHandle';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import PlaylistPlayIcon from '@mui/icons-material/PlaylistPlay';
@@ -109,7 +108,6 @@ const ChatPage = () => {
   const [watchlistWidth, setWatchlistWidth] = useState(500);
   const [webPanelWidth, setWebPanelWidth] = useState(600);
   const [hologramPanelOpen, setHologramPanelOpen] = useState(false);
-  const [hologramEditorOpen, setHologramEditorOpen] = useState(false);
   const [hologramAvatars, setHologramAvatars] = useState<
     {
       id: string;
@@ -1122,54 +1120,15 @@ const ChatPage = () => {
                 <Typography variant="subtitle2" sx={{ color: '#63c5c0', fontFamily: "'Orbitron', monospace" }}>
                   Holograms
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 0.5 }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => setHologramEditorOpen((prev) => !prev)}
-                    sx={{ fontSize: '0.65rem' }}
-                  >
-                    {hologramEditorOpen ? 'Close Editor' : 'New Avatar'}
-                  </Button>
-                  <IconButton size="small" onClick={() => setHologramPanelOpen(false)} title="Close">
-                    <Typography variant="caption" sx={{ color: '#888' }}>
-                      ✕
-                    </Typography>
-                  </IconButton>
-                </Box>
+                <IconButton size="small" onClick={() => setHologramPanelOpen(false)} title="Close">
+                  <Typography variant="caption" sx={{ color: '#888' }}>
+                    ✕
+                  </Typography>
+                </IconButton>
               </Box>
-              {hologramEditorOpen && (
-                <HologramEditor
-                  onSave={(data) => {
-                    const socket = socketInstanceRef.current;
-                    if (socket) {
-                      socket.emit('hologram_create', data);
-                    }
-                    setHologramEditorOpen(false);
-                  }}
-                  onCancel={() => setHologramEditorOpen(false)}
-                />
-              )}
               <div style={{ flex: 1, minHeight: 250 }}>
                 <HologramViewer avatars={hologramAvatars as Parameters<typeof HologramViewer>[0]['avatars']} />
               </div>
-              {hologramAvatars
-                .filter((a) => a.userId === session?.user?.id)
-                .map((a) => (
-                  <Button
-                    key={a.id}
-                    size="small"
-                    variant="text"
-                    color="error"
-                    onClick={() => {
-                      const socket = socketInstanceRef.current;
-                      if (socket) socket.emit('hologram_remove', { avatarId: a.id });
-                    }}
-                    sx={{ fontSize: '0.65rem' }}
-                  >
-                    Remove &quot;{a.label}&quot;
-                  </Button>
-                ))}
             </div>
           </>
         )}
