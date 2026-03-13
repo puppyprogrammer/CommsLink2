@@ -43,27 +43,30 @@ class BrowserSession {
     this.touch();
     // Try CSS selector first
     try {
-      await this.page.click(target, { timeout: 3000 });
+      await this.page.waitForSelector(target, { timeout: 3000 });
+      await this.page.click(target);
       await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 5000 }).catch(() => {});
       return `Clicked "${target}"`;
     } catch {
-      // Fall back to text content match
+      // Fall back to text content match via JS string (avoids DOM type issues)
     }
 
-    const clicked = await this.page.evaluate((searchText: string) => {
+    const escapedTarget = target.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const clicked = await this.page.evaluate(`(() => {
+      const searchText = '${escapedTarget}';
       const lower = searchText.toLowerCase();
       const candidates = Array.from(document.querySelectorAll('a, button, [role="button"], input[type="submit"], input[type="button"], [onclick]'));
       for (const el of candidates) {
-        const text = (el as HTMLElement).innerText?.trim().toLowerCase() || '';
-        const value = (el as HTMLInputElement).value?.toLowerCase() || '';
-        const ariaLabel = el.getAttribute('aria-label')?.toLowerCase() || '';
+        const text = (el.innerText || '').trim().toLowerCase();
+        const value = (el.value || '').toLowerCase();
+        const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
         if (text.includes(lower) || value.includes(lower) || ariaLabel.includes(lower)) {
-          (el as HTMLElement).click();
-          return (el as HTMLElement).innerText?.trim() || el.tagName;
+          el.click();
+          return (el.innerText || '').trim() || el.tagName;
         }
       }
       return null;
-    }, target);
+    })()`) as string | null;
 
     if (!clicked) throw new Error(`No element found matching "${target}"`);
     await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 5000 }).catch(() => {});
@@ -72,14 +75,15 @@ class BrowserSession {
 
   async type(selector: string, text: string): Promise<void> {
     this.touch();
-    await this.page.click(selector, { timeout: 3000 });
+    await this.page.waitForSelector(selector, { timeout: 3000 });
+    await this.page.click(selector);
     await this.page.type(selector, text, { delay: 30 });
   }
 
   async scroll(direction: 'up' | 'down'): Promise<void> {
     this.touch();
     const delta = direction === 'down' ? 600 : -600;
-    await this.page.evaluate((d: number) => window.scrollBy(0, d), delta);
+    await this.page.evaluate(`window.scrollBy(0, ${delta})`);
   }
 
   async back(): Promise<void> {
@@ -231,9 +235,7 @@ class BrowserSessionManager {
     await page.setViewport({ width: 1280, height: 800 });
     await page.setUserAgent(USER_AGENT);
     // Anti-bot
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
-    });
+    await page.evaluateOnNewDocument(`Object.defineProperty(navigator, 'webdriver', { get: () => false })`);
 
     const session = new BrowserSession(roomId, context, page);
     this.sessions.set(roomId, session);

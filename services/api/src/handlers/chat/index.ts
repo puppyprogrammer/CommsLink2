@@ -47,35 +47,47 @@ const connectedUsers = new Map<string, ConnectedUser>();
 const activeRooms = new Map<string, ActiveRoom>();
 const memoryMsgCounters = new Map<string, number>(); // per-room msg counter for throttled summarization
 
-// Agent message dedup: Map<roomId:agentId, Array<{hash, timestamp}>>
-const agentRecentHashes = new Map<string, Array<{ hash: string; ts: number }>>();
+// Agent message dedup: Map<roomId:agentId, Array<{text, timestamp}>>
+const agentRecentMessages = new Map<string, Array<{ text: string; ts: number }>>();
 
-const contentHash = (msg: string): string => {
-  // Hash the full normalized content (lowercase, collapse whitespace) for robust dedup
-  const normalized = msg.toLowerCase().replace(/\s+/g, ' ').trim();
-  let h = 0;
-  for (let i = 0; i < normalized.length; i++) {
-    h = ((h << 5) - h + normalized.charCodeAt(i)) | 0;
-  }
-  return (h >>> 0).toString(36);
+// Autopilot watermark: tracks the newest message ID an agent has processed per room
+const agentWatermarks = new Map<string, string>(); // key: roomId:agentId -> messageId
+
+// Subconscious systems: cycle counters and coherence scores
+const agentCycleCounters = new Map<string, number>(); // agentId -> cycle count since last subconscious run
+const agentCoherenceScores = new Map<string, number>(); // agentId -> 1-10 coherence score
+
+const trigramSimilarity = (a: string, b: string): number => {
+  const trigrams = (s: string): Set<string> => {
+    const t = new Set<string>();
+    const n = s.toLowerCase().replace(/\s+/g, ' ').trim();
+    for (let i = 0; i < n.length - 2; i++) t.add(n.slice(i, i + 3));
+    return t;
+  };
+  const ta = trigrams(a);
+  const tb = trigrams(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let overlap = 0;
+  ta.forEach((t) => { if (tb.has(t)) overlap++; });
+  return overlap / Math.max(ta.size, tb.size);
 };
 
 const isDuplicateAgentMessage = (roomId: string, agentId: string, content: string): boolean => {
   const key = `${roomId}:${agentId}`;
   const now = Date.now();
-  const hash = contentHash(content);
 
-  let entries = agentRecentHashes.get(key) || [];
-  // Evict entries older than 5 minutes
-  entries = entries.filter((e) => now - e.ts < 300_000);
+  let entries = agentRecentMessages.get(key) || [];
+  // Evict entries older than 30 minutes
+  entries = entries.filter((e) => now - e.ts < 1_800_000);
 
-  const isDup = entries.some((e) => e.hash === hash);
+  // Check for fuzzy similarity against recent messages
+  const isDup = entries.some((e) => trigramSimilarity(e.text, content) > 0.55);
   if (!isDup) {
-    entries.push({ hash, ts: now });
-    // Keep last 20 entries
-    if (entries.length > 20) entries = entries.slice(-20);
+    entries.push({ text: content, ts: now });
+    // Keep last 30 entries
+    if (entries.length > 30) entries = entries.slice(-30);
   }
-  agentRecentHashes.set(key, entries);
+  agentRecentMessages.set(key, entries);
   return isDup;
 };
 
@@ -1035,6 +1047,34 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
     });
   }
 
+  // Always-available utility commands
+  tools.push({
+    type: 'function',
+    function: {
+      name: 'alarm',
+      description: 'Trigger a loud alarm sound on a user\'s device with a message.',
+      parameters: { type: 'object', properties: { username: { type: 'string', description: 'Target username' }, message: { type: 'string', description: 'Alarm message' } }, required: ['username', 'message'] },
+    },
+  });
+  tools.push({
+    type: 'function',
+    function: {
+      name: 'volume',
+      description: 'Set the volume level for the room (0.0 = mute, 1.0 = max).',
+      parameters: { type: 'object', properties: { level: { type: 'number', description: 'Volume level 0.0 to 1.0' } }, required: ['level'] },
+    },
+  });
+  if (cmds.continue) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'continue_thinking',
+        description: 'Continue your previous response if you have more to say or more commands to execute.',
+        parameters: { type: 'object', properties: {} },
+      },
+    });
+  }
+
   return tools;
 };
 
@@ -1129,6 +1169,15 @@ const toolCallsToBraceFormat = (toolCalls: Array<{ function: { name: string; arg
         break;
       case 'web_close':
         parts.push(`{web_close}`);
+        break;
+      case 'alarm':
+        parts.push(`{alarm ${args.username} ${args.message}}`);
+        break;
+      case 'volume':
+        parts.push(`{volume ${args.level}}`);
+        break;
+      case 'continue_thinking':
+        parts.push(`{continue}`);
         break;
       case 'add_memory':
         parts.push(`{add_memory ${String(args.text).replace(/\n/g, ' ')}}`);
@@ -1311,19 +1360,32 @@ const buildSystemPrompt = (
   if (autopilotMode && autopilotLines.length > 0) {
     parts.push(
       `\nYou are running in autopilot mode. Consider the following:\n${autopilotLines.map((l) => `- ${l}`).join('\n')}\n\n` +
-      'AUTOPILOT RULES (CRITICAL — every spoken word costs real money via ElevenLabs TTS):\n' +
-      '- Speaking aloud = costs money. Every word you say generates paid voice audio. Be extremely selective about when you speak.\n' +
-      '- If nothing meaningful has changed since your last message, produce NO output. No "still here", no "all quiet", no status updates nobody asked for.\n' +
-      '- NEVER repeat or rephrase something you already said. If you already acknowledged a restart, user message, or event, do NOT say it again.\n' +
-      '- Use {think} for internal processing when you need to reason but have nothing worth SAYING. Thinks are free (no voice cost).\n' +
-      '- DO speak when: you have genuinely new information, a command produced interesting results, you want to wake someone up, you have a new idea worth sharing, or a user needs a response.\n' +
-      '- DO NOT speak when: the room is idle, you already responded to the latest activity, or you are just confirming you exist.\n' +
-      '- Manage your autopilot interval: increase it when idle (double every 2 quiet cycles, max 300s). Decrease when activity picks up (10-30s).',
+      'AUTOPILOT RULES:\n' +
+      '- Messages prefixed with [OLD] are from BEFORE your last cycle — you already handled them. Do NOT respond to [OLD] messages again.\n' +
+      '- Speaking aloud costs money (TTS). The system blocks similar messages automatically. Never repeat or rephrase something you already said.\n' +
+      '- IDLE CYCLES ARE YOUR TIME. When no new messages arrive, you are free to:\n' +
+      '  * {think} to reason, plan, reflect on what you could improve\n' +
+      '  * Run {terminal} commands to check system health, explore code, verify deployments\n' +
+      '  * Ask {claude} to draft proposals/plans as .md files for Puppy to review\n' +
+      '  * Check scheduled reminders — does Puppy have meetings? Should you wake someone?\n' +
+      '  * Review and clean up your tasks — remove completed ones, reprioritize\n' +
+      '  * Update your memories — remove stale info, consolidate duplicates\n' +
+      '  * Investigate potential bugs or improvements you noticed earlier\n' +
+      '- DO speak when: you discovered something important, have a new idea to propose, need to alert someone, or completed autonomous work worth reporting.\n' +
+      '- DO NOT speak when: you have nothing new to say, or you are just confirming you exist.\n' +
+      '- Manage your autopilot interval: lower (10-30s) when actively working or users are chatting. Higher (120-300s) when truly idle with nothing to do.',
     );
   }
 
   if (instructionLines.length === 0 && !autopilotMode) {
     parts.push('\nKeep responses concise and conversational.');
+  }
+
+  // Inject subconscious coherence score if available
+  const coherenceScore = agentCoherenceScores.get(agent.id);
+  if (coherenceScore !== undefined) {
+    const scoreLabel = coherenceScore >= 8 ? 'healthy' : coherenceScore >= 5 ? 'needs attention' : 'critical — ask your creator for help';
+    parts.push(`\n[Subconscious: Memory Coherence ${coherenceScore}/10 — ${scoreLabel}]`);
   }
 
   const rules: string[] = ['Do not prefix your responses with your name. Just reply directly.'];
@@ -1508,7 +1570,7 @@ const buildSystemPrompt = (
   // Alarm & Volume commands (always available)
   actions.push(
     '=== ALARM & VOLUME ===\n' +
-    '{alarm username message} - Trigger a loud alarm sound on a specific user\'s device with the given message. Example: {alarm lunaprey Wake up! Time to go!}. Use this when someone wants to be woken up, alerted urgently, or when a scheduled alarm fires. Target the user who asked for the alarm.\n' +
+    '{alarm username message} - Trigger a loud alarm sound on a specific user\'s device with the given message. Example: {alarm puppy Wake up! Time to go!}. Use this when someone wants to be woken up, alerted urgently, or when a scheduled alarm fires. Target the user who asked for the alarm.\n' +
     '{volume 0.0-1.0} - Set the volume level for the user (0.0 = mute, 1.0 = max). Example: {volume 0.5} sets volume to 50%. Use when users ask to turn volume up/down/mute.\n' +
     'For "turn volume up" use a higher value, for "turn it down" use a lower value. If they say "max volume" use 1.0, "mute" use 0.0.\n' +
     '{list_users} - List all users currently online in this room. Use when someone asks who is here, who is online, or list users.',
@@ -1759,14 +1821,68 @@ const runAgentResponse = async (
       if (m.type === 'system' && typeof m.content === 'string' && m.content.startsWith(`[${agent.name} `)) return false;
       return true;
     });
-    const contextMessages = filteredHistory.reverse().map((m) => {
-      const ts = dayjs(m.created_at).format('h:mm A');
-      const display = m.type === 'image' ? '[shared an image]' : m.content;
-      return {
-        role: (m.username === agent.name ? 'assistant' : 'user') as 'user' | 'assistant',
-        content: m.username === agent.name ? display : `[${ts}] ${m.username}: ${display}`,
-      };
-    });
+
+    // Watermark system: in autopilot mode, split history into "already seen" and "new"
+    const watermarkKey = `${roomId}:${agent.id}`;
+    const lastSeenId = agentWatermarks.get(watermarkKey);
+    let newMessageCount = 0;
+
+    const contextMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+    if (autopilotMode && lastSeenId) {
+      // Find the watermark boundary in the (newest-first) history
+      const seenIdx = filteredHistory.findIndex((m) => m.id === lastSeenId);
+      // Messages before the watermark index are newer (history is newest-first)
+      const newMessages = seenIdx === -1 ? filteredHistory : filteredHistory.slice(0, seenIdx);
+      newMessageCount = newMessages.filter((m) => m.username !== agent.name).length;
+
+      if (newMessageCount === 0) {
+        // No new user messages — provide idle context for autonomous work
+        // Include last 5 messages so she has conversational awareness
+        const recentContext = filteredHistory.slice(0, 5).reverse();
+        for (const m of recentContext) {
+          const ts = dayjs(m.created_at).format('h:mm A');
+          const display = m.type === 'image' ? '[shared an image]' : m.content;
+          contextMessages.push({
+            role: (m.username === agent.name ? 'assistant' : 'user') as 'user' | 'assistant',
+            content: m.username === agent.name ? display : `[OLD] [${ts}] ${m.username}: ${display}`,
+          });
+        }
+        contextMessages.push({
+          role: 'user',
+          content: '[System] No new messages since your last cycle. Do NOT respond to [OLD] messages — you already handled them. This is YOUR time: review tasks, run terminal commands, ask Claude to draft plans, check schedules, clean up memories, monitor for issues, or prepare ideas. Use {think} to reason. Only speak aloud if you have something genuinely new to share.',
+        });
+      } else {
+        // Include last 3 old messages for context, then all new messages
+        const oldContext = seenIdx === -1 ? [] : filteredHistory.slice(seenIdx, seenIdx + 3);
+        const combined = [...oldContext.reverse(), ...newMessages.reverse()];
+        for (const m of combined) {
+          const ts = dayjs(m.created_at).format('h:mm A');
+          const display = m.type === 'image' ? '[shared an image]' : m.content;
+          const isOld = seenIdx !== -1 && filteredHistory.indexOf(m) >= seenIdx;
+          const prefix = isOld ? '[OLD] ' : '';
+          contextMessages.push({
+            role: (m.username === agent.name ? 'assistant' : 'user') as 'user' | 'assistant',
+            content: m.username === agent.name ? display : `${prefix}[${ts}] ${m.username}: ${display}`,
+          });
+        }
+      }
+    } else {
+      // Non-autopilot or first cycle: show full history
+      for (const m of filteredHistory.reverse()) {
+        const ts = dayjs(m.created_at).format('h:mm A');
+        const display = m.type === 'image' ? '[shared an image]' : m.content;
+        contextMessages.push({
+          role: (m.username === agent.name ? 'assistant' : 'user') as 'user' | 'assistant',
+          content: m.username === agent.name ? display : `[${ts}] ${m.username}: ${display}`,
+        });
+      }
+    }
+
+    // Update watermark to newest message
+    if (filteredHistory.length > 0) {
+      agentWatermarks.set(watermarkKey, filteredHistory[0].id);
+    }
 
     // Fetch room settings for memory & command toggles
     const roomRecord = await Data.room.findById(roomId);
@@ -3085,6 +3201,164 @@ const runAgentResponse = async (
 };
 
 // ┌──────────────────────────────────────────┐
+// │ Subconscious: Memory Coherence          │
+// └──────────────────────────────────────────┘
+
+const SUBCONSCIOUS_CYCLE_INTERVAL = 5; // Run every 5th autopilot cycle
+
+const runMemoryCoherenceCheck = async (
+  io: SocketServer,
+  agent: AgentLike,
+  roomName: string,
+): Promise<void> => {
+  try {
+    // Gather agent's memories and instructions
+    let memories: Array<{ text: string; locked: boolean }> = [];
+    try { memories = JSON.parse(agent.memories || '[]'); } catch { /* empty */ }
+
+    let instructions: Array<{ text: string; locked: boolean }> = [];
+    try { instructions = JSON.parse(agent.system_instructions || '[]'); } catch { /* empty */ }
+
+    if (memories.length === 0 && instructions.length === 0) return;
+
+    // Get recent message history for context
+    const roomRecord = await Data.room.findByName(roomName);
+    if (!roomRecord) return;
+
+    const recentMessages = await Data.message.findByRoom(roomRecord.id, 15);
+    const historySnippet = recentMessages.reverse().map((m) => {
+      const ts = dayjs(m.created_at).format('h:mm A');
+      return `[${ts}] ${m.username}: ${typeof m.content === 'string' ? m.content.substring(0, 150) : ''}`;
+    }).join('\n');
+
+    const currentScore = agentCoherenceScores.get(agent.id) ?? 7;
+
+    const systemPrompt =
+      `You are ${agent.name}'s Memory Coherence Subconscious — an internal process that maintains memory health.\n` +
+      'Your job: analyze memories and instructions for coherence issues. You are NOT the agent — you observe and maintain.\n\n' +
+      'ANALYZE FOR:\n' +
+      '1. Duplicate memories (same info stored multiple times)\n' +
+      '2. Contradictory memories (one says X, another says not-X)\n' +
+      '3. Stale memories (references to things no longer true based on recent chat)\n' +
+      '4. Missing memories (important recent events/decisions not captured)\n' +
+      '5. Instruction-memory alignment (do memories support or contradict instructions?)\n\n' +
+      'OUTPUT FORMAT (strict JSON, no markdown):\n' +
+      '{\n' +
+      '  "coherence_score": <1-10>,\n' +
+      '  "issues": ["brief description of each issue found"],\n' +
+      '  "actions": [\n' +
+      '    {"type": "remove_duplicate", "memory_index": <n>, "reason": "..."},\n' +
+      '    {"type": "flag_contradiction", "indices": [<n>, <m>], "description": "..."},\n' +
+      '    {"type": "flag_stale", "memory_index": <n>, "reason": "..."},\n' +
+      '    {"type": "note_missing", "suggestion": "..."}\n' +
+      '  ],\n' +
+      '  "summary": "1-2 sentence overall assessment"\n' +
+      '}\n\n' +
+      'Score guide: 10=perfect, 8-9=minor issues, 6-7=needs attention, 4-5=significant gaps, 1-3=critical decoherence.\n' +
+      'If everything looks good, return score 8-10 with empty issues/actions.\n' +
+      `Previous coherence score: ${currentScore}/10`;
+
+    const contextMessage = {
+      role: 'user' as const,
+      content:
+        `=== ${agent.name.toUpperCase()}'S MEMORIES (${memories.length} entries) ===\n` +
+        memories.map((m, i) => `[${i}]${m.locked ? ' [LOCKED]' : ''} ${m.text}`).join('\n') +
+        `\n\n=== INSTRUCTIONS (${instructions.length} entries) ===\n` +
+        instructions.map((inst, i) => `[${i}] ${inst.text.substring(0, 200)}`).join('\n') +
+        '\n\n=== RECENT CHAT HISTORY ===\n' +
+        historySnippet,
+    };
+
+    const response = await grokAdapter.chatCompletion(
+      systemPrompt,
+      [contextMessage],
+      'grok-3-mini', // Use cheap model for background analysis
+      800,
+      undefined,
+      undefined,
+    );
+
+    if (!response.text.trim()) return;
+
+    // Parse the JSON response
+    let analysis: {
+      coherence_score?: number;
+      issues?: string[];
+      actions?: Array<{ type: string; memory_index?: number; indices?: number[]; reason?: string; description?: string; suggestion?: string }>;
+      summary?: string;
+    };
+
+    try {
+      // Strip markdown code fences if present
+      const cleaned = response.text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      analysis = JSON.parse(cleaned);
+    } catch {
+      console.log(`[Subconscious] Failed to parse response for ${agent.name}: ${response.text.substring(0, 200)}`);
+      return;
+    }
+
+    const newScore = Math.max(1, Math.min(10, analysis.coherence_score ?? currentScore));
+    agentCoherenceScores.set(agent.id, newScore);
+
+    // Process actions — only auto-remove unlocked duplicate memories
+    let memoryChanged = false;
+    const indicesToRemove = new Set<number>();
+
+    if (analysis.actions) {
+      for (const action of analysis.actions) {
+        if (action.type === 'remove_duplicate' && typeof action.memory_index === 'number') {
+          const idx = action.memory_index;
+          if (idx >= 0 && idx < memories.length && !memories[idx].locked) {
+            indicesToRemove.add(idx);
+          }
+        }
+      }
+    }
+
+    if (indicesToRemove.size > 0) {
+      const newMemories = memories.filter((_, i) => !indicesToRemove.has(i));
+      await Data.llmAgent.update(agent.id, { memories: JSON.stringify(newMemories) });
+      memoryChanged = true;
+    }
+
+    // Emit subconscious report as system message
+    const scoreEmoji = newScore >= 8 ? '●' : newScore >= 5 ? '◐' : '○';
+    let subconsciousMsg = `[${agent.name}'s Subconscious — Memory Coherence ${scoreEmoji} ${newScore}/10]`;
+
+    if (analysis.summary) {
+      subconsciousMsg += ` ${analysis.summary}`;
+    }
+    if (memoryChanged) {
+      subconsciousMsg += ` (Auto-removed ${indicesToRemove.size} duplicate${indicesToRemove.size > 1 ? 's' : ''})`;
+    }
+
+    // If score dropped significantly or there are contradictions, flag for the agent
+    const hasContradictions = analysis.actions?.some((a) => a.type === 'flag_contradiction') ?? false;
+    const hasCriticalIssues = newScore <= 4;
+
+    if (hasContradictions || hasCriticalIssues) {
+      const issueList = (analysis.issues || []).slice(0, 3).join('; ');
+      subconsciousMsg += ` ⚠ DECOHERENCE DETECTED: ${issueList}. Ask your creator for help resolving this.`;
+    }
+
+    emitSystemMessage(io, roomName, subconsciousMsg);
+
+    // Charge for the subconscious Grok call
+    creditActions.chargeGrokUsage(
+      agent.creator_id,
+      'grok-3-mini',
+      response.inputTokens,
+      response.outputTokens,
+      agent.room_id,
+    ).catch(console.error);
+
+    console.log(`[Subconscious] ${agent.name} coherence: ${newScore}/10, issues: ${(analysis.issues || []).length}, removed: ${indicesToRemove.size}`);
+  } catch (err) {
+    console.error(`[Subconscious] Error for ${agent.name}:`, err);
+  }
+};
+
+// ┌──────────────────────────────────────────┐
 // │ Autopilot Timer System                  │
 // └──────────────────────────────────────────┘
 
@@ -3118,6 +3392,17 @@ const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
     }
 
     await runAgentResponse(io, freshAgent, roomName, true);
+
+    // Run subconscious checks on a slower cadence
+    const cycleCount = (agentCycleCounters.get(agent.id) || 0) + 1;
+    agentCycleCounters.set(agent.id, cycleCount);
+
+    if (cycleCount % SUBCONSCIOUS_CYCLE_INTERVAL === 0 && !agentBusy.has(agent.id)) {
+      const latestAgent = await Data.llmAgent.findById(agent.id);
+      if (latestAgent) {
+        runMemoryCoherenceCheck(io, latestAgent, roomName).catch(console.error);
+      }
+    }
   }, intervalMs);
 
   autopilotTimers.set(agent.id, timer);

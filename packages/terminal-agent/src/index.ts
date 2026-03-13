@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.8.5';
+const AGENT_VERSION = '1.8.6';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -254,7 +254,18 @@ const launchInteractiveClaude = (socket: Socket, machineName: string): void => {
   console.log('  ║   Ctrl+C to exit Claude                ║');
   console.log('  ╚═══════════════════════════════════════╝\n');
 
-  const shell = platform() === 'win32' ? 'claude.cmd' : 'claude';
+  // Resolve full path to claude executable to avoid native SearchPathW issues in pkg
+  let shell = platform() === 'win32' ? 'claude.cmd' : 'claude';
+  if (platform() === 'win32') {
+    const pathDirs = (process.env.PATH || '').split(';');
+    for (const dir of pathDirs) {
+      const candidate = join(dir, 'claude.cmd');
+      if (existsSync(candidate)) {
+        shell = candidate;
+        break;
+      }
+    }
+  }
 
   // Spawn Claude in a real pseudo-terminal (PTY)
   // This gives Claude a real TTY so it renders the full TUI with colors, thinking, etc.
@@ -262,13 +273,24 @@ const launchInteractiveClaude = (socket: Socket, machineName: string): void => {
   // Strip CLAUDECODE env var to avoid "nested session" error
   const ptyEnv = { ...process.env } as Record<string, string>;
   delete ptyEnv.CLAUDECODE;
-  const ptyProcess = pty.spawn(shell, ['--dangerously-skip-permissions'], {
-    name: 'xterm-256color',
-    cols: (process.stdout as { columns?: number }).columns || 120,
-    rows: (process.stdout as { rows?: number }).rows || 40,
-    cwd: process.cwd(),
-    env: ptyEnv,
-  });
+
+  let ptyProcess: pty.IPty;
+  try {
+    ptyProcess = pty.spawn(shell, ['--dangerously-skip-permissions'], {
+      name: 'xterm-256color',
+      cols: (process.stdout as { columns?: number }).columns || 120,
+      rows: (process.stdout as { rows?: number }).rows || 40,
+      cwd: process.cwd(),
+      env: ptyEnv,
+    });
+  } catch (err) {
+    claudeInteractiveRunning = false;
+    console.error(`\nFailed to spawn Claude Code: ${(err as Error).message}`);
+    console.log('Make sure Claude Code is installed and in your PATH:');
+    console.log('  npm install -g @anthropic-ai/claude-code\n');
+    console.log('Agent is still connected for remote terminal commands.\n');
+    return;
+  }
 
   activePty = ptyProcess;
 

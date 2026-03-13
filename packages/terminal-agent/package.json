@@ -1,6 +1,6 @@
 {
   "name": "@commslink/terminal-agent",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "description": "CommsLink Terminal Agent - allows AI to execute commands on connected machines",
   "main": "dist/index.js",
   "bin": {
@@ -11,11 +11,14 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "package": "npm run build && npx pkg dist/index.js --targets node18-win-x64,node18-linux-x64 --output bin/commslink-agent --compress GZip && npm run copy-natives",
-    "copy-natives": "node -e \"const fs=require('fs'),p=require('path');const src='node_modules/node-pty';['win32-x64','win32-arm64'].forEach(d=>{const dir=p.join(src,'prebuilds',d);if(fs.existsSync(dir)){const out=p.join('bin','prebuilds',d);fs.mkdirSync(out,{recursive:true});fs.readdirSync(dir).forEach(f=>fs.copyFileSync(p.join(dir,f),p.join(out,f)))}});const conpty=p.join(src,'build/Release/conpty');if(fs.existsSync(conpty)){const out=p.join('bin','build/Release/conpty');fs.mkdirSync(out,{recursive:true});fs.readdirSync(conpty).forEach(f=>fs.copyFileSync(p.join(conpty,f),p.join(out,f)))}\""
+    "copy-natives": "node -e \"const fs=require('fs'),p=require('path');function cpR(s,d){fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).forEach(f=>{const sf=p.join(s,f),df=p.join(d,f);fs.statSync(sf).isDirectory()?cpR(sf,df):fs.copyFileSync(sf,df)})}const src='node_modules/node-pty';['win32-x64','win32-arm64'].forEach(d=>{const dir=p.join(src,'prebuilds',d);if(fs.existsSync(dir))cpR(dir,p.join('bin','prebuilds',d))});const conpty=p.join(src,'build/Release/conpty');if(fs.existsSync(conpty))cpR(conpty,p.join('bin','build/Release/conpty'))\""
   },
   "pkg": {
     "scripts": "dist/**/*.js",
-    "assets": [],
+    "assets": [
+      "node_modules/node-pty/prebuilds/**/*",
+      "node_modules/node-pty/build/Release/**/*"
+    ],
     "outputPath": "bin"
   },
   "dependencies": {

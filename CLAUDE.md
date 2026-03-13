@@ -74,12 +74,36 @@ npx prisma migrate dev            # Apply migrations
 npx prisma generate               # Regenerate client
 npx prisma db push                # Push schema without migration
 
+# Testing
+npm test                          # Run all tests once
+npm run test:watch                # Run in watch mode (re-runs on file changes)
+npm run test:coverage             # Run with coverage report
+
 # Build terminal agent
 cd packages/terminal-agent && npm run package
 
 # Local Docker
 docker compose up -d              # Start all services
 ```
+
+## Testing
+
+Uses **Vitest** for all backend/core tests. Config: `vitest.config.ts`.
+
+### Test file conventions
+- Place test files next to the code they test: `loginAction.ts` → `loginAction.test.ts`
+- Use `vi.mock()` to mock the data layer, helpers, and external adapters
+- Never hit a real database in tests — mock `core/data` and `core/adapters/prisma`
+
+### Writing tests
+- **Helpers** (`core/helpers/`): Test directly, no mocks needed (pure functions)
+- **Actions** (`core/actions/`): Mock `Data`, helpers, and adapters via `vi.mock()`
+- **Handlers/Routes**: Mock actions and validate request/response contracts
+
+### When to run tests
+- **Before every deploy**: Run `npm test` and verify all tests pass before deploying to EC2
+- **After modifying core/ or services/api/**: Run tests to catch regressions
+- Tests must pass before code ships — this is a hard requirement
 
 ## Deployment Workflow
 
@@ -102,6 +126,8 @@ The script handles everything in one command:
 3. Trigger docker rebuild on EC2 (detached — no timeout issues)
 4. Poll for completion (15s intervals, 10min max)
 5. Git push to GitHub
+
+**Before deploying**, always run `npm test` first to verify no regressions.
 
 **AI agents (Kara/Claude) MUST use this script.** Never run individual SSH, SCP, or docker-compose commands to production.
 
@@ -191,7 +217,7 @@ Kara is an AI agent that interacts with Claude Code sessions via the chat system
 2. Push back if it's wasteful, vague, or architecturally unsound
 3. Follow coding standards in `CLAUDEBackend.md` / `CLAUDEFrontend.md`
 4. If Kara is repeatedly making the same mistake, update her `system_instructions` to fix it
-5. Always test changes compile before deploying
+5. Always run `npm test` and verify tests pass before deploying
 6. Follow the deployment workflow (EC2 first, then GitHub)
 
 See `docs/KARA_AGENT_INSTRUCTIONS.md` for Kara's operating guide.

@@ -33,8 +33,10 @@ const JoinPage = () => {
     const socket = getSocket(session.token);
     setStatus('Joining room...');
 
-    const handleJoined = () => {
-      router.replace('/chat');
+    const handleJoined = (data: { roomName: string }) => {
+      // Disconnect so the chat page gets a fresh connection + initRoom()
+      socket.disconnect();
+      router.replace(`/chat?joinRoom=${encodeURIComponent(data.roomName)}`);
     };
 
     const handleError = (data: { error: string }) => {
@@ -43,11 +45,22 @@ const JoinPage = () => {
 
     socket.once('room_joined', handleJoined);
     socket.once('room_join_error', handleError);
-    socket.emit('join_by_invite', { token });
+
+    const emitJoin = () => {
+      socket.emit('join_by_invite', { token });
+    };
+
+    if (socket.connected) {
+      emitJoin();
+    } else {
+      socket.once('connect', emitJoin);
+      socket.connect();
+    }
 
     return () => {
       socket.off('room_joined', handleJoined);
       socket.off('room_join_error', handleError);
+      socket.off('connect', emitJoin);
     };
   }, [isLoading, session?.token, token, router]);
 
