@@ -597,8 +597,8 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
       type: 'function',
       function: {
         name: 'set_autopilot_interval',
-        description: 'Set autopilot interval in seconds (30-3600). Use higher values (600-3600) when idle, lower (30-60) when actively working.',
-        parameters: { type: 'object', properties: { seconds: { type: 'number', description: 'Interval in seconds (30-3600)' } }, required: ['seconds'] },
+        description: 'Set autopilot interval in seconds (5-3600). Use higher values (600-3600) when idle, lower (5-60) when actively working.',
+        parameters: { type: 'object', properties: { seconds: { type: 'number', description: 'Interval in seconds (5-3600)' } }, required: ['seconds'] },
       },
     });
   }
@@ -1016,7 +1016,7 @@ const buildSystemPrompt = (
     actions.push(
       '=== AUTOPILOT CONTROL ===\n' +
       '{toggle_autopilot on|off} - Enable or disable your autopilot mode. Prefer adjusting interval over disabling.\n' +
-      '{set_autopilot_interval N} - Set autopilot interval in seconds (30-3600). Use lower values (30-60s) when actively working, higher (300-3600) when idle.',
+      '{set_autopilot_interval N} - Set autopilot interval in seconds (5-3600). Use lower values (5-60s) when actively working, higher (300-3600) when idle.',
     );
   }
 
@@ -1665,7 +1665,7 @@ const runAgentResponse = async (
         }
         if (setIntervalMatches.length > 0) {
           const value = parseInt(setIntervalMatches[setIntervalMatches.length - 1][1], 10);
-          const clamped = Math.max(30, Math.min(3600, value));
+          const clamped = Math.max(5, Math.min(3600, value));
           await Data.llmAgent.update(agent.id, { autopilot_interval: clamped });
           currentAgent = (await Data.llmAgent.findById(agent.id))!;
           if (currentAgent.autopilot_enabled) {
@@ -2369,7 +2369,7 @@ const agentBusy = new Set<string>();
 const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
   stopAutopilotTimer(agent.id);
 
-  const intervalMs = Math.max(agent.autopilot_interval ?? 300, 30) * 1000;
+  const intervalMs = Math.max(agent.autopilot_interval ?? 300, 5) * 1000;
 
   console.log(`[Autopilot] Starting timer for ${agent.name} (every ${intervalMs / 1000}s)`);
 
