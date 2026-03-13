@@ -755,7 +755,7 @@ const ChatPage = () => {
                 size="small"
                 onClick={() => setWebPanelOpen((prev) => !prev)}
                 title="Web Browser"
-                sx={{ color: webPanelOpen ? 'primary.main' : '#858585' }}
+                sx={{ color: webPanelOpen ? 'primary.main' : '#A020F0' }}
               >
                 <LanguageIcon />
               </IconButton>
@@ -763,7 +763,7 @@ const ChatPage = () => {
                 size="small"
                 onClick={() => setForumPanelOpen((prev) => !prev)}
                 title="Room Forum"
-                sx={{ color: forumPanelOpen ? 'primary.main' : '#858585' }}
+                sx={{ color: forumPanelOpen ? 'primary.main' : '#A020F0' }}
               >
                 <ForumIcon />
               </IconButton>
@@ -771,7 +771,7 @@ const ChatPage = () => {
                 size="small"
                 onClick={() => setHologramPanelOpen((prev) => !prev)}
                 title="Hologram Avatars"
-                sx={{ color: hologramPanelOpen ? 'primary.main' : '#858585' }}
+                sx={{ color: hologramPanelOpen ? 'primary.main' : '#A020F0' }}
               >
                 <ViewInArIcon />
               </IconButton>
@@ -779,7 +779,7 @@ const ChatPage = () => {
                 size="small"
                 onClick={() => setSettingsOpen((prev) => !prev)}
                 title="Voice Settings"
-                sx={{ color: settingsOpen ? 'primary.main' : '#858585' }}
+                sx={{ color: settingsOpen ? 'primary.main' : '#A020F0' }}
               >
                 <SettingsIcon />
               </IconButton>
