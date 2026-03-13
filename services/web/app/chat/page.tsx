@@ -721,7 +721,7 @@ const ChatPage = () => {
                   size="small"
                   onClick={() => openRoomSettings(currentRoomDisplay)}
                   title="Room Settings"
-                  sx={{ color: roomSettingsOpen ? 'primary.main' : '#858585' }}
+                  sx={{ color: roomSettingsOpen ? 'primary.main' : '#A020F0' }}
                 >
                   <TuneIcon />
                 </IconButton>
@@ -733,7 +733,7 @@ const ChatPage = () => {
                   setTerminalNotifications(0);
                 }}
                 title="Terminal / Claude"
-                sx={{ color: terminalPanelOpen ? 'primary.main' : '#858585' }}
+                sx={{ color: terminalPanelOpen ? 'primary.main' : '#A020F0' }}
               >
                 <Badge
                   badgeContent={terminalNotifications}
