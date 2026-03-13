@@ -61,6 +61,7 @@ import WebBrowserPanel from '@/components/WebBrowserPanel';
 import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
 import WatchlistPanel from '@/components/WatchlistPanel';
+import ResizeHandle from '@/components/ResizeHandle';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import PlaylistPlayIcon from '@mui/icons-material/PlaylistPlay';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
@@ -101,6 +102,9 @@ const ChatPage = () => {
   const terminalPanelOpenRef = useRef(terminalPanelOpen);
   terminalPanelOpenRef.current = terminalPanelOpen;
   const [watchlistPanelOpen, setWatchlistPanelOpen] = useState(false);
+  const [terminalWidth, setTerminalWidth] = useState(600);
+  const [watchlistWidth, setWatchlistWidth] = useState(500);
+  const [webPanelWidth, setWebPanelWidth] = useState(600);
   const [panelMachines, setPanelMachines] = useState<{ id: string; name: string; status: string; os?: string }[]>([]);
   const socketInstanceRef = useRef<ReturnType<typeof getSocket> | null>(null);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
@@ -977,16 +981,33 @@ const ChatPage = () => {
 
         {settingsOpen && <SettingsPanel />}
         {terminalPanelOpen && (
-          <TerminalPanel
-            socket={socketInstanceRef.current}
-            machines={panelMachines}
-            onClose={() => setTerminalPanelOpen(false)}
-          />
+          <>
+            <ResizeHandle onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
+            <div style={{ width: terminalWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <TerminalPanel
+                socket={socketInstanceRef.current}
+                machines={panelMachines}
+                onClose={() => setTerminalPanelOpen(false)}
+              />
+            </div>
+          </>
         )}
         {watchlistPanelOpen && (
-          <WatchlistPanel onClose={() => setWatchlistPanelOpen(false)} onCommand={(cmd) => sendMessage(cmd)} />
+          <>
+            <ResizeHandle onResize={(d) => setWatchlistWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
+            <div style={{ width: watchlistWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <WatchlistPanel onClose={() => setWatchlistPanelOpen(false)} onCommand={(cmd) => sendMessage(cmd)} />
+            </div>
+          </>
         )}
-        {webPanelOpen && <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} />}
+        {webPanelOpen && (
+          <>
+            <ResizeHandle onResize={(d) => setWebPanelWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
+            <div style={{ width: webPanelWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} />
+            </div>
+          </>
+        )}
       </Box>
 
       <Dialog open={createRoomOpen} onClose={() => setCreateRoomOpen(false)}>
