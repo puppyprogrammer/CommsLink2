@@ -62,6 +62,7 @@ type Agent = {
   autopilot_prompts: string | null;
   plan: string | null;
   tasks: string | null;
+  nicknames: string | null;
 };
 
 type GrokModel = {
@@ -146,6 +147,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdEffort, setCmdEffort] = useState(true);
   const [cmdAudit, setCmdAudit] = useState(true);
   const [cmdContinue, setCmdContinue] = useState(true);
+  const [cmdForum, setCmdForum] = useState(false);
   const [maxLoops, setMaxLoops] = useState(5);
 
   // Terminal machines
@@ -197,6 +199,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [newAutopilotDraft, setNewAutopilotDraft] = useState('');
   const [newPlan, setNewPlan] = useState('');
   const [newTasks, setNewTasks] = useState('');
+  const [newNicknames, setNewNicknames] = useState('');
 
   // Edit form
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
@@ -213,6 +216,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [editAutopilotDraft, setEditAutopilotDraft] = useState('');
   const [editPlan, setEditPlan] = useState('');
   const [editTasks, setEditTasks] = useState('');
+  const [editNicknames, setEditNicknames] = useState('');
+
+  // Add agent dialog
+  const [showAddAgent, setShowAddAgent] = useState(false);
 
   // Memory tree collapsed state
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -261,6 +268,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdEffort: boolean;
       cmdAudit: boolean;
       cmdContinue: boolean;
+      cmdForum: boolean;
       maxLoops: number;
     }) => {
       setMemoryEnabled(data.enabled);
@@ -280,6 +288,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setCmdEffort(data.cmdEffort);
       setCmdAudit(data.cmdAudit);
       setCmdContinue(data.cmdContinue);
+      setCmdForum(data.cmdForum);
       setMaxLoops(data.maxLoops);
     };
 
@@ -304,6 +313,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdEffort?: boolean;
       cmdAudit?: boolean;
       cmdContinue?: boolean;
+      cmdForum?: boolean;
       maxLoops?: number;
     }) => {
       if (data.cmdRecall !== undefined) setCmdRecall(data.cmdRecall);
@@ -322,6 +332,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       if (data.cmdEffort !== undefined) setCmdEffort(data.cmdEffort);
       if (data.cmdAudit !== undefined) setCmdAudit(data.cmdAudit);
       if (data.cmdContinue !== undefined) setCmdContinue(data.cmdContinue);
+      if (data.cmdForum !== undefined) setCmdForum(data.cmdForum);
       if (data.maxLoops !== undefined) setMaxLoops(data.maxLoops);
     };
 
@@ -440,6 +451,14 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       autopilotPrompts: serializeList(newAutopilotPrompts),
       plan: newPlan.trim() || null,
       tasks: newTasks.trim() || null,
+      nicknames: newNicknames.trim()
+        ? JSON.stringify(
+            newNicknames
+              .split(',')
+              .map((n) => n.trim())
+              .filter(Boolean),
+          )
+        : null,
     });
   };
 
@@ -458,6 +477,14 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       autopilotPrompts: serializeList(editAutopilotPrompts),
       plan: editPlan.trim() || null,
       tasks: editTasks.trim() || null,
+      nicknames: editNicknames.trim()
+        ? JSON.stringify(
+            editNicknames
+              .split(',')
+              .map((n) => n.trim())
+              .filter(Boolean),
+          )
+        : null,
     });
   };
 
@@ -482,6 +509,12 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     setEditAutopilotDraft('');
     setEditPlan(agent.plan || '');
     setEditTasks(agent.tasks || '');
+    try {
+      const parsed = agent.nicknames ? JSON.parse(agent.nicknames) : [];
+      setEditNicknames(Array.isArray(parsed) ? parsed.join(', ') : '');
+    } catch {
+      setEditNicknames('');
+    }
   };
 
   const addItem = (
@@ -842,6 +875,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     // Column 6: Tasks
     tasksValue: string,
     setTasks: (v: string) => void,
+    // Nicknames (shown in Settings column)
+    nicknamesValue: string,
+    setNicknames: (v: string) => void,
   ) => (
     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
       {/* Column 1: Settings */}
@@ -860,6 +896,16 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
         {renderVoiceSelect(voiceValue, setVoice)}
         {renderModelSelect(modelValue, setModel)}
         {renderAutopilotControls(autopilotEnabled, setAutopilotEnabled, autopilotInterval, setAutopilotIntervalVal)}
+        <TextField
+          fullWidth
+          size="small"
+          label="Nicknames"
+          placeholder="cara, kara-chan"
+          value={nicknamesValue}
+          onChange={(e) => setNicknames(e.target.value)}
+          helperText="Comma-separated alternate trigger names"
+          sx={{ mt: 1 }}
+        />
       </Box>
 
       {/* Column 2: Instructions */}
@@ -1127,103 +1173,153 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           <>
             <Divider sx={{ mb: 2 }} />
             <Box sx={{ mb: 2 }}>
-              <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>
-                <AccountTreeIcon sx={{ fontSize: 18, mr: 0.5, verticalAlign: 'text-bottom' }} />
+              <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', fontWeight: 600 }}>
                 Memory Summaries
               </Typography>
-              <Typography variant="detailText" sx={{ mb: 1, display: 'block', color: 'text.secondary' }}>
-                Hierarchical memory: L1 chunks (20 msgs) roll up into L2 episodes, L3 eras, and L4 master summary.
-              </Typography>
-              {[4, 3, 2, 1].map((level) => {
-                const levelNames: Record<number, string> = { 1: 'Chunks', 2: 'Episodes', 3: 'Eras', 4: 'Master' };
-                const levelSummaries = summaries.filter((s) => s.level === level);
-                if (levelSummaries.length === 0) return null;
-                return (
-                  <Box key={level} sx={{ mb: 1.5 }}>
-                    <Typography
-                      variant="detailText"
-                      sx={{ fontWeight: 600, mb: 0.5, display: 'block', color: 'text.secondary' }}
-                    >
-                      L{level} — {levelNames[level]} ({levelSummaries.length})
-                    </Typography>
-                    {levelSummaries.map((s) => {
-                      const isExpanded = expandedSummary === s.id;
-                      const start = new Date(s.msg_start).toLocaleDateString();
-                      const end = new Date(s.msg_end).toLocaleDateString();
-                      const dateRange = start === end ? start : `${start} — ${end}`;
-                      return (
-                        <Paper
-                          key={s.id}
-                          variant="outlined"
-                          sx={{
-                            mb: 0.5,
-                            cursor: 'pointer',
-                            '&:hover': { borderColor: 'primary.main' },
-                          }}
-                          onClick={() => setExpandedSummary(isExpanded ? null : s.id)}
-                        >
-                          <Box
-                            sx={{
-                              px: 1.5,
-                              py: 0.75,
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                            }}
-                          >
-                            <Box>
-                              <Typography variant="detailText" sx={{ fontWeight: 500 }}>
-                                {s.ref_name}
-                              </Typography>
-                              <Typography variant="detailText" sx={{ color: 'text.secondary', ml: 1 }}>
-                                {dateRange} &middot; {s.messages_covered} msgs
-                              </Typography>
-                            </Box>
-                            {isExpanded ? (
-                              <ExpandLessIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-                            ) : (
-                              <ExpandMoreIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-                            )}
-                          </Box>
-                          {isExpanded && (
-                            <Box
-                              sx={{
-                                px: 1.5,
-                                pb: 1,
-                                borderTop: '1px solid',
-                                borderColor: 'divider',
-                              }}
-                            >
-                              <Typography
-                                variant="detailText"
+              <Box
+                sx={{
+                  maxHeight: 400,
+                  overflowY: 'auto',
+                  mb: 0.5,
+                  fontFamily: 'monospace',
+                  fontSize: '0.7rem',
+                }}
+              >
+                {[4, 3, 2, 1].map((level) => {
+                  const levelNames: Record<number, string> = {
+                    1: 'chunks',
+                    2: 'episodes',
+                    3: 'eras',
+                    4: 'master',
+                  };
+                  const levelSummaries = summaries.filter((s) => s.level === level);
+                  if (levelSummaries.length === 0) return null;
+                  const folderKey = `summary-L${level}`;
+                  const isCollapsed = collapsedFolders[folderKey] !== false;
+
+                  return (
+                    <Box key={level}>
+                      <Box
+                        onClick={() => toggleFolder(folderKey)}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          cursor: 'pointer',
+                          py: '2px',
+                          px: 0.5,
+                          '&:hover': { bgcolor: 'action.hover' },
+                          userSelect: 'none',
+                        }}
+                      >
+                        {isCollapsed ? (
+                          <span style={{ fontSize: 10, color: '#888' }}>&#9654;</span>
+                        ) : (
+                          <span style={{ fontSize: 10, color: '#888' }}>&#9660;</span>
+                        )}
+                        <span style={{ color: '#e8ab53' }}>&#128193;</span>
+                        <span style={{ color: '#ccc', fontWeight: 600 }}>
+                          L{level} — {levelNames[level]}
+                        </span>
+                        <span style={{ color: '#666', marginLeft: 'auto' }}>{levelSummaries.length}</span>
+                      </Box>
+                      {!isCollapsed &&
+                        levelSummaries.map((s) => {
+                          const isExpanded = expandedSummary === s.id;
+                          const start = new Date(s.msg_start).toLocaleDateString();
+                          const end = new Date(s.msg_end).toLocaleDateString();
+                          const dateRange = start === end ? start : `${start} \u2014 ${end}`;
+                          const preview = s.content.length > 80 ? s.content.slice(0, 80) + '...' : s.content;
+
+                          return (
+                            <Box key={s.id}>
+                              <Box
+                                onClick={() => setExpandedSummary(isExpanded ? null : s.id)}
                                 sx={{
-                                  whiteSpace: 'pre-wrap',
-                                  wordBreak: 'break-word',
-                                  pt: 1,
-                                  fontSize: '0.8rem',
-                                  lineHeight: 1.5,
-                                  maxHeight: 300,
-                                  overflow: 'auto',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 0.5,
+                                  pl: 3,
+                                  py: '1px',
+                                  cursor: 'pointer',
+                                  '&:hover': { bgcolor: 'action.hover' },
                                 }}
                               >
-                                {s.content}
-                              </Typography>
-                              {s.parent_id && (
+                                <span style={{ color: '#888', fontSize: 10 }}>&#128196;</span>
                                 <Typography
                                   variant="detailText"
-                                  sx={{ color: 'text.secondary', mt: 0.5, fontSize: '0.75rem' }}
+                                  sx={{
+                                    color: '#9cdcfe',
+                                    fontSize: '0.65rem',
+                                    fontWeight: 500,
+                                    whiteSpace: 'nowrap',
+                                  }}
                                 >
-                                  Parent: {summaries.find((p) => p.id === s.parent_id)?.ref_name || s.parent_id}
+                                  {s.ref_name}
                                 </Typography>
+                                <Typography
+                                  variant="detailText"
+                                  title={s.content}
+                                  sx={{
+                                    flex: 1,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    color: '#888',
+                                    fontSize: '0.6rem',
+                                    ml: 0.5,
+                                  }}
+                                >
+                                  {dateRange} · {s.messages_covered} msgs
+                                  {!isExpanded && ` — ${preview}`}
+                                </Typography>
+                              </Box>
+                              {isExpanded && (
+                                <Box
+                                  sx={{
+                                    pl: 5,
+                                    pr: 1,
+                                    py: 0.5,
+                                    borderLeft: '1px solid #333',
+                                    ml: 3,
+                                    mb: 0.5,
+                                  }}
+                                >
+                                  <Typography
+                                    variant="detailText"
+                                    sx={{
+                                      whiteSpace: 'pre-wrap',
+                                      wordBreak: 'break-word',
+                                      fontSize: '0.7rem',
+                                      lineHeight: 1.5,
+                                      color: '#ccc',
+                                      maxHeight: 200,
+                                      overflow: 'auto',
+                                    }}
+                                  >
+                                    {s.content}
+                                  </Typography>
+                                  {s.parent_id && (
+                                    <Typography
+                                      variant="detailText"
+                                      sx={{
+                                        color: '#666',
+                                        mt: 0.5,
+                                        fontSize: '0.6rem',
+                                      }}
+                                    >
+                                      Parent: {summaries.find((p) => p.id === s.parent_id)?.ref_name || s.parent_id}
+                                    </Typography>
+                                  )}
+                                </Box>
                               )}
                             </Box>
-                          )}
-                        </Paper>
-                      );
-                    })}
-                  </Box>
-                );
-              })}
+                          );
+                        })}
+                    </Box>
+                  );
+                })}
+              </Box>
             </Box>
           </>
         )}
@@ -1352,6 +1448,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 checked: cmdContinue,
                 key: 'cmdContinue' as const,
                 set: setCmdContinue,
+              },
+              {
+                label: 'Room Forum — AI creates threads and posts in a room-scoped forum',
+                desc: 'AI: {forum_thread title}, {forum_post threadId content}, {forum_list} | Viewable in the Forum panel',
+                checked: cmdForum,
+                key: 'cmdForum' as const,
+                set: setCmdForum,
               },
             ].map((cmd) => (
               <Box key={cmd.key}>
@@ -1526,43 +1629,15 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
         })}
 
         {agents.length < 3 && (
-          <>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
-              Add Agent
-            </Typography>
-            {renderEditorColumns(
-              newName,
-              setNewName,
-              newVoice,
-              setNewVoice,
-              newModel,
-              setNewModel,
-              newAutopilot,
-              setNewAutopilot,
-              newAutopilotInterval,
-              setNewAutopilotInterval,
-              newInstructions,
-              setNewInstructions,
-              newInstructionDraft,
-              setNewInstructionDraft,
-              newMemories,
-              setNewMemories,
-              newMemoryDraft,
-              setNewMemoryDraft,
-              newAutopilotPrompts,
-              setNewAutopilotPrompts,
-              newAutopilotDraft,
-              setNewAutopilotDraft,
-              newPlan,
-              setNewPlan,
-              newTasks,
-              setNewTasks,
-            )}
-            <Button variant="contained" size="small" onClick={handleCreate} disabled={!newName.trim()} sx={{ mt: 1 }}>
-              Add Agent
-            </Button>
-          </>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setShowAddAgent(true)}
+            sx={{ mt: 1 }}
+            startIcon={<AddIcon />}
+          >
+            Add Agent
+          </Button>
         )}
         {/* Room Members */}
         {canManageRoom && roomMembers.length > 0 && (
@@ -1850,6 +1925,56 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
         </DialogActions>
       </Dialog>
 
+      {/* Add Agent Dialog */}
+      <Dialog open={showAddAgent} onClose={() => setShowAddAgent(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>Add Agent</DialogTitle>
+        <DialogContent sx={{ mt: 1 }}>
+          {renderEditorColumns(
+            newName,
+            setNewName,
+            newVoice,
+            setNewVoice,
+            newModel,
+            setNewModel,
+            newAutopilot,
+            setNewAutopilot,
+            newAutopilotInterval,
+            setNewAutopilotInterval,
+            newInstructions,
+            setNewInstructions,
+            newInstructionDraft,
+            setNewInstructionDraft,
+            newMemories,
+            setNewMemories,
+            newMemoryDraft,
+            setNewMemoryDraft,
+            newAutopilotPrompts,
+            setNewAutopilotPrompts,
+            newAutopilotDraft,
+            setNewAutopilotDraft,
+            newPlan,
+            setNewPlan,
+            newTasks,
+            setNewTasks,
+            newNicknames,
+            setNewNicknames,
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAddAgent(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              handleCreate();
+              setShowAddAgent(false);
+            }}
+            disabled={!newName.trim()}
+          >
+            Add Agent
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Edit Dialog */}
       <Dialog open={!!editAgent} onClose={() => setEditAgent(null)} maxWidth="lg" fullWidth>
         <DialogTitle>Edit Agent</DialogTitle>
@@ -1881,6 +2006,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             setEditPlan,
             editTasks,
             setEditTasks,
+            editNicknames,
+            setEditNicknames,
           )}
         </DialogContent>
         <DialogActions>

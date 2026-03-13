@@ -122,6 +122,51 @@ const forumRoutes: ServerRoute[] = [
         return deletePostAction(postId, credentials.id);
       }),
   },
+  // ┌──────────────────────────────────────────┐
+  // │ Room-scoped Forum Endpoints              │
+  // └──────────────────────────────────────────┘
+  {
+    method: 'GET',
+    path: '/api/v1/forum/rooms/{roomId}/threads',
+    options: {
+      auth: 'jwt',
+      validate: {
+        params: Joi.object({ roomId: Joi.string().uuid().required() }),
+        query: Joi.object({
+          page: Joi.number().integer().min(1).default(1),
+          limit: Joi.number().integer().min(1).max(50).default(20),
+        }),
+      },
+    },
+    handler: async (request: Request, h: ResponseToolkit) =>
+      tracer.trace('CONTROLLER.FORUM.GET_ROOM_THREADS', async () => {
+        const { roomId } = request.params as { roomId: string };
+        const { page, limit } = request.query as unknown as { page: number; limit: number };
+        return Data.thread.findByRoomId(roomId, { skip: (page - 1) * limit, take: limit });
+      }),
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/forum/rooms/{roomId}/threads/{threadId}',
+    options: {
+      auth: 'jwt',
+      validate: {
+        params: Joi.object({
+          roomId: Joi.string().uuid().required(),
+          threadId: Joi.string().uuid().required(),
+        }),
+      },
+    },
+    handler: async (request: Request, h: ResponseToolkit) =>
+      tracer.trace('CONTROLLER.FORUM.GET_ROOM_THREAD', async () => {
+        const { threadId } = request.params as { threadId: string };
+        const thread = await Data.thread.findById(threadId);
+        if (!thread) throw Boom.notFound('Thread not found');
+        Data.thread.incrementViewCount(threadId).catch(console.error);
+        const posts = await Data.post.findByThreadId(threadId, { skip: 0, take: 100 });
+        return { thread, posts };
+      }),
+  },
 ];
 
 export { forumRoutes };

@@ -32,6 +32,18 @@ const findByRoom = async (roomId: string, limit = 50) => {
 };
 
 /**
+ * Find ALL messages by room (including summarized) for UI display.
+ * This ensures chat history is never hidden from users.
+ */
+const findByRoomForUI = async (roomId: string, limit = 200) => {
+  return prisma.message.findMany({
+    where: { room_id: roomId },
+    orderBy: { created_at: "desc" },
+    take: limit,
+  });
+};
+
+/**
  * Find messages by user, ordered by most recent.
  *
  * @param authorId - User ID.
@@ -80,6 +92,7 @@ const archiveByRoom = async (roomId: string): Promise<number> => {
 export default {
   create,
   findByRoom,
+  findByRoomForUI,
   findByUser,
   countUnsummarized,
   findUnsummarized,

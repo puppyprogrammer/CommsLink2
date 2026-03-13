@@ -31,7 +31,9 @@
 
   &.active {
     border-radius: 8px;
-    box-shadow: 0 0 6px 2px rgba(180, 130, 255, 0.6), 0 0 0 2px rgba(180, 130, 255, 0.8);
+    box-shadow: 0 0 10px 3px rgba(180, 130, 255, 0.7), 0 0 20px 6px rgba(150, 100, 255, 0.4), 0 0 0 2px rgba(180, 130, 255, 0.9);
+    background-color: rgba(150, 100, 255, 0.25) !important;
+    border: 1px solid rgba(180, 130, 255, 0.5);
   }
 }
 

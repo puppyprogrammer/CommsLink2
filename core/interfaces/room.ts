@@ -7,6 +7,7 @@ type CreateRoomDTO = {
 };
 
 type RoomListItem = {
+  id: string;
   name: string;
   displayName: string;
   users: number;

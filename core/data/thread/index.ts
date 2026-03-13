@@ -73,10 +73,26 @@ const decrementReplyCount = async (id: string): Promise<void> => {
   });
 };
 
+/**
+ * Get paginated threads for a specific room, ordered by latest reply.
+ *
+ * @param roomId     - Room UUID.
+ * @param pagination - Skip and take values.
+ * @returns List of room-scoped threads.
+ */
+const findByRoomId = async (roomId: string, pagination: PaginationDTO): Promise<thread[]> =>
+  prisma.thread.findMany({
+    where: { room_id: roomId },
+    skip: pagination.skip,
+    take: pagination.take,
+    orderBy: { last_reply_at: 'desc' },
+  });
+
 export default {
   create,
   findById,
   findAll,
+  findByRoomId,
   incrementViewCount,
   incrementReplyCount,
   decrementReplyCount,

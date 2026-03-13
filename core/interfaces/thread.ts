@@ -2,6 +2,7 @@ type CreateThreadDTO = {
   title: string;
   author_id: string;
   author_username: string;
+  room_id?: string;
 };
 
 type PaginationDTO = {

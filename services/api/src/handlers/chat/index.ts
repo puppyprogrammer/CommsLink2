@@ -16,6 +16,9 @@ import prisma from '../../../../../core/adapters/prisma';
 import dayjs from '../../../../../core/lib/dayjs';
 
 import terminalSecurity from '../../../../../core/adapters/terminalSecurity';
+import createAiThreadAction from '../../../../../core/actions/forum/createAiThreadAction';
+import postAiResponseAction from '../../../../../core/actions/forum/postAiResponseAction';
+import listRoomThreadsAction from '../../../../../core/actions/forum/listRoomThreadsAction';
 import createAvatarAction from '../../../../../core/actions/hologramAvatar/createAvatarAction';
 import updatePoseAction from '../../../../../core/actions/hologramAvatar/updatePoseAction';
 import removeAvatarAction from '../../../../../core/actions/hologramAvatar/removeAvatarAction';
@@ -46,23 +49,30 @@ const memoryMsgCounters = new Map<string, number>(); // per-room msg counter for
 // Agent message dedup: Map<roomId:agentId, Array<{hash, timestamp}>>
 const agentRecentHashes = new Map<string, Array<{ hash: string; ts: number }>>();
 
-const simpleHash = (msg: string): string =>
-  msg.slice(0, 50).split('').reduce((h, c) => h + c.charCodeAt(0), 0).toString(16).slice(-8);
+const contentHash = (msg: string): string => {
+  // Hash the full normalized content (lowercase, collapse whitespace) for robust dedup
+  const normalized = msg.toLowerCase().replace(/\s+/g, ' ').trim();
+  let h = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    h = ((h << 5) - h + normalized.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
+};
 
 const isDuplicateAgentMessage = (roomId: string, agentId: string, content: string): boolean => {
   const key = `${roomId}:${agentId}`;
   const now = Date.now();
-  const hash = simpleHash(content);
+  const hash = contentHash(content);
 
   let entries = agentRecentHashes.get(key) || [];
-  // Evict entries older than 30s
-  entries = entries.filter((e) => now - e.ts < 30_000);
+  // Evict entries older than 5 minutes
+  entries = entries.filter((e) => now - e.ts < 300_000);
 
   const isDup = entries.some((e) => e.hash === hash);
   if (!isDup) {
     entries.push({ hash, ts: now });
-    // Keep only last 5
-    if (entries.length > 5) entries = entries.slice(-5);
+    // Keep last 20 entries
+    if (entries.length > 20) entries = entries.slice(-20);
   }
   agentRecentHashes.set(key, entries);
   return isDup;
@@ -216,6 +226,7 @@ const validateRoomName = (name: string): boolean => {
 
 const getRoomList = (): RoomListItem[] =>
   Array.from(activeRooms.entries()).map(([name, room]) => ({
+    id: room.id,
     name,
     displayName: room.displayName,
     users: room.users.size,
@@ -876,6 +887,40 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
     });
   }
 
+  if (cmds.forum) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'forum_thread',
+        description: 'Create a new forum thread in this room. Returns the thread ID.',
+        parameters: { type: 'object', properties: { title: { type: 'string', description: 'Thread title (3-200 chars)' } }, required: ['title'] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'forum_post',
+        description: 'Post a reply to an existing forum thread. Use forum_list to find thread IDs first.',
+        parameters: {
+          type: 'object',
+          properties: {
+            thread_id: { type: 'string', description: 'UUID of the thread to reply to' },
+            content: { type: 'string', description: 'Post content (max 10000 chars)' },
+          },
+          required: ['thread_id', 'content'],
+        },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'forum_list',
+        description: 'List forum threads in this room.',
+        parameters: { type: 'object', properties: {}, required: [] },
+      },
+    });
+  }
+
   return tools;
 };
 
@@ -1070,7 +1115,7 @@ const collapseClaudeNewlines = (text: string): string => {
 /**
  * Build the system prompt for an agent, optionally with extra autopilot context.
  */
-type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean; moderation?: boolean; think?: boolean; effort?: boolean; audit?: boolean; continue?: boolean };
+type CommandFlags = { recall?: boolean; sql?: boolean; memory?: boolean; selfmod?: boolean; autopilotCtrl?: boolean; web?: boolean; terminal?: boolean; claude?: boolean; schedule?: boolean; tokens?: boolean; moderation?: boolean; think?: boolean; effort?: boolean; audit?: boolean; continue?: boolean; forum?: boolean };
 
 const buildSystemPrompt = (
   agent: AgentLike,
@@ -1460,7 +1505,10 @@ const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
 const SAY_REGEX = /\{say\s+([^}]+)\}/g;
 const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
 const CONTINUE_REGEX = /\{continue\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+const FORUM_THREAD_REGEX = /\{forum_thread\s+([^}]+)\}/g;
+const FORUM_POST_REGEX = /\{forum_post\s+(\S+)\s+([^}]+)\}/g;
+const FORUM_LIST_REGEX = /\{forum_list\}/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -1564,6 +1612,7 @@ const runAgentResponse = async (
     const effortOn = roomRecord?.cmd_effort_enabled ?? true;
     const auditOn = roomRecord?.cmd_audit_enabled ?? true;
     const continueOn = roomRecord?.cmd_continue_enabled ?? true;
+    const forumOn = roomRecord?.cmd_forum_enabled ?? false;
     let maxLoops = roomRecord?.max_loops ?? 5;
 
     // Build room memory context: L4 master + L3 eras + L2 episodes
@@ -1604,6 +1653,7 @@ const runAgentResponse = async (
       effort: effortOn,
       audit: auditOn,
       continue: continueOn,
+      forum: forumOn,
     }, maxLoops, onlineMachines);
 
     // Build structured tool definitions for Grok function calling
@@ -1612,7 +1662,7 @@ const runAgentResponse = async (
       autopilotCtrl: autopilotCtrlOn, web: webOn, terminal: terminalOn,
       claude: claudeOn, schedule: scheduleOn, tokens: tokensOn,
       moderation: moderationOn, think: thinkOn, effort: effortOn,
-      audit: auditOn, continue: continueOn,
+      audit: auditOn, continue: continueOn, forum: forumOn,
     };
     const agentTools = buildToolDefinitions(cmdFlags, onlineMachines);
 
@@ -1712,6 +1762,9 @@ const runAgentResponse = async (
       const banMatches = moderationOn ? [...responseText.matchAll(BAN_REGEX)] : [];
       const unbanMatches = moderationOn ? [...responseText.matchAll(UNBAN_REGEX)] : [];
       const continueMatches = continueOn ? [...responseText.matchAll(CONTINUE_REGEX)] : [];
+      const forumThreadMatches = forumOn ? [...responseText.matchAll(FORUM_THREAD_REGEX)] : [];
+      const forumPostMatches = forumOn ? [...responseText.matchAll(FORUM_POST_REGEX)] : [];
+      const forumListMatches = forumOn ? [...responseText.matchAll(FORUM_LIST_REGEX)] : [];
 
       const hasAnyCommand = recallMatches.length + sqlMatches.length +
         addMemMatches.length + rmMemMatches.length +
@@ -1728,7 +1781,8 @@ const runAgentResponse = async (
         alarmMatches.length + volumeMatches.length +
         listUsersMatches.length +
         kickMatches.length + banMatches.length + unbanMatches.length +
-        continueMatches.length + setMaxLoopsMatches.length > 0;
+        continueMatches.length + setMaxLoopsMatches.length +
+        forumThreadMatches.length + forumPostMatches.length + forumListMatches.length > 0;
 
       if (!hasAnyCommand) break;
 
@@ -2397,7 +2451,7 @@ const runAgentResponse = async (
               u.currentRoom = 'public';
               const publicRoomId = getRoomId('public');
               if (publicRoomId) {
-                const history = await Data.message.findByRoom(publicRoomId, 50);
+                const history = await Data.message.findByRoomForUI(publicRoomId);
                 const pwp = activeRooms.get('public')?.watchParty;
                 targetSocket.emit('room_joined', {
                   roomName: 'Public',
@@ -2439,7 +2493,7 @@ const runAgentResponse = async (
               u.currentRoom = 'public';
               const publicRoomId = getRoomId('public');
               if (publicRoomId) {
-                const history = await Data.message.findByRoom(publicRoomId, 50);
+                const history = await Data.message.findByRoomForUI(publicRoomId);
                 const pwp = activeRooms.get('public')?.watchParty;
                 targetSocket.emit('room_joined', {
                   roomName: 'Public',
@@ -2468,8 +2522,58 @@ const runAgentResponse = async (
         toolResults.push(`Unbanned ${targetUsername}. They can now rejoin the room.`);
       }
 
+      // ┌──────────────────────────────────────────┐
+      // │ Forum Commands                           │
+      // └──────────────────────────────────────────┘
+      for (const match of forumThreadMatches) {
+        const title = match[1].trim();
+        if (title.length < 3 || title.length > 200) {
+          toolResults.push('Forum thread title must be 3-200 characters.');
+          continue;
+        }
+        try {
+          const thread = await createAiThreadAction(roomId, title, agent.creator_id, agent.name);
+          emitSystemMessage(io, roomName, `[${agent.name} created forum thread: "${title}"]`);
+          io.to(roomName).emit('new_forum_thread', { id: thread.id, title: thread.title, author_username: thread.author_username, created_at: thread.created_at, reply_count: 0 });
+          toolResults.push(`Forum thread created: "${title}" (ID: ${thread.id})`);
+        } catch (err) {
+          toolResults.push(`Forum thread creation failed: ${(err as Error).message}`);
+        }
+      }
+
+      for (const match of forumPostMatches) {
+        const threadId = match[1].trim();
+        const content = match[2].trim();
+        if (!content) {
+          toolResults.push('Forum post content cannot be empty.');
+          continue;
+        }
+        try {
+          const postRecord = await postAiResponseAction(threadId, content.substring(0, 10000), agent.creator_id, agent.name);
+          emitSystemMessage(io, roomName, `[${agent.name} posted to forum thread ${threadId.substring(0, 8)}…]`);
+          io.to(roomName).emit('new_forum_post', { id: postRecord.id, thread_id: threadId, author_username: postRecord.author_username, content: postRecord.content, created_at: postRecord.created_at });
+          toolResults.push(`Forum post added to thread ${threadId} (Post ID: ${postRecord.id})`);
+        } catch (err) {
+          toolResults.push(`Forum post failed: ${(err as Error).message}`);
+        }
+      }
+
+      for (const _match of forumListMatches) {
+        try {
+          const threads = await listRoomThreadsAction(roomId, 1, 20);
+          if (threads.length === 0) {
+            toolResults.push('No forum threads in this room yet.');
+          } else {
+            const listing = threads.map((t) => `• ${t.title} (ID: ${t.id}, replies: ${t.reply_count}, by ${t.author_username})`).join('\n');
+            toolResults.push(`Forum threads:\n${listing}`);
+          }
+        } catch (err) {
+          toolResults.push(`Forum list failed: ${(err as Error).message}`);
+        }
+      }
+
       // If only self-modification commands were used (no data-fetching commands), no need to re-prompt
-      const hasDataCommands = recallMatches.length + sqlMatches.length + searchMatches.length + browseMatches.length + findMatches.length + screenshotMatches.length + terminalMatches.length + claudeMatches.length + listUsersMatches.length;
+      const hasDataCommands = recallMatches.length + sqlMatches.length + searchMatches.length + browseMatches.length + findMatches.length + screenshotMatches.length + terminalMatches.length + claudeMatches.length + listUsersMatches.length + forumListMatches.length;
       if (hasDataCommands === 0) break;
 
       // Re-prompt with tool results — strip commands from prior response so agent doesn't repeat them
@@ -2624,9 +2728,17 @@ const runAgentResponse = async (
       if (mentionRoom?.cmd_mentions_enabled) {
         const allAgents = await Data.llmAgent.findByRoom(roomId);
         const responseLower = responseText.toLowerCase();
-        const mentioned = allAgents.find(
-          (a) => a.id !== agent.id && responseLower.includes(a.name.toLowerCase()),
-        );
+        const mentioned = allAgents.find((a) => {
+          if (a.id === agent.id) return false;
+          const names = [a.name.toLowerCase()];
+          if (a.nicknames) {
+            try {
+              const parsed = JSON.parse(a.nicknames) as string[];
+              names.push(...parsed.map((n: string) => n.toLowerCase()));
+            } catch { /* ignore */ }
+          }
+          return names.some((n) => responseLower.includes(n));
+        });
         if (mentioned) {
           // Trigger after finally block releases this agent's busy lock
           setTimeout(() => {
@@ -2930,7 +3042,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       const roomId = getRoomId(targetRoom);
       if (roomId) {
-        const history = await Data.message.findByRoom(roomId, 50);
+        const history = await Data.message.findByRoomForUI(roomId);
         const wp = activeRooms.get(targetRoom)?.watchParty;
         socket.emit('room_joined', {
           roomName: room?.displayName || targetRoom,
@@ -3100,12 +3212,19 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         }
       }
 
-      // Check if message mentions an AI agent
+      // Check if message mentions an AI agent (by name or nickname)
       const agents = await Data.llmAgent.findByRoom(roomId);
       const textLower = data.text.toLowerCase();
 
       for (const agent of agents) {
-        if (textLower.includes(agent.name.toLowerCase())) {
+        const names = [agent.name.toLowerCase()];
+        if (agent.nicknames) {
+          try {
+            const parsed = JSON.parse(agent.nicknames) as string[];
+            names.push(...parsed.map((n: string) => n.toLowerCase()));
+          } catch { /* ignore bad JSON */ }
+        }
+        if (names.some((n) => textLower.includes(n))) {
           await runAgentResponse(io, agent, user.currentRoom);
           break; // Only trigger one agent per message
         }
@@ -3380,7 +3499,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       // Save last room
       Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
 
-      const joinHistory = await Data.message.findByRoom(room.id, 50);
+      const joinHistory = await Data.message.findByRoomForUI(room.id);
       const jwp = room.watchParty;
       socket.emit('room_joined', {
         roomName: room.displayName,
@@ -3418,7 +3537,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       // Save last room
       Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
 
-      const switchHistory = await Data.message.findByRoom(room.id, 50);
+      const switchHistory = await Data.message.findByRoomForUI(room.id);
       const swp = room.watchParty;
       socket.emit('room_joined', {
         roomName: room.displayName,
@@ -3444,6 +3563,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       autopilotInterval?: number;
       autopilotPrompts?: string;
       plan?: string | null;
+      nicknames?: string | null;
     }) => {
       const normalizedRoom = data.roomName.toLowerCase();
       const roomId = getRoomId(normalizedRoom);
@@ -3475,6 +3595,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         autopilot_enabled: data.autopilotEnabled || false,
         autopilot_interval: data.autopilotInterval || 300,
         autopilot_prompts: data.autopilotPrompts || undefined,
+        nicknames: data.nicknames || undefined,
       });
 
       if (agent.autopilot_enabled) {
@@ -3496,6 +3617,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       autopilotPrompts?: string;
       plan?: string | null;
       tasks?: string | null;
+      nicknames?: string | null;
     }) => {
       const agent = await Data.llmAgent.findById(data.agentId);
       if (!agent) {
@@ -3514,6 +3636,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         autopilot_prompts: data.autopilotPrompts ?? null,
         plan: data.plan ?? null,
         tasks: data.tasks ?? null,
+        nicknames: data.nicknames ?? null,
       });
 
       // Restart or stop autopilot timer
@@ -3561,7 +3684,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     socket.on('get_room_memory', async (data: { roomName: string }) => {
       const roomId = getRoomId(data.roomName.toLowerCase());
       if (!roomId) {
-        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdTokens: true, cmdModeration: false, cmdThink: true, cmdEffort: true, cmdAudit: true, cmdContinue: true, maxLoops: 5 });
+        socket.emit('room_memory_status', { enabled: false, cmdRecall: true, cmdSql: true, cmdMemory: true, cmdSelfmod: true, cmdAutopilot: true, cmdWeb: true, cmdMentions: true, cmdTerminal: false, cmdClaude: false, cmdSchedule: false, cmdTokens: true, cmdModeration: false, cmdThink: true, cmdEffort: true, cmdAudit: true, cmdContinue: true, cmdForum: false, maxLoops: 5 });
         return;
       }
       const roomRecord = await Data.room.findById(roomId);
@@ -3583,6 +3706,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdEffort: roomRecord?.cmd_effort_enabled ?? true,
         cmdAudit: roomRecord?.cmd_audit_enabled ?? true,
         cmdContinue: roomRecord?.cmd_continue_enabled ?? true,
+        cmdForum: roomRecord?.cmd_forum_enabled ?? false,
         maxLoops: roomRecord?.max_loops ?? 5,
       });
     });
@@ -3632,6 +3756,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       cmdEffort?: boolean;
       cmdAudit?: boolean;
       cmdContinue?: boolean;
+      cmdForum?: boolean;
       maxLoops?: number;
     }) => {
       const normalizedName = data.roomName.toLowerCase();
@@ -3660,6 +3785,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmd_effort_enabled: data.cmdEffort,
         cmd_audit_enabled: data.cmdAudit,
         cmd_continue_enabled: data.cmdContinue,
+        cmd_forum_enabled: data.cmdForum,
         max_loops: data.maxLoops !== undefined ? Math.max(3, Math.min(20, data.maxLoops)) : undefined,
       });
 
@@ -3680,6 +3806,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         cmdEffort: data.cmdEffort,
         cmdAudit: data.cmdAudit,
         cmdContinue: data.cmdContinue,
+        cmdForum: data.cmdForum,
         maxLoops: data.maxLoops,
       });
     });
@@ -4120,7 +4247,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             u.currentRoom = 'public';
 
             if (publicRoomId) {
-              const history = await Data.message.findByRoom(publicRoomId, 50);
+              const history = await Data.message.findByRoomForUI(publicRoomId);
               const pwp = activeRooms.get('public')?.watchParty;
               userSocket.emit('room_joined', {
                 roomName: 'Public',
@@ -4187,7 +4314,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
             const publicRoomId = getRoomId('public');
             if (publicRoomId) {
-              const history = await Data.message.findByRoom(publicRoomId, 50);
+              const history = await Data.message.findByRoomForUI(publicRoomId);
               const pwp = activeRooms.get('public')?.watchParty;
               targetSocket.emit('room_joined', {
                 roomName: 'Public',
@@ -4232,7 +4359,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
             const publicRoomId = getRoomId('public');
             if (publicRoomId) {
-              const history = await Data.message.findByRoom(publicRoomId, 50);
+              const history = await Data.message.findByRoomForUI(publicRoomId);
               const pwp = activeRooms.get('public')?.watchParty;
               targetSocket.emit('room_joined', {
                 roomName: 'Public',

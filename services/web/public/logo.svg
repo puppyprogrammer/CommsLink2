@@ -1,67 +1,82 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
   <defs>
-    <!-- Glow filters for each arc color -->
-    <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur2"/>
+    <filter id="glow-blue" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur2"/>
       <feMerge>
         <feMergeNode in="blur2"/>
         <feMergeNode in="blur1"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
-    <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur2"/>
-      <feMerge>
-        <feMergeNode in="blur2"/>
-        <feMergeNode in="blur1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <filter id="glow-magenta" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur2"/>
-      <feMerge>
-        <feMergeNode in="blur2"/>
-        <feMergeNode in="blur1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <!-- Central dot glow -->
-    <filter id="glow-center" x="-100%" y="-100%" width="300%" height="300%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+    <filter id="glow-core" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+    <linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#569cd6"/>
+      <stop offset="50%" stop-color="#007acc"/>
+      <stop offset="100%" stop-color="#9cdcfe"/>
+    </linearGradient>
+    <linearGradient id="inner-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#007acc"/>
+      <stop offset="100%" stop-color="#b388ff"/>
+    </linearGradient>
+    <radialGradient id="core-grad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="40%" stop-color="#9cdcfe" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#569cd6" stop-opacity="0"/>
+    </radialGradient>
   </defs>
 
-  <!-- Outer arc - Cyan -->
-  <path d="M 40 130 A 75 75 0 0 1 160 130"
-        fill="none" stroke="#63c5c0" stroke-width="5" stroke-linecap="round"
-        filter="url(#glow-cyan)" opacity="0.95"/>
+  <!-- Dark background circle -->
+  <circle cx="100" cy="90" r="78" fill="#0d1117" stroke="#1c2128" stroke-width="1"/>
 
-  <!-- Middle arc - Green -->
-  <path d="M 55 125 A 55 55 0 0 1 145 125"
-        fill="none" stroke="#36a900" stroke-width="5" stroke-linecap="round"
-        filter="url(#glow-green)" opacity="0.95"/>
+  <!-- Outer hexagonal ring segments -->
+  <path d="M 100 14 L 166 47 L 166 113"
+        fill="none" stroke="url(#ring-grad)" stroke-width="3" stroke-linecap="round"
+        filter="url(#glow-blue)" opacity="0.9"/>
+  <path d="M 166 113 L 100 146 L 34 113"
+        fill="none" stroke="url(#ring-grad)" stroke-width="3" stroke-linecap="round"
+        filter="url(#glow-blue)" opacity="0.7"/>
+  <path d="M 34 113 L 34 47 L 100 14"
+        fill="none" stroke="url(#ring-grad)" stroke-width="3" stroke-linecap="round"
+        filter="url(#glow-blue)" opacity="0.5"/>
 
-  <!-- Inner arc - Magenta -->
-  <path d="M 70 120 A 35 35 0 0 1 130 120"
-        fill="none" stroke="#ff00ff" stroke-width="5" stroke-linecap="round"
-        filter="url(#glow-magenta)" opacity="0.95"/>
+  <!-- Inner rotating diamond -->
+  <g filter="url(#glow-blue)" opacity="0.85">
+    <path d="M 100 50 L 140 80 L 100 110 L 60 80 Z"
+          fill="none" stroke="url(#inner-grad)" stroke-width="2.5" stroke-linejoin="round"/>
+  </g>
 
-  <!-- Central glowing dot -->
-  <circle cx="100" cy="115" r="6" fill="#63c5c0" filter="url(#glow-center)" opacity="0.9"/>
-  <circle cx="100" cy="115" r="3" fill="#ffffff" opacity="0.8"/>
+  <!-- Signal lines radiating from center -->
+  <line x1="100" y1="60" x2="100" y2="38" stroke="#569cd6" stroke-width="1.5" opacity="0.6" filter="url(#glow-blue)"/>
+  <line x1="128" y1="72" x2="148" y2="56" stroke="#569cd6" stroke-width="1.5" opacity="0.5" filter="url(#glow-blue)"/>
+  <line x1="72" y1="72" x2="52" y2="56" stroke="#569cd6" stroke-width="1.5" opacity="0.5" filter="url(#glow-blue)"/>
+  <line x1="128" y1="88" x2="148" y2="104" stroke="#007acc" stroke-width="1.5" opacity="0.4" filter="url(#glow-blue)"/>
+  <line x1="72" y1="88" x2="52" y2="104" stroke="#007acc" stroke-width="1.5" opacity="0.4" filter="url(#glow-blue)"/>
+
+  <!-- Core energy point -->
+  <circle cx="100" cy="80" r="12" fill="url(#core-grad)" filter="url(#glow-core)"/>
+  <circle cx="100" cy="80" r="5" fill="#ffffff" opacity="0.9"/>
+  <circle cx="100" cy="80" r="2.5" fill="#569cd6" opacity="0.7"/>
+
+  <!-- Small node dots on hexagon vertices -->
+  <circle cx="100" cy="14" r="3" fill="#9cdcfe" filter="url(#glow-blue)" opacity="0.8"/>
+  <circle cx="166" cy="47" r="3" fill="#569cd6" filter="url(#glow-blue)" opacity="0.7"/>
+  <circle cx="166" cy="113" r="3" fill="#007acc" filter="url(#glow-blue)" opacity="0.6"/>
+  <circle cx="100" cy="146" r="3" fill="#b388ff" filter="url(#glow-blue)" opacity="0.5"/>
+  <circle cx="34" cy="113" r="3" fill="#007acc" filter="url(#glow-blue)" opacity="0.4"/>
+  <circle cx="34" cy="47" r="3" fill="#569cd6" filter="url(#glow-blue)" opacity="0.5"/>
 
   <!-- COMMSLINK text -->
-  <text x="100" y="165" text-anchor="middle"
-        font-family="'Segoe UI', 'Arial', sans-serif" font-weight="700"
-        font-size="22" letter-spacing="4" fill="#63c5c0"
-        filter="url(#glow-cyan)" opacity="0.9">
+  <text x="100" y="178" text-anchor="middle"
+        font-family="'Orbitron', 'Segoe UI', sans-serif" font-weight="700"
+        font-size="18" letter-spacing="5" fill="#569cd6"
+        filter="url(#glow-blue)" opacity="0.9">
     COMMSLINK
   </text>
 </svg>

@@ -62,7 +62,9 @@ import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
 import HologramViewer from '@/components/HologramViewer';
 import ResizeHandle from '@/components/ResizeHandle';
+import ForumPanel from '@/components/ForumPanel';
 import TerminalIcon from '@mui/icons-material/Terminal';
+import ForumIcon from '@mui/icons-material/Forum';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import ViewInArIcon from '@mui/icons-material/ViewInAr';
 
@@ -117,6 +119,8 @@ const ChatPage = () => {
     }[]
   >([]);
   const [hologramWidth, setHologramWidth] = useState(400);
+  const [forumPanelOpen, setForumPanelOpen] = useState(false);
+  const [forumPanelWidth, setForumPanelWidth] = useState(400);
   const [panelMachines, setPanelMachines] = useState<{ id: string; name: string; status: string; os?: string }[]>([]);
   const socketInstanceRef = useRef<ReturnType<typeof getSocket> | null>(null);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
@@ -757,6 +761,14 @@ const ChatPage = () => {
               </IconButton>
               <IconButton
                 size="small"
+                color={forumPanelOpen ? 'primary' : 'default'}
+                onClick={() => setForumPanelOpen((prev) => !prev)}
+                title="Room Forum"
+              >
+                <ForumIcon />
+              </IconButton>
+              <IconButton
+                size="small"
                 color={hologramPanelOpen ? 'primary' : 'default'}
                 onClick={() => setHologramPanelOpen((prev) => !prev)}
                 title="Hologram Avatars"
@@ -1083,6 +1095,30 @@ const ChatPage = () => {
             </div>
           </>
         )}
+        {forumPanelOpen &&
+          (() => {
+            const currentRoomId = rooms.find((r) => r.name === currentRoom)?.id;
+            return currentRoomId ? (
+              <>
+                <ResizeHandle onResize={(d) => setForumPanelWidth((w) => Math.max(300, Math.min(800, w + d)))} />
+                <div
+                  style={{
+                    width: forumPanelWidth,
+                    flexShrink: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <ForumPanel
+                    roomId={currentRoomId}
+                    socket={socketInstanceRef.current}
+                    onClose={() => setForumPanelOpen(false)}
+                  />
+                </div>
+              </>
+            ) : null;
+          })()}
         {hologramPanelOpen && (
           <>
             <ResizeHandle onResize={(d) => setHologramWidth((w) => Math.max(250, Math.min(800, w + d)))} />

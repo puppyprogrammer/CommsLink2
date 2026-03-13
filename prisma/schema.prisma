@@ -73,6 +73,7 @@ model room {
   cmd_effort_enabled      Boolean  @default(true)
   cmd_audit_enabled       Boolean  @default(true)
   cmd_continue_enabled    Boolean  @default(true)
+  cmd_forum_enabled       Boolean  @default(false)
   max_loops               Int      @default(5)
   created_by          String?
   created_at      DateTime @default(now())
@@ -84,12 +85,14 @@ model room {
   scheduled_jobs      scheduled_job[]
   members             room_member[]
   hologram_avatars     hologram_avatar[]
+  threads             thread[]
 
   @@index([name])
 }
 
 model thread {
   id              String   @id @default(uuid())
+  room_id         String?
   title           String
   author_id       String
   author_username String
@@ -98,9 +101,11 @@ model thread {
   created_at      DateTime @default(now())
   last_reply_at   DateTime @default(now())
 
+  room   room?  @relation(fields: [room_id], references: [id], onDelete: Cascade)
   author user   @relation(fields: [author_id], references: [id])
   posts  post[]
 
+  @@index([room_id, last_reply_at])
   @@index([last_reply_at])
   @@index([author_id])
 }
@@ -152,6 +157,7 @@ model llm_agent {
   autopilot_prompts    String?  @db.Text
   plan                 String?  @db.Text
   tasks                String?  @db.Text
+  nicknames            String?  @db.Text
   max_tokens           Int      @default(1500)
   created_at           DateTime @default(now())
 

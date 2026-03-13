@@ -25,6 +25,7 @@ export type WatchPartyState = {
 };
 
 export type Room = {
+  id: string;
   name: string;
   displayName: string;
   users: number;

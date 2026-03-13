@@ -46,6 +46,21 @@ const forum = {
     });
     return data;
   },
+
+  getRoomThreads: async (bearerToken: string, roomId: string, page = 1, limit = 20) => {
+    const { data } = await client.get<Thread[]>(`/forum/rooms/${roomId}/threads`, {
+      headers: authHeaders(bearerToken),
+      params: { page, limit },
+    });
+    return data;
+  },
+
+  getRoomThread: async (bearerToken: string, roomId: string, threadId: string) => {
+    const { data } = await client.get<{ thread: Thread; posts: Post[] }>(`/forum/rooms/${roomId}/threads/${threadId}`, {
+      headers: authHeaders(bearerToken),
+    });
+    return data;
+  },
 };
 
 export default forum;
