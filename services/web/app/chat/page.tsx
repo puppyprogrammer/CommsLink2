@@ -721,7 +721,7 @@ const ChatPage = () => {
                   size="small"
                   onClick={() => openRoomSettings(currentRoomDisplay)}
                   title="Room Settings"
-                  sx={{ color: roomSettingsOpen ? 'primary.main' : '#A020F0' }}
+                  sx={{ color: roomSettingsOpen ? 'primary.main' : '#858585' }}
                 >
                   <TuneIcon />
                 </IconButton>
@@ -733,7 +733,7 @@ const ChatPage = () => {
                   setTerminalNotifications(0);
                 }}
                 title="Terminal / Claude"
-                sx={{ color: terminalPanelOpen ? 'primary.main' : '#A020F0' }}
+                sx={{ color: terminalPanelOpen ? 'primary.main' : '#858585' }}
               >
                 <Badge
                   badgeContent={terminalNotifications}
@@ -755,7 +755,7 @@ const ChatPage = () => {
                 size="small"
                 onClick={() => setWebPanelOpen((prev) => !prev)}
                 title="Web Browser"
-                sx={{ color: webPanelOpen ? 'primary.main' : '#A020F0' }}
+                sx={{ color: webPanelOpen ? 'primary.main' : '#858585' }}
               >
                 <LanguageIcon />
               </IconButton>
@@ -763,7 +763,7 @@ const ChatPage = () => {
                 size="small"
                 onClick={() => setForumPanelOpen((prev) => !prev)}
                 title="Room Forum"
-                sx={{ color: forumPanelOpen ? 'primary.main' : '#A020F0' }}
+                sx={{ color: forumPanelOpen ? 'primary.main' : '#858585' }}
               >
                 <ForumIcon />
               </IconButton>
@@ -771,7 +771,7 @@ const ChatPage = () => {
                 size="small"
                 onClick={() => setHologramPanelOpen((prev) => !prev)}
                 title="Hologram Avatars"
-                sx={{ color: hologramPanelOpen ? 'primary.main' : '#A020F0' }}
+                sx={{ color: hologramPanelOpen ? 'primary.main' : '#858585' }}
               >
                 <ViewInArIcon />
               </IconButton>
@@ -779,7 +779,7 @@ const ChatPage = () => {
                 size="small"
                 onClick={() => setSettingsOpen((prev) => !prev)}
                 title="Voice Settings"
-                sx={{ color: settingsOpen ? 'primary.main' : '#A020F0' }}
+                sx={{ color: settingsOpen ? 'primary.main' : '#858585' }}
               >
                 <SettingsIcon />
               </IconButton>

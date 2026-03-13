@@ -147,7 +147,7 @@ const consoleLog = (msg: string): void => {
   writeLog(msg);
 };
 
-const AGENT_VERSION = '1.8.4';
+const AGENT_VERSION = '1.8.5';
 const osInfo = `${osType()} ${platform()}`;
 
 // ┌──────────────────────────────────────────┐
@@ -460,7 +460,7 @@ const connect = (config: SavedConfig): void => {
       const execId = data.execId;
       const MAX_WAIT_MS = 900_000; // 15 min absolute max
       const STATUS_INTERVAL = 30_000; // 30s between status updates (if no tool events)
-      const HUNG_THRESHOLD = 120_000; // 2 min no output = probably hung
+      const HUNG_THRESHOLD = 600_000; // 10 min no output = probably hung
 
       log(`[Claude Stream] Spawning claude -p --stream-json for ${execId}: ${userInput.substring(0, 100)}...`);
 
