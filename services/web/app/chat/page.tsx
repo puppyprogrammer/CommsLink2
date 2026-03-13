@@ -642,7 +642,7 @@ const ChatPage = () => {
       <Box className={classes.root}>
         <Box className={classes.chatArea}>
           <Box className={classes.chatHeader}>
-            <Typography variant="h6" color="primary">
+            <Typography variant="h6" sx={{ fontFamily: "'Orbitron', monospace", color: 'primary.main' }}>
               {currentRoomDisplay}
             </Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
