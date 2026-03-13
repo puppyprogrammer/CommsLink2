@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { IconButton, Typography, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
@@ -8,7 +8,12 @@ import LanguageIcon from '@mui/icons-material/Language';
 import WebIcon from '@mui/icons-material/Web';
 import ArticleIcon from '@mui/icons-material/Article';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import styles from './WebBrowserPanel.module.scss';
+
+import type { Socket } from 'socket.io-client';
 
 type SearchResult = {
   title: string;
@@ -25,21 +30,90 @@ type PageLink = {
 export type WebPanelData =
   | { type: 'search'; query: string; results: SearchResult[] }
   | { type: 'page'; url: string; title: string; text: string; links: PageLink[] }
-  | { type: 'screenshot'; url: string; imageBase64: string };
+  | { type: 'screenshot'; url: string; imageBase64: string }
+  | { type: 'browser'; url: string; title: string; imageBase64: string }
+  | { type: 'browser_closed' };
 
 type Props = {
   data: WebPanelData | null;
   onClose: () => void;
+  socket?: Socket | null;
 };
 
-const WebBrowserPanel: React.FC<Props> = ({ data, onClose }) => {
+const WebBrowserPanel: React.FC<Props> = ({ data, onClose, socket }) => {
   const [viewMode, setViewMode] = useState<'site' | 'text' | 'screenshot'>('text');
   const [iframeFailed, setIframeFailed] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const urlInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUrlSubmit = () => {
+    const url = urlInput.trim();
+    if (!url || !socket) return;
+    const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+    socket.emit('web_navigate', { url: fullUrl });
+  };
+
+  const handleUrlKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleUrlSubmit();
+    }
+  };
+
+  const isBrowser = data?.type === 'browser';
+  const isBrowserClosed = data?.type === 'browser_closed';
+
+  // Update URL bar when browser navigates
+  React.useEffect(() => {
+    if (data?.type === 'browser' && data.url) {
+      setUrlInput(data.url);
+    }
+  }, [data]);
 
   return (
     <div className={styles.root}>
       <div className={styles.header}>
-        {data?.type === 'search' ? (
+        {isBrowser ? (
+          <>
+            <div className={styles.sessionIndicator} />
+            <IconButton
+              size="small"
+              onClick={() => socket?.emit('web_navigate', { url: 'BACK' })}
+              sx={{ p: '3px' }}
+              title="Back"
+              disabled={!socket}
+            >
+              <ArrowBackIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={() => socket?.emit('web_navigate', { url: 'FORWARD' })}
+              sx={{ p: '3px' }}
+              title="Forward"
+              disabled={!socket}
+            >
+              <ArrowForwardIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={() => socket?.emit('web_navigate', { url: data.url })}
+              sx={{ p: '3px' }}
+              title="Refresh"
+              disabled={!socket}
+            >
+              <RefreshIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+            <input
+              ref={urlInputRef}
+              type="text"
+              className={styles.urlInput}
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={handleUrlKeyDown}
+              placeholder="Enter URL..."
+            />
+          </>
+        ) : data?.type === 'search' ? (
           <>
             <SearchIcon sx={{ fontSize: 18, color: 'primary.main', flexShrink: 0 }} />
             <span className={styles.urlBar}>Search: {data.query}</span>
@@ -74,15 +148,51 @@ const WebBrowserPanel: React.FC<Props> = ({ data, onClose }) => {
             <span className={styles.urlBar}>Web Browser</span>
           </>
         )}
+        {isBrowser && socket && (
+          <IconButton
+            size="small"
+            onClick={() => {
+              socket.emit('web_close_session');
+              onClose();
+            }}
+            sx={{ flexShrink: 0 }}
+            title="Close browser session"
+          >
+            <CloseIcon sx={{ fontSize: 16, color: 'error.main' }} />
+          </IconButton>
+        )}
         <IconButton size="small" onClick={onClose} sx={{ flexShrink: 0 }}>
           <CloseIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </div>
 
-      <div className={data?.type === 'page' && viewMode === 'site' ? styles.contentFlush : styles.content}>
+      <div className={isBrowser ? styles.contentFlush : (data?.type === 'page' && viewMode === 'site' ? styles.contentFlush : styles.content)}>
         {!data && (
           <div className={styles.empty}>
             The AI can browse the web here. Search results and page content will appear in this panel.
+          </div>
+        )}
+
+        {isBrowserClosed && (
+          <div className={styles.empty}>
+            Browser session closed.
+          </div>
+        )}
+
+        {isBrowser && (
+          <div className={styles.browserView}>
+            {data.title && (
+              <div className={styles.browserTitle}>{data.title}</div>
+            )}
+            {data.imageBase64 ? (
+              <img
+                src={`data:image/jpeg;base64,${data.imageBase64}`}
+                alt={`Browser: ${data.title}`}
+                className={styles.browserScreenshot}
+              />
+            ) : (
+              <div className={styles.empty}>Loading...</div>
+            )}
           </div>
         )}
 

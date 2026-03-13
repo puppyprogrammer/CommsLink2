@@ -2298,10 +2298,6 @@ const runAgentResponse = async (
       }
 
       // Process persistent browser commands
-      const webBrowserUsed = webGoMatches.length + webClickMatches.length + webTypeMatches.length +
-        webScrollMatches.length + webBackMatches.length + webForwardMatches.length +
-        webExtractMatches.length + webWaitMatches.length + webCloseMatches.length > 0;
-
       const emitBrowserUpdate = async (session: Awaited<ReturnType<typeof browserSessionManager.getOrCreate>>) => {
         try {
           const imgBase64 = await session.screenshot();
@@ -4804,7 +4800,13 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       if (!navRoomId) return;
       try {
         const session = await browserSessionManager.getOrCreate(navRoomId);
-        await session.navigate(data.url);
+        if (data.url === 'BACK') {
+          await session.back();
+        } else if (data.url === 'FORWARD') {
+          await session.forward();
+        } else {
+          await session.navigate(data.url);
+        }
         const imgBase64 = await session.screenshot();
         const title = await session.getTitle();
         io.to(user.currentRoom).emit('web_panel_update', {

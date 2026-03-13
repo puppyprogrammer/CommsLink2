@@ -301,7 +301,9 @@ const ChatPage = () => {
     // Web browser panel updates from AI
     socket.on('web_panel_update', (data: WebPanelData) => {
       setWebPanelData(data);
-      setWebPanelOpen(true);
+      if (data.type !== 'browser_closed') {
+        setWebPanelOpen(true);
+      }
     });
 
     // Fetch machines for terminal panel
@@ -1091,7 +1093,7 @@ const ChatPage = () => {
                 overflow: 'hidden',
               }}
             >
-              <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} />
+              <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} socket={socketInstanceRef.current} />
             </div>
           </>
         )}

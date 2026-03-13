@@ -159,3 +159,53 @@
   background-color: $success;
   color: white;
 }
+
+.sessionIndicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: $success;
+  flex-shrink: 0;
+}
+
+.urlInput {
+  flex: 1;
+  font-size: 0.75rem;
+  color: $text-primary;
+  background-color: $surface;
+  border: 1px solid $border;
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  outline: none;
+  font-family: inherit;
+  min-width: 0;
+
+  &:focus {
+    border-color: $primary;
+  }
+}
+
+.browserView {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+.browserTitle {
+  font-size: 0.75rem;
+  color: $text-secondary;
+  padding: 0.25rem 0.5rem;
+  width: 100%;
+  text-align: center;
+  border-bottom: 1px solid $border;
+  flex-shrink: 0;
+}
+
+.browserScreenshot {
+  width: 100%;
+  height: auto;
+  display: block;
+}
