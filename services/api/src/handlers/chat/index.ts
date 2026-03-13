@@ -3595,7 +3595,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         const output = await executeTerminalCommand(io, machineRecord.socket_id, data.command, 30_000, data.machineName, user?.currentRoom);
         socket.emit('terminal_panel_output', { machineName: data.machineName, output });
 
-        // Also emit to chat so AI and summarizer can see it
         if (user?.currentRoom) {
           emitSystemMessage(io, user.currentRoom, `[Terminal ${data.machineName}]:\n${output.substring(0, 2000)}`, undefined, 'terminal');
           emitPanelLog(io, user.currentRoom, 'terminal', 'output', output.substring(0, 2000), data.machineName);
@@ -3706,7 +3705,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         execId: panelExecId,
       });
 
-      // Show in chat for AI visibility
       if (roomId) {
         emitSystemMessage(io, roomName, `[${socket.user.username} claude → ${data.machineName}]: ${data.input}`, undefined, 'claude-prompt');
         emitPanelLog(io, roomName, 'claude', 'prompt', `[${socket.user.username} → ${data.machineName}] ${data.input}`, data.machineName);

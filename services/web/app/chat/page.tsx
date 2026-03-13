@@ -741,6 +741,11 @@ const ChatPage = () => {
                         : undefined
                   : undefined);
 
+              // Hide panel-routed system messages from chat (they show in TerminalPanel instead)
+              if (sysType === 'claude-prompt' || sysType === 'claude-response' || sysType === 'terminal') {
+                return null;
+              }
+
               if (msg.isSystem) {
                 if (msg.collapsible) {
                   return (
