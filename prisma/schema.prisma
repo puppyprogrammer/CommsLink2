@@ -395,3 +395,17 @@ model watchlist_item {
   @@index([user_id])
   @@index([status])
 }
+
+model agent_template {
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  description         String?  @db.Text
+  model               String   @default("grok-4-1-fast-non-reasoning")
+  voice_id            String   @default("female")
+  system_instructions String?  @db.Text
+  memories            String?  @db.Text
+  autopilot_prompts   String?  @db.Text
+  autopilot_interval  Int      @default(300)
+  max_tokens          Int      @default(1500)
+  created_at          DateTime @default(now())
+}

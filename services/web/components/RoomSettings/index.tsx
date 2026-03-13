@@ -76,6 +76,19 @@ type PremiumVoice = {
   name: string;
 };
 
+type AgentTemplate = {
+  id: string;
+  name: string;
+  description: string | null;
+  model: string;
+  voice_id: string;
+  system_instructions: string | null;
+  memories: string | null;
+  autopilot_prompts: string | null;
+  autopilot_interval: number;
+  max_tokens: number;
+};
+
 type RoomSettingsProps = {
   roomName: string;
   open: boolean;
@@ -220,6 +233,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
   // Add agent dialog
   const [showAddAgent, setShowAddAgent] = useState(false);
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
 
   // Memory tree collapsed state
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -230,6 +244,11 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     apiClient
       .get('/models')
       .then((res) => setModels(res.data.models))
+      .catch(() => {});
+
+    apiClient
+      .get('/agent-templates')
+      .then((res) => setTemplates(res.data.templates))
       .catch(() => {});
 
     if (session?.token && session?.user?.is_premium) {
@@ -433,6 +452,15 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     const premium = premiumVoices.find((v) => v.voice_id === voiceId);
     if (premium) return premium.name;
     return voiceId;
+  };
+
+  const loadTemplate = (template: AgentTemplate) => {
+    setNewModel(template.model);
+    setNewVoice(template.voice_id);
+    setNewAutopilotInterval(template.autopilot_interval);
+    setNewInstructions(parseList(template.system_instructions));
+    setNewMemories(parseList(template.memories));
+    setNewAutopilotPrompts(parseList(template.autopilot_prompts));
   };
 
   const handleCreate = () => {
@@ -1929,6 +1957,29 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       <Dialog open={showAddAgent} onClose={() => setShowAddAgent(false)} maxWidth="lg" fullWidth>
         <DialogTitle>Add Agent</DialogTitle>
         <DialogContent sx={{ mt: 1 }}>
+          {templates.length > 0 && (
+            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Select
+                size="small"
+                value=""
+                displayEmpty
+                onChange={(e) => {
+                  const t = templates.find((tpl) => tpl.id === e.target.value);
+                  if (t) loadTemplate(t);
+                }}
+                sx={{ minWidth: 240 }}
+              >
+                <MenuItem value="" disabled>
+                  Load a template...
+                </MenuItem>
+                {templates.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
+          )}
           {renderEditorColumns(
             newName,
             setNewName,

@@ -12,6 +12,7 @@ import { creditRoutes } from './credits';
 import { uploadRoutes } from './upload';
 import { terminalRoutes } from './terminal';
 import { watchlistRoutes } from './watchlist';
+import { agentTemplateRoutes } from './agentTemplate';
 
 /**
  * Register all v1 API routes.
@@ -32,6 +33,7 @@ const registerRoutes = (server: Server): void => {
     ...uploadRoutes,
     ...terminalRoutes,
     ...watchlistRoutes,
+    ...agentTemplateRoutes,
   ]);
 };
 
