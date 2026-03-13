@@ -150,6 +150,7 @@ model llm_agent {
   autopilot_interval   Int      @default(300)
   autopilot_prompts    String?  @db.Text
   plan                 String?  @db.Text
+  tasks                String?  @db.Text
   max_tokens           Int      @default(1500)
   created_at           DateTime @default(now())
 

@@ -399,6 +399,44 @@ const listItemsToStrings = (items: ListItem[], markLocked = true): string[] => {
   return sorted.map((i) => (markLocked && i.locked ? `[LOCKED] ${i.text}` : i.text));
 };
 
+// ── Task system types & helpers ──
+
+type TaskItem = { id: string; text: string; priority: number; status: 'pending' | 'done'; locked: boolean };
+
+const generateTaskId = (): string => Math.random().toString(36).slice(2, 8);
+
+const parseTaskList = (raw: string | null): TaskItem[] => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: unknown) => {
+        if (item && typeof item === 'object' && 'text' in item) {
+          const obj = item as Record<string, unknown>;
+          return {
+            id: String(obj.id || generateTaskId()),
+            text: String(obj.text),
+            priority: typeof obj.priority === 'number' ? obj.priority : 3,
+            status: (obj.status === 'done' ? 'done' : 'pending') as TaskItem['status'],
+            locked: !!obj.locked,
+          };
+        }
+        return { id: generateTaskId(), text: String(item), priority: 3, status: 'pending' as const, locked: false };
+      });
+    }
+  } catch { /* corrupted */ }
+  return [];
+};
+
+const formatTasksForPrompt = (tasks: TaskItem[]): string[] => {
+  const sorted = [...tasks].sort((a, b) => a.priority - b.priority);
+  return sorted.map((t) => {
+    const lock = t.locked ? ' [LOCKED]' : '';
+    const statusTag = t.status === 'done' ? '[DONE]' : '[PENDING]';
+    return `${statusTag} (P${t.priority}) [${t.id}] ${t.text}${lock}`;
+  });
+};
+
 type AgentLike = {
   id: string;
   name: string;
@@ -412,6 +450,7 @@ type AgentLike = {
   autopilot_interval: number;
   autopilot_prompts: string | null;
   plan: string | null;
+  tasks: string | null;
   max_tokens: number;
 };
 
@@ -583,6 +622,60 @@ const buildToolDefinitions = (cmds: CommandFlags, onlineMachines?: string[]): To
         name: 'clear_plan',
         description: 'Clear your current plan when complete.',
         parameters: { type: 'object', properties: {}, required: [] },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'add_task',
+        description: 'Add a discrete task to your task list. Priority 1 (highest/most urgent) to 5 (lowest).',
+        parameters: {
+          type: 'object',
+          properties: {
+            priority: { type: 'number', description: 'Priority 1-5 (1=most urgent)' },
+            text: { type: 'string', description: 'Task description' },
+          },
+          required: ['priority', 'text'],
+        },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'complete_task',
+        description: 'Mark a task as done by its ID or exact text.',
+        parameters: {
+          type: 'object',
+          properties: { id: { type: 'string', description: 'Task ID (short code) or exact text' } },
+          required: ['id'],
+        },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'update_task',
+        description: 'Update a task description by its ID or exact text. LOCKED tasks cannot be updated.',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Task ID or exact text to match' },
+            text: { type: 'string', description: 'New task description' },
+          },
+          required: ['id', 'text'],
+        },
+      },
+    });
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'remove_task',
+        description: 'Remove a task by its ID or exact text. LOCKED tasks cannot be removed.',
+        parameters: {
+          type: 'object',
+          properties: { id: { type: 'string', description: 'Task ID or exact text to match' } },
+          required: ['id'],
+        },
       },
     });
   }
@@ -846,6 +939,18 @@ const toolCallsToBraceFormat = (toolCalls: Array<{ function: { name: string; arg
       case 'clear_plan':
         parts.push('{clear_plan}');
         break;
+      case 'add_task':
+        parts.push(`{add_task ${args.priority || 3} ${String(args.text).replace(/\n/g, ' ')}}`);
+        break;
+      case 'complete_task':
+        parts.push(`{complete_task ${String(args.id).replace(/\n/g, ' ')}}`);
+        break;
+      case 'update_task':
+        parts.push(`{update_task ${String(args.id).replace(/\n/g, ' ')} | ${String(args.text).replace(/\n/g, ' ')}}`);
+        break;
+      case 'remove_task':
+        parts.push(`{remove_task ${String(args.id).replace(/\n/g, ' ')}}`);
+        break;
       case 'toggle_autopilot':
         parts.push(`{toggle_autopilot ${args.enabled}}`);
         break;
@@ -966,6 +1071,12 @@ const buildSystemPrompt = (
     parts.push(`\n=== YOUR CURRENT PLAN ===\n${agent.plan}\n(Update with {set_plan ...} or clear with {clear_plan} when complete.)`);
   }
 
+  const taskItems = parseTaskList(agent.tasks);
+  if (taskItems.length > 0) {
+    const taskLines = formatTasksForPrompt(taskItems);
+    parts.push(`\n=== YOUR TASKS ===\n${taskLines.map((l) => `- ${l}`).join('\n')}\n(Manage with {add_task}, {complete_task}, {update_task}, {remove_task}. Completed tasks stay until you {remove_task} them.)`);
+  }
+
   if (masterSummary) {
     parts.push(`\n=== ROOM MEMORY ===\n${masterSummary}`);
   }
@@ -1010,7 +1121,11 @@ const buildSystemPrompt = (
       '{add_autopilot text} - Add a new autopilot prompt (things to think about during scheduled runs)\n' +
       '{remove_autopilot text} - Remove an autopilot prompt (exact match). [LOCKED] items cannot be removed.\n' +
       '{set_plan text} - Set or replace your current plan (a holistic multi-step plan you are working on)\n' +
-      '{clear_plan} - Clear your plan when it is complete',
+      '{clear_plan} - Clear your plan when it is complete\n' +
+      '{add_task priority text} - Add a task (priority 1-5, 1=most urgent)\n' +
+      '{complete_task id_or_text} - Mark a task as done\n' +
+      '{update_task id_or_text | new_text} - Update a task description. LOCKED tasks cannot be updated.\n' +
+      '{remove_task id_or_text} - Remove a task. LOCKED tasks cannot be removed.',
     );
   }
 
@@ -1264,6 +1379,10 @@ const ADD_AUTOPILOT_REGEX = /\{add_autopilot\s+([^}]+)\}/g;
 const REMOVE_AUTOPILOT_REGEX = /\{remove_autopilot\s+([^}]+)\}/g;
 const SET_PLAN_REGEX = /\{set_plan\s+([^}]+)\}/g;
 const CLEAR_PLAN_REGEX = /\{clear_plan\}/g;
+const ADD_TASK_REGEX = /\{add_task\s+([1-5])\s+([^}]+)\}/g;
+const COMPLETE_TASK_REGEX = /\{complete_task\s+([^}]+)\}/g;
+const UPDATE_TASK_REGEX = /\{update_task\s+([^|]+)\|\s*([^}]+)\}/g;
+const REMOVE_TASK_REGEX = /\{remove_task\s+([^}]+)\}/g;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
@@ -1302,7 +1421,7 @@ const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
 const SAY_REGEX = /\{say\s+([^}]+)\}/g;
 const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
 const CONTINUE_REGEX = /\{continue\}/g;
-const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+const ALL_COMMAND_REGEX = /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -1510,6 +1629,10 @@ const runAgentResponse = async (
       const rmAutoMatches = selfmodOn ? [...responseText.matchAll(REMOVE_AUTOPILOT_REGEX)] : [];
       const setPlanMatches = selfmodOn ? [...responseText.matchAll(SET_PLAN_REGEX)] : [];
       const clearPlanMatches = selfmodOn ? [...responseText.matchAll(CLEAR_PLAN_REGEX)] : [];
+      const addTaskMatches = selfmodOn ? [...responseText.matchAll(ADD_TASK_REGEX)] : [];
+      const completeTaskMatches = selfmodOn ? [...responseText.matchAll(COMPLETE_TASK_REGEX)] : [];
+      const updateTaskMatches = selfmodOn ? [...responseText.matchAll(UPDATE_TASK_REGEX)] : [];
+      const removeTaskMatches = selfmodOn ? [...responseText.matchAll(REMOVE_TASK_REGEX)] : [];
       const setIntervalMatches = autopilotCtrlOn ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)] : [];
       const toggleAutoMatches = autopilotCtrlOn ? [...responseText.matchAll(TOGGLE_AUTOPILOT_REGEX)] : [];
       const setTokensMatches = tokensOn ? [...responseText.matchAll(SET_TOKENS_REGEX)] : [];
@@ -1555,6 +1678,7 @@ const runAgentResponse = async (
         addInstMatches.length + rmInstMatches.length +
         addAutoMatches.length + rmAutoMatches.length +
         setPlanMatches.length + clearPlanMatches.length +
+        addTaskMatches.length + completeTaskMatches.length + updateTaskMatches.length + removeTaskMatches.length +
         setIntervalMatches.length + toggleAutoMatches.length +
         setTokensMatches.length + setEffortMatches.length +
         searchMatches.length + browseMatches.length + findMatches.length +
@@ -1651,6 +1775,68 @@ const runAgentResponse = async (
           toolResults.push('Plan cleared.');
         }
 
+        // Process task commands
+        for (const match of addTaskMatches) {
+          const priority = parseInt(match[1], 10);
+          const text = match[2].trim();
+          const taskList = parseTaskList(currentAgent.tasks);
+          const id = generateTaskId();
+          taskList.push({ id, text, priority, status: 'pending', locked: false });
+          await Data.llmAgent.update(agent.id, { tasks: JSON.stringify(taskList) });
+          currentAgent = (await Data.llmAgent.findById(agent.id))!;
+          emitSystemMessage(io, roomName, `[${agent.name} added task [${id}] P${priority}: "${text}"]`);
+          toolResults.push(`Task added [${id}]: "${text}" (priority ${priority})`);
+        }
+        for (const match of completeTaskMatches) {
+          const idOrText = match[1].trim();
+          const taskList = parseTaskList(currentAgent.tasks);
+          const target = taskList.find((t) => t.id === idOrText || t.text.toLowerCase() === idOrText.toLowerCase());
+          if (!target) {
+            toolResults.push(`Task "${idOrText}" not found.`);
+          } else {
+            target.status = 'done';
+            await Data.llmAgent.update(agent.id, { tasks: JSON.stringify(taskList) });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+            emitSystemMessage(io, roomName, `[${agent.name} completed task [${target.id}]: "${target.text}"]`);
+            toolResults.push(`Task completed [${target.id}]: "${target.text}"`);
+          }
+        }
+        for (const match of updateTaskMatches) {
+          const idOrText = match[1].trim();
+          const newText = match[2].trim();
+          const taskList = parseTaskList(currentAgent.tasks);
+          const target = taskList.find((t) => t.id === idOrText || t.text.toLowerCase() === idOrText.toLowerCase());
+          if (!target) {
+            toolResults.push(`Task "${idOrText}" not found.`);
+          } else if (target.locked) {
+            emitSystemMessage(io, roomName, `[System] ${agent.name} tried to update locked task — denied.`);
+            toolResults.push(`Task "${target.text}" is locked and cannot be updated.`);
+          } else {
+            target.text = newText;
+            await Data.llmAgent.update(agent.id, { tasks: JSON.stringify(taskList) });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+            emitSystemMessage(io, roomName, `[${agent.name} updated task [${target.id}]: "${newText}"]`);
+            toolResults.push(`Task updated [${target.id}]: "${newText}"`);
+          }
+        }
+        for (const match of removeTaskMatches) {
+          const idOrText = match[1].trim();
+          const taskList = parseTaskList(currentAgent.tasks);
+          const target = taskList.find((t) => t.id === idOrText || t.text.toLowerCase() === idOrText.toLowerCase());
+          if (!target) {
+            toolResults.push(`Task "${idOrText}" not found.`);
+          } else if (target.locked) {
+            emitSystemMessage(io, roomName, `[System] ${agent.name} tried to remove locked task — denied.`);
+            toolResults.push(`Task "${target.text}" is locked and cannot be removed.`);
+          } else {
+            const filtered = taskList.filter((t) => t.id !== target.id);
+            await Data.llmAgent.update(agent.id, { tasks: filtered.length > 0 ? JSON.stringify(filtered) : null });
+            currentAgent = (await Data.llmAgent.findById(agent.id))!;
+            emitSystemMessage(io, roomName, `[${agent.name} removed task [${target.id}]: "${target.text}"]`);
+            toolResults.push(`Task removed [${target.id}]: "${target.text}"`);
+          }
+        }
+
         // Process autopilot control commands
         if (toggleAutoMatches.length > 0) {
           const lastToggle = toggleAutoMatches[toggleAutoMatches.length - 1][1].toLowerCase();
@@ -1719,7 +1905,7 @@ const runAgentResponse = async (
         }
 
         // Emit agent_updated so UI stays in sync
-        const selfModCount = addMemMatches.length + rmMemMatches.length + addInstMatches.length + rmInstMatches.length + addAutoMatches.length + rmAutoMatches.length + setPlanMatches.length + clearPlanMatches.length + setIntervalMatches.length + toggleAutoMatches.length + setTokensMatches.length + setEffortMatches.length;
+        const selfModCount = addMemMatches.length + rmMemMatches.length + addInstMatches.length + rmInstMatches.length + addAutoMatches.length + rmAutoMatches.length + setPlanMatches.length + clearPlanMatches.length + addTaskMatches.length + completeTaskMatches.length + updateTaskMatches.length + removeTaskMatches.length + setIntervalMatches.length + toggleAutoMatches.length + setTokensMatches.length + setEffortMatches.length;
         if (currentAgent && selfModCount > 0) {
           const roomEntry = Array.from(activeRooms.entries()).find(([, r]) => r.id === roomId);
           if (roomEntry) {
