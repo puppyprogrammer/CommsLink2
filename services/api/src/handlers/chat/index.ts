@@ -161,10 +161,13 @@ const executeClaudePrompt = (
 
     machineSocket.once(`claude_pty_response:${execId}`, handler);
 
+    // Inject project context preamble so Claude reads docs before making changes
+    const preamble = `IMPORTANT: Before making any code changes, read CLAUDE.md, CLAUDEBackend.md, and CLAUDEFrontend.md in the project root for coding standards. Always run the build/compile check after editing files to catch errors before responding.\n\n`;
+
     // Route through the PTY with collectResponse mode
     machineSocket.emit('claude_session_input', {
       sessionKey,
-      input: prompt,
+      input: preamble + prompt,
       approved,
       collectResponse: true,
       execId,
