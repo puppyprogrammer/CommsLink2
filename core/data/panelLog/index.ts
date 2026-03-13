@@ -12,7 +12,7 @@ const create = async (data: CreatePanelLogDTO) => {
   return prisma.panel_log.create({ data });
 };
 
-const findRecent = async (roomId: string, tab: string, limit = 150) => {
+const findRecent = async (roomId: string, tab: string, limit = 500) => {
   const rows = await prisma.panel_log.findMany({
     where: { room_id: roomId, tab },
     orderBy: { created_at: 'desc' },
