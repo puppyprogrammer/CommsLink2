@@ -1,0 +1,61 @@
+@use '/styles/colorVariables.scss';
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: #1a1a2e;
+  border-radius: 8px;
+  border: 1px solid #2a2a4a;
+}
+
+.presetRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.jointList {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.jointItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #aaa;
+}
+
+.jointName {
+  flex: 1;
+  color: #63c5c0;
+  font-weight: 600;
+}
+
+.sliderGroup {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sliderLabel {
+  font-size: 0.65rem;
+  color: #666;
+  width: 12px;
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

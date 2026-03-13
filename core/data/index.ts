@@ -17,7 +17,8 @@ import roomMember from './roomMember';
 import paymentTransaction from './paymentTransaction';
 import watchlistItem from './watchlistItem';
 import panelLog from './panelLog';
+import hologramAvatar from './hologramAvatar';
 
-const Data = { user, room, thread, post, message, dailyStats, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, scheduledJob, claudeLog, roomMember, paymentTransaction, watchlistItem, panelLog };
+const Data = { user, room, thread, post, message, dailyStats, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, scheduledJob, claudeLog, roomMember, paymentTransaction, watchlistItem, panelLog, hologramAvatar };
 
 export default Data;

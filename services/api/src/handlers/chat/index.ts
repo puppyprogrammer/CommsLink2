@@ -16,6 +16,10 @@ import prisma from '../../../../../core/adapters/prisma';
 import dayjs from '../../../../../core/lib/dayjs';
 
 import terminalSecurity from '../../../../../core/adapters/terminalSecurity';
+import createAvatarAction from '../../../../../core/actions/hologramAvatar/createAvatarAction';
+import updatePoseAction from '../../../../../core/actions/hologramAvatar/updatePoseAction';
+import removeAvatarAction from '../../../../../core/actions/hologramAvatar/removeAvatarAction';
+import loadAvatarsAction from '../../../../../core/actions/hologramAvatar/loadAvatarsAction';
 
 import type { JwtPayload } from '../../../../../core/helpers/jwt';
 import type { ConnectedUser, ActiveRoom, RoomListItem } from '../../../../../core/interfaces/room';
@@ -4181,6 +4185,96 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         else if (entry.service === 'ec2') spending.ec2 = entry.total_cost_usd;
       }
       socket.emit('spending_estimate', spending);
+    });
+
+    // ┌──────────────────────────────────────────┐
+    // │ Hologram Avatars                        │
+    // └──────────────────────────────────────────┘
+
+    socket.on('hologram_create', async (data: { label: string; skeleton: unknown; points: unknown; physics?: boolean }) => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      const roomId = getRoomId(user.currentRoom);
+      if (!roomId) return;
+
+      try {
+        const avatar = await createAvatarAction({
+          roomId,
+          userId: socket.user.id,
+          label: data.label,
+          skeleton: data.skeleton,
+          points: data.points,
+          physics: data.physics,
+        });
+
+        io.to(user.currentRoom).emit('hologram_spawned', {
+          id: avatar.id,
+          userId: socket.user.id,
+          username: socket.user.username,
+          label: avatar.label,
+          skeleton: avatar.skeleton,
+          points: avatar.points,
+          pose: avatar.pose,
+          physics: avatar.physics,
+        });
+      } catch (err) {
+        socket.emit('agent_error', { error: `Hologram create failed: ${(err as Error).message}` });
+      }
+    });
+
+    socket.on('hologram_pose', async (data: { avatarId: string; pose: unknown }) => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      try {
+        await updatePoseAction(data.avatarId, socket.user.id, data.pose);
+
+        // Broadcast pose to everyone else in room (skip DB read for perf)
+        socket.to(user.currentRoom).emit('hologram_pose_update', {
+          avatarId: data.avatarId,
+          pose: data.pose,
+        });
+      } catch (err) {
+        socket.emit('agent_error', { error: `Hologram pose failed: ${(err as Error).message}` });
+      }
+    });
+
+    socket.on('hologram_remove', async (data: { avatarId: string }) => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      try {
+        await removeAvatarAction(data.avatarId, socket.user.id);
+        io.to(user.currentRoom).emit('hologram_removed', { avatarId: data.avatarId });
+      } catch (err) {
+        socket.emit('agent_error', { error: `Hologram remove failed: ${(err as Error).message}` });
+      }
+    });
+
+    socket.on('hologram_load', async () => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      const roomId = getRoomId(user.currentRoom);
+      if (!roomId) return;
+
+      try {
+        const avatars = await loadAvatarsAction(roomId);
+        socket.emit('hologram_list', {
+          avatars: avatars.map((a) => ({
+            id: a.id,
+            userId: a.user_id,
+            label: a.label,
+            skeleton: a.skeleton,
+            points: a.points,
+            pose: a.pose,
+            physics: a.physics,
+          })),
+        });
+      } catch (err) {
+        socket.emit('agent_error', { error: `Hologram load failed: ${(err as Error).message}` });
+      }
     });
 
     // ┌──────────────────────────────────────────┐

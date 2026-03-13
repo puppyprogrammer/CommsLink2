@@ -61,10 +61,13 @@ import WebBrowserPanel from '@/components/WebBrowserPanel';
 import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
 import WatchlistPanel from '@/components/WatchlistPanel';
+import HologramViewer from '@/components/HologramViewer';
+import HologramEditor from '@/components/HologramEditor';
 import ResizeHandle from '@/components/ResizeHandle';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import PlaylistPlayIcon from '@mui/icons-material/PlaylistPlay';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import ViewInArIcon from '@mui/icons-material/ViewInAr';
 
 // Models
 import type { ChatMessage, Room, WatchPartyState } from '@/models/chat';
@@ -105,6 +108,20 @@ const ChatPage = () => {
   const [terminalWidth, setTerminalWidth] = useState(600);
   const [watchlistWidth, setWatchlistWidth] = useState(500);
   const [webPanelWidth, setWebPanelWidth] = useState(600);
+  const [hologramPanelOpen, setHologramPanelOpen] = useState(false);
+  const [hologramEditorOpen, setHologramEditorOpen] = useState(false);
+  const [hologramAvatars, setHologramAvatars] = useState<
+    {
+      id: string;
+      userId: string;
+      label: string;
+      skeleton: unknown[];
+      points: unknown[];
+      pose: unknown;
+      physics: boolean;
+    }[]
+  >([]);
+  const [hologramWidth, setHologramWidth] = useState(400);
   const [panelMachines, setPanelMachines] = useState<{ id: string; name: string; status: string; os?: string }[]>([]);
   const socketInstanceRef = useRef<ReturnType<typeof getSocket> | null>(null);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
@@ -228,7 +245,9 @@ const ChatPage = () => {
         setPasswordDialogOpen(false);
         setRoomPassword('');
         setRoomError('');
+        setHologramAvatars([]);
         stopTTS();
+        socket.emit('hologram_load');
       },
     );
 
@@ -320,6 +339,51 @@ const ChatPage = () => {
       audioQueue.setVolume(data.volume);
       updatePreference('volume', data.volume);
     });
+
+    // Hologram avatar events
+    socket.on(
+      'hologram_spawned',
+      (data: {
+        id: string;
+        userId: string;
+        username: string;
+        label: string;
+        skeleton: unknown[];
+        points: unknown[];
+        pose: unknown;
+        physics: boolean;
+      }) => {
+        setHologramAvatars((prev) => {
+          const filtered = prev.filter((a) => a.id !== data.id && a.userId !== data.userId);
+          return [...filtered, data];
+        });
+      },
+    );
+
+    socket.on('hologram_pose_update', (data: { avatarId: string; pose: unknown }) => {
+      setHologramAvatars((prev) => prev.map((a) => (a.id === data.avatarId ? { ...a, pose: data.pose } : a)));
+    });
+
+    socket.on('hologram_removed', (data: { avatarId: string }) => {
+      setHologramAvatars((prev) => prev.filter((a) => a.id !== data.avatarId));
+    });
+
+    socket.on(
+      'hologram_list',
+      (data: {
+        avatars: {
+          id: string;
+          userId: string;
+          label: string;
+          skeleton: unknown[];
+          points: unknown[];
+          pose: unknown;
+          physics: boolean;
+        }[];
+      }) => {
+        setHologramAvatars(data.avatars);
+      },
+    );
 
     // Connect after all listeners are registered so we don't miss initial events
     if (!socket.connected) {
@@ -699,6 +763,14 @@ const ChatPage = () => {
               </IconButton>
               <IconButton
                 size="small"
+                color={hologramPanelOpen ? 'primary' : 'default'}
+                onClick={() => setHologramPanelOpen((prev) => !prev)}
+                title="Hologram Avatars"
+              >
+                <ViewInArIcon />
+              </IconButton>
+              <IconButton
+                size="small"
                 color={settingsOpen ? 'primary' : 'default'}
                 onClick={() => setSettingsOpen((prev) => !prev)}
                 title="Voice Settings"
@@ -1029,6 +1101,75 @@ const ChatPage = () => {
               }}
             >
               <WebBrowserPanel data={webPanelData} onClose={() => setWebPanelOpen(false)} />
+            </div>
+          </>
+        )}
+        {hologramPanelOpen && (
+          <>
+            <ResizeHandle onResize={(d) => setHologramWidth((w) => Math.max(250, Math.min(800, w + d)))} />
+            <div
+              style={{
+                width: hologramWidth,
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                gap: 8,
+                padding: 8,
+              }}
+            >
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="subtitle2" sx={{ color: '#63c5c0', fontFamily: "'Orbitron', monospace" }}>
+                  Holograms
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setHologramEditorOpen((prev) => !prev)}
+                    sx={{ fontSize: '0.65rem' }}
+                  >
+                    {hologramEditorOpen ? 'Close Editor' : 'New Avatar'}
+                  </Button>
+                  <IconButton size="small" onClick={() => setHologramPanelOpen(false)} title="Close">
+                    <Typography variant="caption" sx={{ color: '#888' }}>
+                      ✕
+                    </Typography>
+                  </IconButton>
+                </Box>
+              </Box>
+              {hologramEditorOpen && (
+                <HologramEditor
+                  onSave={(data) => {
+                    const socket = socketInstanceRef.current;
+                    if (socket) {
+                      socket.emit('hologram_create', data);
+                    }
+                    setHologramEditorOpen(false);
+                  }}
+                  onCancel={() => setHologramEditorOpen(false)}
+                />
+              )}
+              <div style={{ flex: 1, minHeight: 250 }}>
+                <HologramViewer avatars={hologramAvatars as Parameters<typeof HologramViewer>[0]['avatars']} />
+              </div>
+              {hologramAvatars
+                .filter((a) => a.userId === session?.user?.id)
+                .map((a) => (
+                  <Button
+                    key={a.id}
+                    size="small"
+                    variant="text"
+                    color="error"
+                    onClick={() => {
+                      const socket = socketInstanceRef.current;
+                      if (socket) socket.emit('hologram_remove', { avatarId: a.id });
+                    }}
+                    sx={{ fontSize: '0.65rem' }}
+                  >
+                    Remove &quot;{a.label}&quot;
+                  </Button>
+                ))}
             </div>
           </>
         )}

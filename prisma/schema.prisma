@@ -83,6 +83,7 @@ model room {
   machine_permissions machine_permission[]
   scheduled_jobs      scheduled_job[]
   members             room_member[]
+  hologram_avatars     hologram_avatar[]
 
   @@index([name])
 }
@@ -350,6 +351,24 @@ model panel_log {
 enum WatchStatus {
   UNWATCHED
   WATCHED
+}
+
+model hologram_avatar {
+  id         String   @id @default(uuid())
+  room_id    String
+  user_id    String
+  label      String
+  skeleton   Json     // Array of { id, position, parent_id } joint definitions
+  points     Json     // Array of { joint_id, offset, color, size } point configs
+  pose       Json?    // Current pose: { joints: { id: { rx, ry, rz } } }
+  physics    Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  room room @relation(fields: [room_id], references: [id], onDelete: Cascade)
+
+  @@unique([room_id, user_id])
+  @@index([room_id])
 }
 
 model watchlist_item {
