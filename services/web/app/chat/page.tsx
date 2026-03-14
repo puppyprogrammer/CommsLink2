@@ -125,6 +125,7 @@ const ChatPage = () => {
     }[]
   >([]);
   const [hologramWidth, setHologramWidth] = useState(400);
+  const [holoDebug, setHoloDebug] = useState(false);
   const [hologramEditorOpen, setHologramEditorOpen] = useState(false);
   const [forumPanelOpen, setForumPanelOpen] = useState(false);
   const [forumPanelWidth, setForumPanelWidth] = useState(400);
@@ -433,6 +434,10 @@ const ChatPage = () => {
         setHologramAvatars(data.avatars);
       },
     );
+
+    socket.on('holo_debug', (data: { mode: string }) => {
+      setHoloDebug((prev) => (data.mode === 'toggle' ? !prev : data.mode === 'on'));
+    });
 
     // AI {look} command — screenshot the page and send back
     socket.on('screenshot_request', async (data: { requestId: string }) => {
@@ -1326,6 +1331,7 @@ const ChatPage = () => {
                 <HologramViewer
                   avatars={hologramAvatars as Parameters<typeof HologramViewer>[0]['avatars']}
                   visemeStates={visemeStates}
+                  debugEnabled={holoDebug}
                 />
               </div>
             </div>

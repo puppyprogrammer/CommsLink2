@@ -135,6 +135,7 @@ type VisemeState = {
 type HologramViewerProps = {
   avatars: AvatarData[];
   visemeStates?: Map<string, VisemeState>; // keyed by avatar label (agent name)
+  debugEnabled?: boolean;
 };
 
 // ── Constants ──────────────────────────────────────────
@@ -661,7 +662,7 @@ const isUpperLip = (offset: [number, number, number]): boolean =>
 const isLowerLip = (offset: [number, number, number]): boolean =>
   offset[1] >= 0.05 && offset[1] <= 0.065 && offset[2] >= 0.024 && offset[2] <= 0.034;
 
-const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }) => {
+const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates, debugEnabled }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -694,6 +695,30 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
   if (visemeStates) {
     visemeStatesRef.current = visemeStates;
   }
+
+  // Sync debugEnabled prop with debugModeRef and apply debug colors
+  useEffect(() => {
+    if (debugEnabled === undefined) return;
+    if (debugEnabled === debugModeRef.current) return;
+    debugModeRef.current = debugEnabled;
+    const tempColor = new THREE.Color();
+    for (const [avatarId, instMesh] of instancedMeshRef.current) {
+      const avatar = avatarsRef.current.find((a) => a.id === avatarId);
+      if (!avatar) continue;
+      const colorAttr = instMesh.geometry.getAttribute('instanceColor') as THREE.InstancedBufferAttribute;
+      if (!colorAttr) continue;
+      for (let i = 0; i < avatar.points.length; i++) {
+        const point = avatar.points[i];
+        const hex = debugEnabled
+          ? (DEBUG_COLORS[point.joint_id] || '#44cc66')
+          : (point.color || `#${HOLOGRAM_COLOR.toString(16)}`);
+        tempColor.set(hex);
+        colorAttr.setXYZ(i * 2, tempColor.r, tempColor.g, tempColor.b);
+        colorAttr.setXYZ(i * 2 + 1, tempColor.r, tempColor.g, tempColor.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+  }, [debugEnabled]);
 
   // Shared instanced sphere geometry for all point rendering
   const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.008, 5, 4), []);

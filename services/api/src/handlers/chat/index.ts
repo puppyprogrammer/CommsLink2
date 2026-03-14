@@ -2489,8 +2489,9 @@ const WEB_FORWARD_REGEX = /\{web_forward\}/g;
 const WEB_EXTRACT_REGEX = /\{web_extract\}/g;
 const WEB_WAIT_REGEX = /\{web_wait\s+(\d+)\}/g;
 const WEB_CLOSE_REGEX = /\{web_close\}/g;
+const HOLO_DEBUG_REGEX = /\{holo_debug\s+(on|off|toggle)\}/gi;
 const ALL_COMMAND_REGEX =
-  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close|holo_debug)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -2883,6 +2884,9 @@ const runAgentResponse = async (
       const uiCommandMatches = selfmodOn
         ? [...responseText.matchAll(UI_COMMAND_REGEX)]
         : [];
+      const holoDebugMatches = selfmodOn
+        ? [...responseText.matchAll(HOLO_DEBUG_REGEX)]
+        : [];
       const setIntervalMatches = autopilotCtrlOn
         ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)]
         : [];
@@ -3037,6 +3041,7 @@ const runAgentResponse = async (
           avatarEmotionMatches.length +
           lookMatches.length +
           uiCommandMatches.length +
+          holoDebugMatches.length +
           setIntervalMatches.length +
           toggleAutoMatches.length +
           setTokensMatches.length +
@@ -3638,6 +3643,13 @@ const runAgentResponse = async (
             `[${agent.name} UI]: ${action} ${panel} panel`,
           );
           toolResults.push(`UI: ${action} ${panel} panel.`);
+        }
+
+        // Process {holo_debug} — toggle hologram debug colors
+        for (const match of holoDebugMatches) {
+          const arg = match[1].toLowerCase();
+          io.to(roomName).emit("holo_debug", { mode: arg });
+          toolResults.push(`Hologram debug: ${arg}.`);
         }
 
         // Process {look} commands — screenshot + Grok vision
