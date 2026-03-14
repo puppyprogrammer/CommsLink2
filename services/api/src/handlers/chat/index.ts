@@ -8254,16 +8254,19 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             // Non-fatal — avatar works without morphs
           }
 
+          const parseJson = (v: unknown): unknown =>
+            typeof v === "string" ? JSON.parse(v) : v;
+
           io.to(user.currentRoom).emit("hologram_spawned", {
             id: avatar.id,
             userId: socket.user.id,
             username: socket.user.username,
             label: avatar.label,
-            skeleton: avatar.skeleton,
-            points: avatar.points,
-            pose: avatar.pose,
+            skeleton: parseJson(avatar.skeleton),
+            points: parseJson(avatar.points),
+            pose: parseJson(avatar.pose),
             physics: avatar.physics,
-            morphTargets: morphTargets,
+            morphTargets: parseJson(morphTargets),
           });
         } catch (err) {
           socket.emit("agent_error", {
@@ -8353,16 +8356,18 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       try {
         const avatars = await loadAvatarsAction(roomId);
+        const parseJson = (v: unknown): unknown =>
+          typeof v === "string" ? JSON.parse(v) : v;
         socket.emit("hologram_list", {
           avatars: avatars.map((a) => ({
             id: a.id,
             userId: a.user_id,
             label: a.label,
-            skeleton: a.skeleton,
-            points: a.points,
-            pose: a.pose,
+            skeleton: parseJson(a.skeleton),
+            points: parseJson(a.points),
+            pose: parseJson(a.pose),
             physics: a.physics,
-            morphTargets: a.morph_targets,
+            morphTargets: parseJson(a.morph_targets),
           })),
         });
       } catch (err) {
