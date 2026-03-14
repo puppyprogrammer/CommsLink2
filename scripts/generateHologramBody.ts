@@ -35,39 +35,63 @@ const COL = {
   lip: '#6de0da',
 };
 
+// Debug colors per joint group (Palaron scheme)
+const DEBUG = {
+  legs: '#ff69b4',     // pink — hips, knees, feet, toes
+  arms: '#4488ff',     // blue — elbows, hands/forearms
+  headNeck: '#ffdd44', // yellow — head, neck, shoulders
+  torso: '#44cc66',    // green — root, spine, chest/stomach
+};
+
+/** Map joint_id → debug color */
+function debugColor(jointId: string): string {
+  if (['head', 'neck', 'l_shoulder', 'r_shoulder'].includes(jointId)) return DEBUG.headNeck;
+  if (['l_elbow', 'r_elbow', 'l_hand', 'r_hand'].includes(jointId)) return DEBUG.arms;
+  if (['l_hip', 'r_hip', 'l_knee', 'r_knee', 'l_foot', 'r_foot', 'l_toe', 'r_toe'].includes(jointId)) return DEBUG.legs;
+  return DEBUG.torso; // root, spine, chest
+}
+
 // ══════════════════════════════════════════════════════════════
 // JOINT WORLD POSITIONS — resolved from DB skeleton via FK
 // DB skeleton: root is absolute, all others are relative to parent.
 //
+// PROPORTIONS (v2 — realistic):
+//   Total height: feet(-0.7) to head top(~0.70) = 1.40 units
+//   Legs = 50% of total height (0.70 units)
+//   Torso (root→neck) shortened ~31% (was 0.70, now 0.48)
+//   Neck shortened ~33% (was 0.15, now 0.10)
+//   Thigh (0.36) slightly > lower leg (0.34)
+//   Knee at midpoint: hip+(-0.36), so halfway = -0.35 ≈ ok
+//
 // root:       [0, 0, 0]       (absolute)
-// spine:      root + [0, 0.3, 0]        = [0, 0.3, 0]
-// chest:      spine + [0, 0.25, 0]      = [0, 0.55, 0]
-// neck:       chest + [0, 0.15, 0]      = [0, 0.7, 0]
-// head:       neck + [0, 0.15, 0]       = [0, 0.85, 0]
-// l_shoulder: chest + [-0.15, 0, 0]     = [-0.15, 0.55, 0]
-// l_elbow:    l_shoulder + [0, -0.2, 0] = [-0.15, 0.35, 0]
-// l_hand:     l_elbow + [0, -0.18, 0]   = [-0.15, 0.17, 0]
-// l_hip:      root + [-0.1, 0, 0]       = [-0.1, 0, 0]
-// l_knee:     l_hip + [0, -0.35, 0]     = [-0.1, -0.35, 0]
-// l_foot:     l_knee + [0, -0.35, 0]    = [-0.1, -0.7, 0]
+// spine:      root + [0, 0.20, 0]        = [0, 0.20, 0]
+// chest:      spine + [0, 0.18, 0]       = [0, 0.38, 0]
+// neck:       chest + [0, 0.10, 0]       = [0, 0.48, 0]
+// head:       neck + [0, 0.10, 0]        = [0, 0.58, 0]
+// l_shoulder: chest + [-0.15, 0, 0]      = [-0.15, 0.38, 0]
+// l_elbow:    l_shoulder + [0, -0.16, 0] = [-0.15, 0.22, 0]
+// l_hand:     l_elbow + [0, -0.14, 0]    = [-0.15, 0.08, 0]
+// l_hip:      root + [-0.1, 0, 0]        = [-0.1, 0, 0]
+// l_knee:     l_hip + [0, -0.36, 0]      = [-0.1, -0.36, 0]
+// l_foot:     l_knee + [0, -0.34, 0]     = [-0.1, -0.7, 0]
 // ══════════════════════════════════════════════════════════════
 
 const JOINTS: Record<string, [number, number, number]> = {
   root: [0, 0, 0],
-  spine: [0, 0.3, 0],
-  chest: [0, 0.55, 0],
-  neck: [0, 0.7, 0],
-  head: [0, 0.85, 0],
-  l_shoulder: [-0.15, 0.55, 0],
-  r_shoulder: [0.15, 0.55, 0],
-  l_elbow: [-0.15, 0.35, 0],
-  r_elbow: [0.15, 0.35, 0],
-  l_hand: [-0.15, 0.17, 0],
-  r_hand: [0.15, 0.17, 0],
+  spine: [0, 0.20, 0],
+  chest: [0, 0.38, 0],
+  neck: [0, 0.48, 0],
+  head: [0, 0.58, 0],
+  l_shoulder: [-0.15, 0.38, 0],
+  r_shoulder: [0.15, 0.38, 0],
+  l_elbow: [-0.15, 0.22, 0],
+  r_elbow: [0.15, 0.22, 0],
+  l_hand: [-0.15, 0.08, 0],
+  r_hand: [0.15, 0.08, 0],
   l_hip: [-0.1, 0, 0],
   r_hip: [0.1, 0, 0],
-  l_knee: [-0.1, -0.35, 0],
-  r_knee: [0.1, -0.35, 0],
+  l_knee: [-0.1, -0.36, 0],
+  r_knee: [0.1, -0.36, 0],
   l_foot: [-0.1, -0.7, 0],
   r_foot: [0.1, -0.7, 0],
 };
@@ -128,10 +152,10 @@ function ellipsoid(
 }
 
 // ══════════════════════════════════════════════════════════════
-// CROSS-SECTION DEFINITIONS — Torso
+// CROSS-SECTION DEFINITIONS — Torso (v2 proportions)
 // All Y values are absolute world coordinates matching the skeleton.
-// Figure spans from Y=-0.7 (feet) to Y=0.93 (top of head).
-// Root/hips at Y=0, chest at Y=0.55, neck at Y=0.7, head at Y=0.85.
+// Figure spans from Y=-0.7 (feet) to Y≈0.70 (top of head).
+// Root/hips at Y=0, chest at Y=0.38, neck at Y=0.48, head at Y=0.58.
 // ══════════════════════════════════════════════════════════════
 
 type Section = {
@@ -150,29 +174,29 @@ const sections: Section[] = [
   // Hip bone (widest)
   { y: 0.06, w: 0.110 * S, d: 0.080 * S, joint: 'root' },
   // Above hips — start narrowing
-  { y: 0.12, w: 0.095 * S, d: 0.070 * S, joint: 'root' },
+  { y: 0.10, w: 0.095 * S, d: 0.070 * S, joint: 'root' },
   // Navel
-  { y: 0.18, w: 0.085 * S, d: 0.065 * S, joint: 'spine' },
+  { y: 0.14, w: 0.085 * S, d: 0.065 * S, joint: 'spine' },
   // Natural waist (narrowest — exaggerated for feminine silhouette)
-  { y: 0.25, w: 0.062 * S, d: 0.052 * S, joint: 'spine' },
-  // Above waist
-  { y: 0.33, w: 0.075 * S, d: 0.058 * S, joint: 'chest' },
-  // Under-bust / ribcage
-  { y: 0.38, w: 0.085 * S, d: 0.062 * S, joint: 'chest' },
+  { y: 0.19, w: 0.062 * S, d: 0.052 * S, joint: 'spine' },
+  // Above waist / ribcage
+  { y: 0.24, w: 0.075 * S, d: 0.058 * S, joint: 'chest' },
+  // Under-bust
+  { y: 0.28, w: 0.085 * S, d: 0.062 * S, joint: 'chest' },
   // Bust line
-  { y: 0.45, w: 0.100 * S, d: 0.072 * S, joint: 'chest', bust: 0.025 * S },
+  { y: 0.32, w: 0.100 * S, d: 0.072 * S, joint: 'chest', bust: 0.025 * S },
   // Above bust
-  { y: 0.50, w: 0.095 * S, d: 0.065 * S, joint: 'chest', bust: 0.008 * S },
-  // Armpit / upper chest
-  { y: 0.52, w: 0.095 * S, d: 0.060 * S, joint: 'chest' },
-  // Shoulder line (matches chest joint Y=0.55)
-  { y: 0.55, w: 0.110 * S, d: 0.055 * S, joint: 'chest' },
+  { y: 0.35, w: 0.095 * S, d: 0.065 * S, joint: 'chest', bust: 0.008 * S },
+  // Armpit / upper chest (matches chest joint Y=0.38)
+  { y: 0.37, w: 0.095 * S, d: 0.060 * S, joint: 'chest' },
+  // Shoulder line
+  { y: 0.38, w: 0.110 * S, d: 0.055 * S, joint: 'chest' },
   // Neck base / collarbone
-  { y: 0.60, w: 0.060 * S, d: 0.040 * S, joint: 'neck' },
+  { y: 0.42, w: 0.060 * S, d: 0.040 * S, joint: 'neck' },
   // Mid neck
-  { y: 0.65, w: 0.028 * S, d: 0.028 * S, joint: 'neck' },
+  { y: 0.46, w: 0.028 * S, d: 0.028 * S, joint: 'neck' },
   // Upper neck
-  { y: 0.68, w: 0.025 * S, d: 0.025 * S, joint: 'neck' },
+  { y: 0.48, w: 0.025 * S, d: 0.025 * S, joint: 'neck' },
 ];
 
 /** Evaluate the torso profile at any Y using Catmull-Rom */
@@ -295,7 +319,8 @@ for (let i = 0; i < 3500; i++) {
 
 // ══════════════════════════════════════════════════════════════
 // LEGS — Elliptical tube cross-sections
-// Hip Y=0, Knee Y=-0.35, Foot Y=-0.7
+// Hip Y=0, Knee Y=-0.36, Foot Y=-0.7
+// Thigh (0.36) slightly > lower leg (0.34)
 // ══════════════════════════════════════════════════════════════
 
 type EllipseSection = { y: number; cx: number; rw: number; rd: number };
@@ -338,7 +363,7 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
   const hipX = side * legCenterX;
   const kneeX = side * 0.1;
   const ankleX = side * 0.1;
-  const kneeY = -0.35;
+  const kneeY = -0.36;
   const footY = -0.7;
 
   const thighSections: EllipseSection[] = [
@@ -377,12 +402,12 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
 for (const sx of [-1, 1]) {
   const shX = sx * 0.15;
   const shJoint = sx === -1 ? 'l_shoulder' : 'r_shoulder';
-  ellipsoid(shX, 0.55, 0, 0.042, 0.025, 0.035, 300, shJoint, 0.38, COL.body);
+  ellipsoid(shX, 0.38, 0, 0.042, 0.025, 0.035, 300, shJoint, 0.38, COL.body);
 }
 
 // ══════════════════════════════════════════════════════════════
 // ARMS — Elliptical tubes
-// Shoulders at Y=0.55, elbows at Y=0.35, hands at Y=0.17
+// Shoulders at Y=0.38, elbows at Y=0.22, hands at Y=0.08
 // All at X=±0.15
 // ══════════════════════════════════════════════════════════════
 
@@ -391,11 +416,11 @@ for (const [side, shJoint, elJoint, haJoint] of [
   [1, 'r_shoulder', 'r_elbow', 'r_hand'],
 ] as const) {
   const shoulderX = side * 0.15;
-  const shoulderY = 0.55;
+  const shoulderY = 0.38;
   const elbowX = side * 0.15;
-  const elbowY = 0.35;
+  const elbowY = 0.22;
   const wristX = side * 0.15;
-  const wristY = 0.17;
+  const wristY = 0.08;
 
   const upperArmSections: EllipseSection[] = [
     { y: shoulderY, cx: shoulderX, rw: 0.038, rd: 0.033 },
@@ -434,20 +459,20 @@ for (const [side, shJoint, elJoint, haJoint] of [
 
 // ══════════════════════════════════════════════════════════════
 // NECK-TO-HEAD CONNECTOR — fills the gap between upper neck
-// (Y=0.68) and the bottom of the skull (~Y=0.82)
+// (Y=0.48) and the bottom of the skull (~Y=0.56)
 // ══════════════════════════════════════════════════════════════
 const neckConnectorSecs: EllipseSection[] = [
-  { y: 0.68, cx: 0, rw: 0.025 * S, rd: 0.025 * S },
-  { y: 0.73, cx: 0, rw: 0.024 * S, rd: 0.024 * S },
-  { y: 0.78, cx: 0, rw: 0.026 * S, rd: 0.027 * S },
-  { y: 0.82, cx: 0, rw: 0.030 * S, rd: 0.030 * S },
+  { y: 0.48, cx: 0, rw: 0.025 * S, rd: 0.025 * S },
+  { y: 0.51, cx: 0, rw: 0.024 * S, rd: 0.024 * S },
+  { y: 0.54, cx: 0, rw: 0.026 * S, rd: 0.027 * S },
+  { y: 0.56, cx: 0, rw: 0.030 * S, rd: 0.030 * S },
 ];
 sampleEllipticalLimb(neckConnectorSecs, 600, 'head');
 
 // ══════════════════════════════════════════════════════════════
-// HEAD — centered at Y=0.93 (head joint at 0.85 + 0.08 offset)
+// HEAD — centered at Y=0.66 (head joint at 0.58 + 0.08 offset)
 // ══════════════════════════════════════════════════════════════
-const headJY = 0.85;
+const headJY = 0.58;
 const headCY = headJY + 0.08;
 const headW = 0.085 * S / 2;
 const headD = 0.095 * S / 2;
@@ -509,6 +534,8 @@ for (const side of [-1, 1]) {
 // OUTPUT
 // ══════════════════════════════════════════════════════════════
 
+const useDebugColors = process.argv.includes('--debug-colors');
+
 const cleaned = points.map((p) => ({
   joint_id: p.joint_id,
   offset: [
@@ -517,7 +544,7 @@ const cleaned = points.map((p) => ({
     Math.round(p.offset[2] * 10000) / 10000,
   ] as [number, number, number],
   size: Math.round(p.size * 100) / 100,
-  color: p.color,
+  color: useDebugColors ? debugColor(p.joint_id) : p.color,
 }));
 
 const byJoint: Record<string, number> = {};

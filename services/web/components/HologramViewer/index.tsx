@@ -145,6 +145,15 @@ const GRID_COLOR = 0x1a3a38;
 const MAX_POINT_INSTANCES = 80000;
 const MORPH_LERP_SPEED = 4.0; // Weight units per second for smooth transitions
 
+// Debug color map: joint_id → hex color (pink=legs, blue=arms, green=torso, yellow=head/neck/shoulders)
+const DEBUG_COLORS: Record<string, string> = {};
+['l_hip', 'r_hip', 'l_knee', 'r_knee', 'l_foot', 'r_foot', 'l_toe', 'r_toe'].forEach(
+  (j) => (DEBUG_COLORS[j] = '#ff69b4'),
+);
+['l_elbow', 'r_elbow', 'l_hand', 'r_hand'].forEach((j) => (DEBUG_COLORS[j] = '#4488ff'));
+['head', 'neck', 'l_shoulder', 'r_shoulder'].forEach((j) => (DEBUG_COLORS[j] = '#ffdd44'));
+['root', 'spine', 'chest', 'pelvis'].forEach((j) => (DEBUG_COLORS[j] = '#44cc66'));
+
 // ── Particle Hair System ─────────────────────────────────
 // Volumetric particle hair: scalp cap + swept-back flow + ponytail
 // Rendered as THREE.Points with shader-based sway animation
@@ -677,6 +686,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
   >(new Map());
   const hairSystemsRef = useRef<Map<string, HairParticleSystem>>(new Map());
   const visemeStatesRef = useRef<Map<string, VisemeState>>(new Map());
+  const debugModeRef = useRef(false);
   const avatarsRef = useRef<AvatarData[]>(avatars);
   avatarsRef.current = avatars;
 
@@ -1202,9 +1212,39 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
     const observer = new ResizeObserver(handleResize);
     observer.observe(container);
 
+    // Debug color toggle: press 'D' to toggle per-part debug colors
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'd' || e.key === 'D') {
+        // Don't toggle when typing in an input/textarea
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+        debugModeRef.current = !debugModeRef.current;
+        const tempColor = new THREE.Color();
+        for (const [avatarId, instMesh] of instancedMeshRef.current) {
+          const avatar = avatarsRef.current.find((a) => a.id === avatarId);
+          if (!avatar) continue;
+          const colorAttr = instMesh.geometry.getAttribute('instanceColor') as THREE.InstancedBufferAttribute;
+          if (!colorAttr) continue;
+          for (let i = 0; i < avatar.points.length; i++) {
+            const point = avatar.points[i];
+            const hex = debugModeRef.current
+              ? (DEBUG_COLORS[point.joint_id] || '#44cc66')
+              : (point.color || `#${HOLOGRAM_COLOR.toString(16)}`);
+            tempColor.set(hex);
+            colorAttr.setXYZ(i * 2, tempColor.r, tempColor.g, tempColor.b);
+            colorAttr.setXYZ(i * 2 + 1, tempColor.r, tempColor.g, tempColor.b);
+          }
+          colorAttr.needsUpdate = true;
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       cancelAnimationFrame(frameRef.current);
       observer.disconnect();
+      window.removeEventListener('keydown', handleKeyDown);
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
