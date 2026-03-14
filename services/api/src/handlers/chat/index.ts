@@ -2569,7 +2569,7 @@ const runAgentResponse = async (
   io.to(roomName).emit("agent_typing", { agentName: agent.name });
 
   try {
-    const history = await Data.message.findByRoom(roomId, 50);
+    const history = await Data.message.findByRoom(roomId, 100);
     // Filter out ALL agent system messages (thoughts, status, etc.) — they are for
     // UI display only and must NOT re-enter the context as "user" messages, which
     // causes a feedback loop where the agent sees its own output echoed back.
