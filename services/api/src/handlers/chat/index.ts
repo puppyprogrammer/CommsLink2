@@ -2576,8 +2576,12 @@ const runAgentResponse = async (
     const filteredHistory = history.filter((m) => {
       if (m.type !== "system" || typeof m.content !== "string") return true;
       const c = m.content;
-      // Filter agent's own messages: [AgentName ...], [AgentName's Subconscious ...]
-      if (c.startsWith(`[${agent.name} `) || c.startsWith(`[${agent.name}'s `))
+      // Filter agent's own system noise (thoughts, UI actions, terminal commands, etc.)
+      // but KEEP subconscious messages — agent should read its own coherence feedback
+      if (
+        c.startsWith(`[${agent.name} `) &&
+        !c.startsWith(`[${agent.name}'s Subconscious`)
+      )
         return false;
       // Filter SQL query results (from agent's {sql} commands)
       if (/^SELECT |^INSERT |^UPDATE |^DELETE |^SHOW /i.test(c)) return false;
@@ -2585,8 +2589,6 @@ const runAgentResponse = async (
       if (c.startsWith("[Claude ")) return false;
       // Filter memory system messages
       if (c.startsWith("[Memory]")) return false;
-      // Filter Security Bot messages (agent handles security via terminal)
-      if (c.startsWith("Security Bot:")) return false;
       return true;
     });
 
