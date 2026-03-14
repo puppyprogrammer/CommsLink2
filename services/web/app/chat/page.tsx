@@ -37,7 +37,8 @@ import config from '@/settings/config.json';
 import useSession from '@/lib/session/useSession';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { usePreferences } from '@/lib/state/PreferencesContext';
-import { speak, playAudioBlob, stop as stopTTS, onPlayStateChange } from '@/lib/helpers/tts';
+import { speak, playAudioBlob, playAudioWithVisemes, stop as stopTTS, onPlayStateChange } from '@/lib/helpers/tts';
+import type { VisemeEntry } from '@/lib/helpers/tts';
 import * as speechRecognition from '@/lib/helpers/speechRecognition';
 import * as voiceStream from '@/lib/helpers/voiceStream';
 import * as audioQueue from '@/lib/helpers/audioQueue';
@@ -131,6 +132,7 @@ const ChatPage = () => {
   const socketInstanceRef = useRef<ReturnType<typeof getSocket> | null>(null);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
   const [audioPlaying, setAudioPlaying] = useState(false);
+  const [visemeStates] = useState(() => new Map<string, { viseme: string; weight: number }>());
   const [alarmActive, setAlarmActive] = useState<{ message: string; agentName: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const preferencesRef = useRef(preferences);
@@ -175,7 +177,14 @@ const ChatPage = () => {
 
       // If message has base64 audio (premium TTS from server), play that
       if (msg.audio) {
-        playAudioBlob(msg.audio, prefs.volume);
+        const sender = msg.sender || msg.username || '';
+        if (msg.visemes && (msg.visemes as VisemeEntry[]).length > 0) {
+          playAudioWithVisemes(msg.audio, prefs.volume, msg.visemes as VisemeEntry[], (viseme, weight) => {
+            visemeStates.set(sender, { viseme, weight });
+          });
+        } else {
+          playAudioBlob(msg.audio, prefs.volume);
+        }
         return;
       }
 
@@ -1310,7 +1319,10 @@ const ChatPage = () => {
                 </Box>
               )}
               <div style={{ flex: 1, minHeight: 250 }}>
-                <HologramViewer avatars={hologramAvatars as Parameters<typeof HologramViewer>[0]['avatars']} />
+                <HologramViewer
+                  avatars={hologramAvatars as Parameters<typeof HologramViewer>[0]['avatars']}
+                  visemeStates={visemeStates}
+                />
               </div>
             </div>
           </>

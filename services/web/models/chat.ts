@@ -10,6 +10,7 @@ export type ChatMessage = {
   type?: string;
   audio?: string | null;
   voice?: string | null;
+  visemes?: Array<{ viseme: string; start: number; end: number }> | null;
   pending?: boolean;
   nonce?: string;
   isSystem?: boolean;

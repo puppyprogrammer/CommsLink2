@@ -240,11 +240,41 @@ Kara has recurring bad habits. When she exhibits any of these, **call them out d
 
 ### Current Hologram State (as of 2026-03-14)
 
-- **Body**: 3,301-point feminine humanoid (face with eyes/nose/lips/ears, bob-cut hair, hands with fingers, feet with toes, full body proportions)
+- **Body**: 2,881-point feminine humanoid (face with eyes/nose/lips/ears, scalp coverage dots, hands with fingers, feet with toes, full body proportions)
+- **Hair**: Ponytail — 150 verlet-physics strands (14 segments each), anchored at back of head, additive-blend line rendering with depth-based brightness
 - **Skeleton**: 17 joints (root/spine/chest/neck/head, l/r shoulder/elbow/hand, l/r hip/knee/foot)
-- **Renderer**: Three.js InstancedMesh (up to 8192 instances), GLSL glow shaders, IK solver, morph blending
+- **Renderer**: Three.js InstancedMesh (up to 8192 instances), GLSL glow shaders with depth-based brightness and additive blending, IK solver, morph blending
 - **DB**: `hologram_avatar` table with `skeleton`, `points`, `pose`, `morph_targets`, `ppo_weights` JSON columns
 - **Commands**: `{set_pose joint rx ry rz}`, `{avatar emotion weight}` for morph blends
 - **PPO v1**: Deployed (ppoPolicy.ts, poseBuffer.ts, auraShader.ts) but not yet verified working end-to-end
 - **Vision**: `{look}` command works (uses grok-4-1-fast-non-reasoning for image description)
 - **Key files**: `services/web/components/HologramViewer/index.tsx`, `core/actions/hologramAvatar/`, `scripts/generateHologramBody.ts`
+
+### Hologram Next Steps (implementation roadmap)
+
+These are concrete next features to build, in priority order. When a session picks up hologram work, start from the top of this list.
+
+#### 1. Viseme Lip Sync from TTS (high impact, low cost)
+ElevenLabs already returns character-level timing data via the `/with-timestamps` endpoint — **we currently discard it** at line ~5078 in the chat handler. This is free data we can use for lip sync.
+
+**Pipeline:**
+1. `core/adapters/elevenlabs/index.ts` — already returns `{ audioBase64, alignment }` with `characters[]`, `character_start_times_seconds[]`, `character_end_times_seconds[]`
+2. Create `core/helpers/visemeMapper.ts` — maps characters to 6 viseme shapes (rest/open/narrow/closed/teeth/wide), collapses consecutive duplicates
+3. `services/api/src/handlers/chat/index.ts` — convert alignment → viseme timeline, attach to `chat_message` emit as `visemes` field
+4. `services/web/lib/helpers/tts.ts` — add `playAudioWithVisemes()` that uses `requestAnimationFrame` + `audio.currentTime` to drive viseme state
+5. `services/web/components/HologramViewer/index.tsx` — add `visemeStateRef`, identify lip points by coordinate range (upper: y 0.033-0.040, lower: y 0.024-0.032, both z 0.080-0.090 on head joint), apply Y-offset deltas per viseme shape
+6. `services/web/app/chat/page.tsx` — wire up viseme callback between TTS and HologramViewer
+
+#### 2. Auto-Emotion Detection from AI Text (medium impact)
+Currently emotions only change via explicit `{avatar happy 0.8}` commands. Auto-detect from text instead.
+
+**Pipeline:**
+1. Create `core/helpers/emotionDetector.ts` — keyword/pattern matching (not ML), returns `{ emotion, confidence }`. Happy: "haha/lol/excited/!!", sad: "sorry/unfortunately", angry: "frustrated", etc. Confidence threshold 0.3.
+2. `services/api/src/handlers/chat/index.ts` — after response text extraction, call `detectEmotion()`, emit `hologram_morph_update` if confidence > 0.3, auto-decay to neutral after 12s
+3. Explicit `{avatar}` commands override auto-detection
+
+#### 3. Composite Expressions (eyebrows, head tilt)
+Add `surprised` and `thinking` as composite emotions that blend base emotions + point morphs + head pose:
+- `surprised`: happy(0.3) + eyebrow points Y+0.005 + head tilt back
+- `thinking`: neutral + asymmetric eyebrow + head tilt + slight Y rotation
+Keep `EMOTIONS` array at 4 for PPO binary buffer compat; composites are handled separately in the renderer.

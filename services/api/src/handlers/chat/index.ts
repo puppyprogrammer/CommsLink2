@@ -90,6 +90,44 @@ const agentCoherenceScores = new Map<string, number>(); // agentId -> 1-10 coher
 const agentIntentScores = new Map<string, number>(); // agentId -> 1-10 intent alignment score
 const INTENT_COHERENCE_CYCLE_OFFSET = 3; // Offset from memory coherence (runs on cycle 3, 8, 13... vs memory on 5, 10, 15...)
 
+// Subconscious: Prompt Quality Gate
+const agentPromptGateScores = new Map<string, number>(); // agentId -> last gate score
+const agentPromptGateResults = new Map<string, string>(); // agentId -> last gate feedback message
+
+// Subconscious: Action Repetition Detector
+const agentActionHistory = new Map<
+  string,
+  Array<{ cmd: string; ts: number }>
+>(); // agentId -> ring buffer of recent commands
+const agentRepetitionAlerts = new Map<string, string>(); // agentId -> current alert message
+const REPETITION_BUFFER_SIZE = 20;
+const REPETITION_THRESHOLD = 3; // same command N times = alert
+const REPETITION_WINDOW = 6; // check last N entries
+
+// Subconscious: Social Awareness
+const userLastSpoke = new Map<string, number>(); // "roomId:userId" -> timestamp ms
+
+// Subconscious: Task Tracker
+type TrackedClaudeTask = {
+  id: string;
+  prompt: string; // first 200 chars
+  machine: string;
+  agentId: string;
+  roomName: string;
+  status: "pending" | "completed" | "timeout";
+  sentAt: number;
+  completedAt?: number;
+  responseSummary?: string;
+  announced: boolean;
+};
+const agentClaudeTasks = new Map<string, TrackedClaudeTask[]>(); // agentId -> tasks (max 20 FIFO)
+const agentTaskTrackerSummary = new Map<string, string>(); // agentId -> latest summary for prompt injection
+
+// Subconscious: Learning Extraction
+const agentLastLearningExtraction = new Map<string, number>(); // agentId -> last extraction timestamp
+const agentLastLesson = new Map<string, string>(); // agentId -> last lesson text
+const LEARNING_EXTRACTION_COOLDOWN = 10 * 60_000; // 10 minutes
+
 const trigramSimilarity = (a: string, b: string): number => {
   const trigrams = (s: string): Set<string> => {
     const t = new Set<string>();
@@ -1874,6 +1912,7 @@ const buildSystemPrompt = (
   cmds: CommandFlags = {},
   roomMaxLoops = 5,
   onlineMachines?: string[],
+  roomName?: string,
 ): string => {
   const instructionItems = parseJsonList(agent.system_instructions);
   const memoryItems = parseJsonList(agent.memories);
@@ -1960,6 +1999,89 @@ const buildSystemPrompt = (
     parts.push(
       `[Subconscious: Intent Coherence ${intentScore}/10 — ${intentLabel}]`,
     );
+  }
+
+  // Inject Prompt Quality Gate result (shows once after a gate check)
+  const gateScore = agentPromptGateScores.get(agent.id);
+  const gateFeedback = agentPromptGateResults.get(agent.id);
+  if (gateScore !== undefined && gateFeedback) {
+    if (gateScore < 6) {
+      parts.push(
+        `[Subconscious: Prompt Quality Gate REJECTED (${gateScore}/10) — ${gateFeedback}. Rewrite with specific files, context of what you found, and a clear deliverable.]`,
+      );
+    } else {
+      parts.push(
+        `[Subconscious: Prompt Quality Gate PASSED (${gateScore}/10)]`,
+      );
+    }
+    // Clear after injection so it only shows once
+    agentPromptGateResults.delete(agent.id);
+  }
+
+  // Inject Task Tracker summary
+  const taskSummary = agentTaskTrackerSummary.get(agent.id);
+  if (taskSummary) {
+    parts.push(`[Subconscious: Task Tracker — ${taskSummary}]`);
+  }
+
+  // Inject Social Awareness (no AI call — pure data lookup)
+  const roomForSocial = roomName ? activeRooms.get(roomName) : undefined;
+  if (roomForSocial && roomForSocial.users.size > 0) {
+    const socialParts: string[] = [];
+    const seenUserIds = new Set<string>();
+    const normalizeId = (id: string): string => id.replace(/-/g, "");
+    const creatorIdNorm = normalizeId(agent.creator_id);
+    for (const socketId of roomForSocial.users) {
+      const cu = connectedUsers.get(socketId);
+      if (!cu) continue;
+      const cuIdNorm = normalizeId(cu.userId);
+      if (seenUserIds.has(cuIdNorm)) continue;
+      seenUserIds.add(cuIdNorm);
+
+      // Try both ID formats when looking up last spoke
+      const spokeKey1 = `${agent.room_id}:${cu.userId}`;
+      const lastSpokeTs = userLastSpoke.get(spokeKey1);
+      const agoMs = lastSpokeTs ? Date.now() - lastSpokeTs : undefined;
+      const agoStr =
+        agoMs !== undefined
+          ? agoMs < 60_000
+            ? `${Math.round(agoMs / 1000)}s ago`
+            : `${Math.round(agoMs / 60_000)}min ago`
+          : undefined;
+      const state =
+        agoMs !== undefined && agoMs < 120_000 ? "active" : "present";
+
+      if (cuIdNorm === creatorIdNorm) {
+        socialParts.unshift(
+          agoStr
+            ? `creator: ${state} (spoke ${agoStr})`
+            : "creator: present (quiet)",
+        );
+      } else {
+        socialParts.push(
+          agoStr
+            ? `${cu.username}: ${state} (spoke ${agoStr})`
+            : `${cu.username}: present (quiet)`,
+        );
+      }
+    }
+    if (socialParts.length > 0) {
+      parts.push(`[Subconscious: Social — ${socialParts.join(", ")}]`);
+    }
+  }
+
+  // Inject Repetition Alert
+  const repetitionAlert = agentRepetitionAlerts.get(agent.id);
+  if (repetitionAlert) {
+    parts.push(
+      `[Subconscious: Repetition Alert — ${repetitionAlert}. Break the loop. Do something different.]`,
+    );
+  }
+
+  // Inject Learning Extraction (last lesson)
+  const lastLesson = agentLastLesson.get(agent.id);
+  if (lastLesson) {
+    parts.push(`[Subconscious: Learning — last lesson saved: "${lastLesson}"]`);
   }
 
   const rules: string[] = [
@@ -2619,6 +2741,7 @@ const runAgentResponse = async (
       },
       maxLoops,
       onlineMachines,
+      roomName,
     );
 
     // Build structured tool definitions for Grok function calling
@@ -2953,6 +3076,28 @@ const runAgentResponse = async (
         0;
 
       if (!hasAnyCommand) break;
+
+      // ── Action Repetition Detector (subconscious) ──
+      // Collect all commands the agent issued this cycle for tracking
+      const allAgentCommands: string[] = [];
+      for (const m of terminalMatches)
+        allAgentCommands.push(
+          m[0].substring(0, 60).toLowerCase().replace(/\s+/g, " "),
+        );
+      for (const m of claudeMatches)
+        allAgentCommands.push(
+          `claude ${(m[2] || m[1] || "").toLowerCase().trim()}`,
+        );
+      for (const _m of searchMatches) allAgentCommands.push("search");
+      for (const _m of browseMatches) allAgentCommands.push("browse");
+      for (const _m of lookMatches) allAgentCommands.push("look");
+      for (const m of uiCommandMatches)
+        allAgentCommands.push(`ui ${(m[1] || "").toLowerCase().trim()}`);
+      for (const _m of setPoseMatches) allAgentCommands.push("set_pose");
+      for (const _m of forumPostMatches) allAgentCommands.push("forum_post");
+      for (const _m of forumListMatches) allAgentCommands.push("forum_list");
+      for (const _m of webGoMatches) allAgentCommands.push("web_go");
+      trackAndDetectRepetition(agent.id, allAgentCommands);
 
       const toolResults: string[] = [];
 
@@ -4149,6 +4294,36 @@ const runAgentResponse = async (
           continue;
         }
 
+        // ── Prompt Quality Gate (subconscious pre-flight check) ──
+        // Auto-reject ultra-short prompts without AI call
+        if (prompt.length < 20) {
+          agentPromptGateScores.set(agent.id, 1);
+          agentPromptGateResults.set(
+            agent.id,
+            "prompt too short — must describe the task with specific files and context",
+          );
+          toolResults.push(
+            `[Prompt Quality Gate REJECTED (1/10)]: Prompt too short. Describe the task with specific files and context.`,
+          );
+          continue;
+        }
+
+        // Run quality gate via grok-3-mini
+        const gateResult = await runPromptQualityGate(prompt, agent, roomName);
+        agentPromptGateScores.set(agent.id, gateResult.score);
+        if (!gateResult.pass) {
+          agentPromptGateResults.set(agent.id, gateResult.feedback);
+          emitSystemMessage(
+            io,
+            roomName,
+            `[${agent.name}'s Subconscious — Prompt Quality Gate REJECTED (${gateResult.score}/10)]: ${gateResult.feedback}`,
+          );
+          toolResults.push(
+            `[Prompt Quality Gate REJECTED (${gateResult.score}/10)]: ${gateResult.feedback}. Rewrite with specific files, context, and a clear deliverable.`,
+          );
+          continue;
+        }
+
         emitSystemMessage(
           io,
           roomName,
@@ -4196,6 +4371,22 @@ const runAgentResponse = async (
         // Use room+machine as session key for persistent sessions
         const sessionKey = `${roomId}:${machineName}`;
 
+        // ── Task Tracker: record outgoing Claude task ──
+        const taskId = `ct-${Date.now()}-${machineName}`;
+        const tasks = agentClaudeTasks.get(agent.id) || [];
+        tasks.push({
+          id: taskId,
+          prompt: prompt.substring(0, 200),
+          machine: machineName,
+          agentId: agent.id,
+          roomName,
+          status: "pending",
+          sentAt: Date.now(),
+          announced: false,
+        });
+        if (tasks.length > 20) tasks.shift();
+        agentClaudeTasks.set(agent.id, tasks);
+
         // Fire Claude prompt asynchronously — don't block the agent response cycle.
         // The result will appear as a system message when Claude finishes.
         // The agent can react to it on the next autopilot cycle.
@@ -4211,14 +4402,55 @@ const runAgentResponse = async (
           machineName,
         )
           .then((output) => {
+            // ── Task Tracker: mark completed ──
+            const agentTasks = agentClaudeTasks.get(agent.id) || [];
+            const trackedTask = agentTasks.find(
+              (t) => t.id === taskId && t.status === "pending",
+            );
+            if (trackedTask) {
+              trackedTask.status = output.startsWith("Error:")
+                ? "timeout"
+                : "completed";
+              trackedTask.completedAt = Date.now();
+              trackedTask.responseSummary = output.substring(0, 200);
+            }
+
             if (!output.startsWith("Error:")) {
-              // Response already emitted by executeClaudePrompt — just log
               console.log(
                 `[Claude async] ${machineName} completed: ${output.length} chars`,
               );
+
+              // ── Learning Extraction: auto-extract lessons from substantial responses ──
+              if (output.length > 200) {
+                const lastExtraction =
+                  agentLastLearningExtraction.get(agent.id) || 0;
+                if (
+                  Date.now() - lastExtraction >
+                  LEARNING_EXTRACTION_COOLDOWN
+                ) {
+                  agentLastLearningExtraction.set(agent.id, Date.now());
+                  runLearningExtraction(
+                    io,
+                    agent,
+                    prompt,
+                    output,
+                    roomName,
+                  ).catch(console.error);
+                }
+              }
             }
           })
           .catch((err) => {
+            // ── Task Tracker: mark timeout on error ──
+            const agentTasks = agentClaudeTasks.get(agent.id) || [];
+            const trackedTask = agentTasks.find(
+              (t) => t.id === taskId && t.status === "pending",
+            );
+            if (trackedTask) {
+              trackedTask.status = "timeout";
+              trackedTask.completedAt = Date.now();
+            }
+
             emitSystemMessage(
               io,
               roomName,
@@ -4834,6 +5066,11 @@ const runAgentResponse = async (
     const browserVoices = ["male", "female", "robot"];
     const isPremiumVoice = !browserVoices.includes(agent.voice_id);
     let audioBase64: string | null = null;
+    let visemeTimeline: Array<{
+      viseme: string;
+      start: number;
+      end: number;
+    }> | null = null;
 
     if (isPremiumVoice && responseText.trim()) {
       try {
@@ -4844,6 +5081,15 @@ const runAgentResponse = async (
           agent.voice_id,
         );
         audioBase64 = ttsResult.audioBase64;
+
+        // Convert character alignment to viseme timeline for lip sync
+        if (ttsResult.alignment) {
+          const { characterAlignmentToVisemes } = await import(
+            "../../../../../core/helpers/visemeMapper"
+          );
+          visemeTimeline = characterAlignmentToVisemes(ttsResult.alignment);
+        }
+
         creditActions
           .chargeElevenLabsUsage(agent.creator_id, responseText.length)
           .catch(console.error);
@@ -4864,6 +5110,8 @@ const runAgentResponse = async (
       voice: agent.voice_id,
     };
     if (audioBase64) aiMessage.audio = audioBase64;
+    if (visemeTimeline && visemeTimeline.length > 0)
+      aiMessage.visemes = visemeTimeline;
 
     io.to(roomName).emit("chat_message", aiMessage);
 
@@ -5292,6 +5540,272 @@ const runIntentCoherenceCheck = async (
 };
 
 // ┌──────────────────────────────────────────┐
+// │ Subconscious: Prompt Quality Gate       │
+// └──────────────────────────────────────────┘
+
+const runPromptQualityGate = async (
+  prompt: string,
+  agent: AgentLike,
+  roomName: string,
+): Promise<{ pass: boolean; score: number; feedback: string }> => {
+  try {
+    const roomRecord = await Data.room.findByName(roomName);
+    const recentMessages = roomRecord
+      ? await Data.message.findByRoom(roomRecord.id, 5)
+      : [];
+    const historySnippet = recentMessages
+      .reverse()
+      .map(
+        (m) =>
+          `${m.username}: ${typeof m.content === "string" ? m.content.substring(0, 100) : ""}`,
+      )
+      .join("\n");
+
+    const systemPrompt =
+      "You are a Prompt Quality Gate — an internal system that evaluates Claude Code prompts before they are sent. " +
+      "Claude Code is expensive ($3-15 per call). Vague prompts waste money.\n\n" +
+      "Rate this prompt 1-10 for quality:\n" +
+      "- SPECIFICITY (1-3): Does it name specific files, functions, or components? Generic references like 'the code' or 'the system' score low.\n" +
+      "- CONTEXT (1-3): Does it describe what was found, what the current state is, or what happened? Prompts with no context score low.\n" +
+      "- ACTIONABILITY (1-4): Does it state clearly what to accomplish? 'Look into X' or 'check Y' with no clear deliverable scores low.\n\n" +
+      "OUTPUT FORMAT (strict JSON, no markdown):\n" +
+      '{"score": <1-10>, "verdict": "PASS" or "REJECT", "feedback": "1 sentence explaining what is missing if rejected"}\n\n' +
+      "Threshold: score >= 6 = PASS. Below 6 = REJECT.\n" +
+      "Be strict. 'Fix the bug' with no details is a 2/10. " +
+      "'In core/actions/credit/index.ts, the chargeGrokUsage function double-charges when model is grok-3-mini — fix the rate table' is a 10/10.";
+
+    const response = await grokAdapter.chatCompletion(
+      systemPrompt,
+      [
+        {
+          role: "user" as const,
+          content: `PROMPT TO EVALUATE:\n${prompt}\n\nRECENT CONVERSATION CONTEXT:\n${historySnippet}`,
+        },
+      ],
+      "grok-3-mini",
+      400,
+      undefined,
+      undefined,
+    );
+
+    // Charge credits
+    creditActions
+      .chargeGrokUsage(
+        agent.creator_id,
+        "grok-3-mini",
+        response.inputTokens,
+        response.outputTokens,
+        agent.room_id,
+      )
+      .catch(console.error);
+
+    if (!response.text.trim()) {
+      return { pass: true, score: 7, feedback: "" };
+    }
+
+    const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return { pass: true, score: 7, feedback: "" };
+    }
+
+    const analysis = JSON.parse(jsonMatch[0]) as {
+      score?: number;
+      verdict?: string;
+      feedback?: string;
+    };
+
+    const score = Math.min(10, Math.max(1, analysis.score || 7));
+    const pass = score >= 6;
+    const feedback = analysis.feedback || "insufficient specificity";
+
+    console.log(
+      `[Prompt Gate] ${agent.name}: ${score}/10 ${pass ? "PASS" : "REJECT"} — ${feedback}`,
+    );
+
+    return { pass, score, feedback };
+  } catch (err) {
+    console.error(`[Prompt Gate] Error for ${agent.name}:`, err);
+    // On error, let the prompt through rather than blocking
+    return { pass: true, score: 7, feedback: "" };
+  }
+};
+
+// ┌──────────────────────────────────────────┐
+// │ Subconscious: Action Repetition Detector│
+// └──────────────────────────────────────────┘
+
+const trackAndDetectRepetition = (
+  agentId: string,
+  commands: string[],
+): void => {
+  if (commands.length === 0) return;
+
+  const history = agentActionHistory.get(agentId) || [];
+  const now = Date.now();
+  for (const cmd of commands) {
+    history.push({ cmd, ts: now });
+  }
+  // Keep ring buffer size
+  while (history.length > REPETITION_BUFFER_SIZE) history.shift();
+  agentActionHistory.set(agentId, history);
+
+  // Check last REPETITION_WINDOW entries for repeats
+  const recent = history.slice(-REPETITION_WINDOW);
+  const counts = new Map<string, number>();
+  for (const entry of recent) {
+    counts.set(entry.cmd, (counts.get(entry.cmd) || 0) + 1);
+  }
+
+  let alert: string | null = null;
+  for (const [cmd, count] of counts) {
+    if (count >= REPETITION_THRESHOLD) {
+      alert = `you executed "${cmd}" ${count} times in the last ${REPETITION_WINDOW} actions`;
+      break;
+    }
+  }
+
+  if (alert) {
+    agentRepetitionAlerts.set(agentId, alert);
+  } else {
+    agentRepetitionAlerts.delete(agentId);
+  }
+};
+
+// ┌──────────────────────────────────────────┐
+// │ Subconscious: Task Tracker Summary      │
+// └──────────────────────────────────────────┘
+
+const updateTaskTrackerSummary = (agentId: string): void => {
+  const tasks = agentClaudeTasks.get(agentId) || [];
+  if (tasks.length === 0) {
+    agentTaskTrackerSummary.delete(agentId);
+    return;
+  }
+
+  // Prune tasks older than 1 hour
+  const oneHourAgo = Date.now() - 60 * 60_000;
+  const activeTasks = tasks.filter((t) => t.sentAt > oneHourAgo);
+  agentClaudeTasks.set(agentId, activeTasks);
+
+  const pending = activeTasks.filter((t) => t.status === "pending");
+  const stale = pending.filter((t) => Date.now() - t.sentAt > 10 * 60_000);
+  const completedUnannounced = activeTasks.filter(
+    (t) => t.status === "completed" && !t.announced,
+  );
+
+  const parts: string[] = [];
+  if (completedUnannounced.length > 0) {
+    const recent = completedUnannounced[completedUnannounced.length - 1];
+    const agoMin = Math.round(
+      (Date.now() - (recent.completedAt || recent.sentAt)) / 60_000,
+    );
+    parts.push(
+      `${completedUnannounced.length} completed task(s) UNANNOUNCED — tell your creator! Latest: "${recent.prompt.substring(0, 80)}" on ${recent.machine} (${agoMin}min ago)`,
+    );
+  }
+  if (stale.length > 0) {
+    parts.push(`${stale.length} task(s) pending >10min (may be stuck)`);
+  }
+  parts.push(
+    `${pending.length} pending, ${activeTasks.filter((t) => t.status === "completed").length} completed total`,
+  );
+
+  agentTaskTrackerSummary.set(agentId, parts.join(". "));
+};
+
+// ┌──────────────────────────────────────────┐
+// │ Subconscious: Learning Extraction       │
+// └──────────────────────────────────────────┘
+
+const runLearningExtraction = async (
+  io: SocketServer,
+  agent: AgentLike,
+  prompt: string,
+  output: string,
+  roomName: string,
+): Promise<void> => {
+  try {
+    // Check memory count — skip if agent has too many
+    let memoryCount = 0;
+    try {
+      const memories = JSON.parse(agent.memories || "[]") as unknown[];
+      memoryCount = memories.length;
+    } catch {
+      /* empty */
+    }
+    if (memoryCount >= 50) return;
+
+    const systemPrompt =
+      "You are a Learning Extractor — an internal process that distills key technical lessons from Claude Code responses. " +
+      "Extract ONLY genuinely useful, reusable knowledge. Skip trivial or obvious information.\n\n" +
+      "OUTPUT FORMAT (strict JSON, no markdown):\n" +
+      '{"has_lesson": true/false, "lesson": "1-2 sentence concise, reusable technical insight"}\n\n' +
+      "Rules:\n" +
+      "- Only extract if there is a genuine technical insight worth remembering\n" +
+      "- The lesson should be useful for FUTURE tasks, not just a summary of what was done\n" +
+      "- Keep it under 150 characters\n" +
+      "- If the response is just confirmations or routine output with no insight, set has_lesson: false";
+
+    const response = await grokAdapter.chatCompletion(
+      systemPrompt,
+      [
+        {
+          role: "user" as const,
+          content: `Original prompt: ${prompt.substring(0, 500)}\n\nClaude's response: ${output.substring(0, 2000)}`,
+        },
+      ],
+      "grok-3-mini",
+      300,
+      undefined,
+      undefined,
+    );
+
+    creditActions
+      .chargeGrokUsage(
+        agent.creator_id,
+        "grok-3-mini",
+        response.inputTokens,
+        response.outputTokens,
+        agent.room_id,
+      )
+      .catch(console.error);
+
+    if (!response.text.trim()) return;
+
+    const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return;
+
+    const analysis = JSON.parse(jsonMatch[0]) as {
+      has_lesson?: boolean;
+      lesson?: string;
+    };
+
+    if (!analysis.has_lesson || !analysis.lesson) return;
+
+    const lesson = analysis.lesson.substring(0, 200);
+
+    // Save as agent memory
+    const freshAgent = await Data.llmAgent.findById(agent.id);
+    if (!freshAgent) return;
+
+    const updatedMemories = addToJsonList(freshAgent.memories, lesson);
+    await Data.llmAgent.update(agent.id, { memories: updatedMemories });
+
+    agentLastLesson.set(agent.id, lesson);
+
+    emitSystemMessage(
+      io,
+      roomName,
+      `[${agent.name}'s Subconscious — Learning Extraction: saved "${lesson}"]`,
+    );
+
+    console.log(`[Learning Extraction] ${agent.name}: "${lesson}"`);
+  } catch (err) {
+    console.error(`[Learning Extraction] Error for ${agent.name}:`, err);
+  }
+};
+
+// ┌──────────────────────────────────────────┐
 // │ Autopilot Timer System                  │
 // └──────────────────────────────────────────┘
 
@@ -5355,6 +5869,16 @@ const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
       if (latestAgent) {
         runIntentCoherenceCheck(io, latestAgent, roomName).catch(console.error);
       }
+    }
+
+    // Task Tracker: update summary every 3rd cycle
+    if (cycleCount % 3 === 0) {
+      updateTaskTrackerSummary(agent.id);
+    }
+
+    // Clear stale learning lessons after 3 cycles
+    if (cycleCount % 3 === 0) {
+      agentLastLesson.delete(agent.id);
     }
   }, intervalMs);
 
@@ -5882,6 +6406,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       });
 
       io.to(user.currentRoom).emit("chat_message", message);
+
+      // Track when user last spoke (for Social Awareness subconscious)
+      userLastSpoke.set(`${roomId}:${socket.user.id}`, Date.now());
 
       Data.dailyStats
         .incrementMessages(dayjs().format("YYYY-MM-DD"))

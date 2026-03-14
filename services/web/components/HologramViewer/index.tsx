@@ -127,8 +127,14 @@ type AvatarData = {
   morphWeight?: number; // 0..1 blend weight
 };
 
+type VisemeState = {
+  viseme: string;
+  weight: number;
+};
+
 type HologramViewerProps = {
   avatars: AvatarData[];
+  visemeStates?: Map<string, VisemeState>; // keyed by avatar label (agent name)
 };
 
 // ── Constants ──────────────────────────────────────────
@@ -138,6 +144,250 @@ const BONE_COLOR = 0x2a7a76;
 const GRID_COLOR = 0x1a3a38;
 const MAX_POINT_INSTANCES = 8192;
 const MORPH_LERP_SPEED = 4.0; // Weight units per second for smooth transitions
+
+// ── Particle Hair System ─────────────────────────────────
+// Volumetric particle hair: scalp cap + swept-back flow + ponytail
+// Rendered as THREE.Points with shader-based sway animation
+
+type HairParticleSystem = {
+  geometry: THREE.BufferGeometry;
+  mesh: THREE.Points;
+  uniforms: { uTime: { value: number } };
+};
+
+// Simple 3D noise (hash-based, no dependency)
+function noise3D(x: number, y: number, z: number): number {
+  const n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
+  return (n - Math.floor(n)) * 2 - 1; // -1..1
+}
+
+/** Build the particle hair system: scalp cap + swept-back flow + ponytail.
+ *  All positions are relative to the head joint. */
+function buildHairParticles(): {
+  positions: Float32Array;
+  hairT: Float32Array;
+  colors: Float32Array;
+  sizes: Float32Array;
+} {
+  const allPositions: number[] = [];
+  const allHairT: number[] = [];
+  const allColors: number[] = [];
+  const allSizes: number[] = [];
+
+  // Head geometry constants (relative to head joint)
+  const scalpCenter = new THREE.Vector3(0, 0.1, 0);
+  const scalpRadius = 0.1;
+  const tiePoint = new THREE.Vector3(0, 0.06, -0.11);
+  const ponytailLength = 0.45;
+  const ponytailSpread = 0.06;
+  const noiseScale = 5.0;
+  const noiseAmp = 0.04;
+
+  const baseColor = new THREE.Color('#7eeae5'); // bright teal at scalp
+  const tipColor = new THREE.Color('#3a9e98'); // darker teal at tips
+
+  // ── Zone 1: Scalp Cap (~2500 particles) ──
+  for (let i = 0; i < 2500; i++) {
+    // Upper hemisphere, biased to top/back (avoid face)
+    const phi = Math.acos(1 - Math.random() * 0.7); // 0..~0.8 rad from top
+    const theta = Math.random() * Math.PI * 2;
+
+    // Skip front-face area: if pointing forward (+Z) and low, skip
+    const sz = Math.sin(phi) * Math.sin(theta);
+    if (sz > 0.4 && phi > 0.5) continue;
+
+    const x = scalpCenter.x + scalpRadius * Math.sin(phi) * Math.cos(theta);
+    const y = scalpCenter.y + scalpRadius * Math.cos(phi);
+    const z = scalpCenter.z + scalpRadius * Math.sin(phi) * Math.sin(theta);
+
+    // Slight random displacement along normal for texture
+    const disp = 0.01 + Math.random() * 0.02;
+    const nx = (x - scalpCenter.x) / scalpRadius;
+    const ny = (y - scalpCenter.y) / scalpRadius;
+    const nz = (z - scalpCenter.z) / scalpRadius;
+
+    allPositions.push(x + nx * disp, y + ny * disp, z + nz * disp);
+    allHairT.push(0); // scalp = 0
+    const c = baseColor.clone().lerp(tipColor, Math.random() * 0.2);
+    allColors.push(c.r, c.g, c.b);
+    allSizes.push(0.005 + Math.random() * 0.003);
+  }
+
+  // ── Zone 2: Swept-Back Flow (~2000 particles, 40 guide curves) ──
+  const flowCurveCount = 40;
+  const flowParticlesPerCurve = 50;
+
+  for (let ci = 0; ci < flowCurveCount; ci++) {
+    // Start: random point on upper scalp
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI * 0.5; // upper half
+    const start = new THREE.Vector3(
+      scalpCenter.x + scalpRadius * Math.sin(phi) * Math.cos(theta),
+      scalpCenter.y + scalpRadius * Math.cos(phi),
+      scalpCenter.z + scalpRadius * Math.sin(phi) * Math.sin(theta),
+    );
+
+    const end = tiePoint.clone();
+
+    // Control points sweep back along head surface
+    const cp1 = start.clone().lerp(end, 0.33);
+    cp1.y += 0.02;
+    // Push cp1 outward from head center to keep curve on surface
+    const cp1Dir = cp1.clone().sub(scalpCenter).normalize();
+    cp1.copy(scalpCenter).addScaledVector(cp1Dir, scalpRadius * 1.05);
+
+    const cp2 = start.clone().lerp(end, 0.66);
+    const cp2Dir = cp2.clone().sub(scalpCenter).normalize();
+    cp2.copy(scalpCenter).addScaledVector(cp2Dir, scalpRadius * 1.02);
+
+    const curve = new THREE.CubicBezierCurve3(start, cp1, cp2, end);
+
+    for (let pi = 0; pi < flowParticlesPerCurve; pi++) {
+      const t = pi / (flowParticlesPerCurve - 1);
+      const point = curve.getPoint(t);
+      const tangent = curve.getTangent(t).normalize();
+
+      // Perpendicular vectors for volume offset
+      const up = new THREE.Vector3(0, 1, 0);
+      const perp1 = new THREE.Vector3().crossVectors(tangent, up).normalize();
+      if (perp1.lengthSq() < 0.001) perp1.set(1, 0, 0);
+      const perp2 = new THREE.Vector3().crossVectors(tangent, perp1).normalize();
+
+      // Noise-based perpendicular offset for volume (key for avoiding flat-line look)
+      const radius = noiseAmp * (1 - t * 0.6); // thicker near scalp
+      const nAngle = noise3D(point.x * noiseScale, point.y * noiseScale, point.z * noiseScale + ci) * Math.PI * 2;
+      const nRadius =
+        Math.abs(noise3D(point.x * noiseScale + 100, point.y * noiseScale, point.z * noiseScale + ci)) * radius;
+
+      const offset = perp1
+        .clone()
+        .multiplyScalar(Math.cos(nAngle) * nRadius)
+        .add(perp2.clone().multiplyScalar(Math.sin(nAngle) * nRadius));
+
+      allPositions.push(point.x + offset.x, point.y + offset.y, point.z + offset.z);
+      allHairT.push(0.1 + t * 0.4); // 0.1..0.5 for flow zone
+      const c = baseColor.clone().lerp(tipColor, t * 0.4);
+      allColors.push(c.r, c.g, c.b);
+      allSizes.push(0.005 + Math.random() * 0.002);
+    }
+  }
+
+  // ── Zone 3: Ponytail (~2500 particles, 20 guide curves) ──
+  const tailCurveCount = 20;
+  const tailParticlesPerCurve = 125;
+
+  for (let ci = 0; ci < tailCurveCount; ci++) {
+    const start = tiePoint.clone();
+
+    // End: hanging down with slight spread
+    const spreadAngle = Math.random() * Math.PI * 2;
+    const spreadR = Math.random() * ponytailSpread;
+    const end = new THREE.Vector3(
+      tiePoint.x + Math.cos(spreadAngle) * spreadR * 0.5,
+      tiePoint.y - ponytailLength,
+      tiePoint.z + Math.sin(spreadAngle) * spreadR * 0.5 - 0.03, // slight backward bias
+    );
+
+    const cp1 = start.clone();
+    cp1.y -= ponytailLength * 0.3;
+    cp1.x += (Math.random() - 0.5) * 0.02;
+    cp1.z -= 0.02;
+
+    const cp2 = end.clone();
+    cp2.y += ponytailLength * 0.2;
+
+    const curve = new THREE.CubicBezierCurve3(start, cp1, cp2, end);
+
+    for (let pi = 0; pi < tailParticlesPerCurve; pi++) {
+      const t = pi / (tailParticlesPerCurve - 1);
+      const point = curve.getPoint(t);
+      const tangent = curve.getTangent(t).normalize();
+
+      const up = new THREE.Vector3(0, 1, 0);
+      const perp1 = new THREE.Vector3().crossVectors(tangent, up).normalize();
+      if (perp1.lengthSq() < 0.001) perp1.set(1, 0, 0);
+      const perp2 = new THREE.Vector3().crossVectors(tangent, perp1).normalize();
+
+      // Wider offset for ponytail, tapers toward tips
+      const radius = (noiseAmp + 0.03) * (1 - t * 0.7);
+      const nAngle =
+        noise3D(point.x * noiseScale + 50, point.y * noiseScale, point.z * noiseScale + ci * 7) * Math.PI * 2;
+      const nRadius =
+        Math.abs(noise3D(point.x * noiseScale + 200, point.y * noiseScale, point.z * noiseScale + ci * 7)) * radius;
+
+      const offset = perp1
+        .clone()
+        .multiplyScalar(Math.cos(nAngle) * nRadius)
+        .add(perp2.clone().multiplyScalar(Math.sin(nAngle) * nRadius));
+
+      allPositions.push(point.x + offset.x, point.y + offset.y, point.z + offset.z);
+      allHairT.push(0.5 + t * 0.5); // 0.5..1.0 for ponytail
+      const c = baseColor.clone().lerp(tipColor, 0.3 + t * 0.5);
+      allColors.push(c.r, c.g, c.b);
+      allSizes.push(0.006 + Math.random() * 0.003 - t * 0.002); // slightly smaller at tips
+    }
+  }
+
+  return {
+    positions: new Float32Array(allPositions),
+    hairT: new Float32Array(allHairT),
+    colors: new Float32Array(allColors),
+    sizes: new Float32Array(allSizes),
+  };
+}
+
+// Hair particle vertex shader — sway animation, depth-based sizing
+const hairVertexShader = `
+  uniform float uTime;
+  attribute float hairT;
+  attribute float size;
+  varying vec3 vColor;
+  varying float vAlpha;
+  varying float vDepth;
+
+  void main() {
+    vec3 pos = position;
+
+    // Ponytail sway — only particles below tie point (hairT > 0.5)
+    float swayFactor = smoothstep(0.5, 1.0, hairT);
+    pos.x += sin(uTime * 0.8 + pos.y * 2.0) * 0.015 * swayFactor;
+    pos.z += sin(uTime * 0.6 + pos.y * 1.5 + 1.0) * 0.01 * swayFactor;
+
+    // Subtle drift for all hair particles
+    pos += sin(uTime * 0.3 + pos * 3.0) * 0.002;
+
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    vDepth = -mvPosition.z;
+    vColor = color;
+    vAlpha = 1.0 - hairT * 0.4; // fade toward tips
+
+    gl_Position = projectionMatrix * mvPosition;
+    // Size: larger when close, attenuated by depth
+    gl_PointSize = size * 300.0 / -mvPosition.z;
+  }
+`;
+
+const hairFragmentShader = `
+  varying vec3 vColor;
+  varying float vAlpha;
+  varying float vDepth;
+
+  void main() {
+    // Circular point with soft edge
+    float dist = length(gl_PointCoord - vec2(0.5));
+    if (dist > 0.5) discard;
+    float softEdge = 1.0 - smoothstep(0.3, 0.5, dist);
+
+    // Depth-based brightness
+    float depthNorm = clamp((vDepth - 0.5) / 2.0, 0.0, 1.0);
+    float depthBrightness = mix(1.3, 0.5, depthNorm);
+
+    vec3 finalColor = vColor * depthBrightness * 1.2;
+    float alpha = vAlpha * softEdge * mix(0.8, 0.35, depthNorm);
+
+    gl_FragColor = vec4(finalColor, alpha);
+  }
+`;
 
 // FABRIK IK constants
 const FABRIK_ITERATIONS = 10;
@@ -175,6 +425,7 @@ const hologramGlowVertexShader = `
   varying float vGlow;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
+  varying float vDepth;
 
   void main() {
     vColor = instanceColor;
@@ -183,6 +434,7 @@ const hologramGlowVertexShader = `
 
     vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position * instanceScale, 1.0);
     vViewPosition = -mvPosition.xyz;
+    vDepth = -mvPosition.z; // camera-space depth (larger = farther)
 
     gl_Position = projectionMatrix * mvPosition;
   }
@@ -193,23 +445,37 @@ const hologramGlowFragmentShader = `
   varying float vGlow;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
+  varying float vDepth;
 
   void main() {
-    // Fresnel rim glow
+    // Soft glow falloff from center of sphere — bright core, fading edge
     vec3 viewDir = normalize(vViewPosition);
-    float rim = 1.0 - max(dot(viewDir, normalize(vNormal)), 0.0);
-    rim = pow(rim, 2.0);
+    float facing = max(dot(viewDir, normalize(vNormal)), 0.0);
+    float softEdge = pow(facing, 0.6);
 
-    // Core color + rim glow
-    vec3 coreColor = vColor * (0.6 + 0.4 * vGlow);
-    vec3 rimColor = vColor * rim * vGlow * 1.5;
-    vec3 finalColor = coreColor + rimColor;
+    // Depth-based brightness: front dots brighter, back dots dimmer
+    // Map depth to 0..1 range (typical view range ~0.5 to 2.5)
+    float depthNorm = clamp((vDepth - 0.5) / 2.0, 0.0, 1.0);
+    float depthBrightness = mix(1.3, 0.4, depthNorm); // front=1.3x, back=0.4x
 
-    // Hologram scanline effect
-    float scanline = sin(gl_FragCoord.y * 0.8) * 0.05 * vGlow;
+    // Core emission with depth modulation
+    vec3 coreColor = vColor * depthBrightness;
+
+    // Glow spheres (instanceGlow=1.0) get a soft radial falloff
+    // Core spheres (instanceGlow=0.5) are small and bright
+    float glowFalloff = vGlow > 0.75 ? pow(softEdge, 1.5) : softEdge;
+
+    vec3 finalColor = coreColor * (0.8 + 0.6 * vGlow);
+
+    // Subtle scanline
+    float scanline = sin(gl_FragCoord.y * 1.2) * 0.03 * vGlow;
     finalColor += vec3(scanline);
 
-    float alpha = 0.75 + rim * 0.25 * vGlow;
+    // Alpha: glow spheres are very translucent, core is semi-transparent
+    // Both modulated by depth — back dots more transparent
+    float baseAlpha = vGlow > 0.75 ? 0.12 : 0.45;
+    float alpha = baseAlpha * glowFalloff * mix(1.0, 0.5, depthNorm);
+
     gl_FragColor = vec4(finalColor, alpha);
   }
 `;
@@ -351,7 +617,25 @@ type JointTransforms = {
 
 // ── Component ──────────────────────────────────────────
 
-const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
+// Viseme → lip Y-offset deltas for upper and lower lip particles
+const VISEME_LIP_OFFSETS: Record<string, { upperY: number; lowerY: number }> = {
+  rest: { upperY: 0, lowerY: 0 },
+  open: { upperY: 0.006, lowerY: -0.008 },
+  narrow: { upperY: 0.003, lowerY: -0.004 },
+  closed: { upperY: -0.001, lowerY: 0.001 },
+  teeth: { upperY: 0.004, lowerY: -0.002 },
+  wide: { upperY: 0.003, lowerY: -0.005 },
+};
+
+/** Check if a head-joint point is an upper lip particle by its offset coordinates */
+const isUpperLip = (offset: [number, number, number]): boolean =>
+  offset[1] >= 0.033 && offset[1] <= 0.042 && offset[2] >= 0.08 && offset[2] <= 0.09;
+
+/** Check if a head-joint point is a lower lip particle */
+const isLowerLip = (offset: [number, number, number]): boolean =>
+  offset[1] >= 0.024 && offset[1] <= 0.032 && offset[2] >= 0.078 && offset[2] <= 0.088;
+
+const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -374,11 +658,18 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
       }
     >
   >(new Map());
+  const hairSystemsRef = useRef<Map<string, HairParticleSystem>>(new Map());
+  const visemeStatesRef = useRef<Map<string, VisemeState>>(new Map());
   const avatarsRef = useRef<AvatarData[]>(avatars);
   avatarsRef.current = avatars;
 
+  // Keep viseme states ref in sync with prop
+  if (visemeStates) {
+    visemeStatesRef.current = visemeStates;
+  }
+
   // Shared instanced sphere geometry for all point rendering
-  const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.02, 5, 4), []);
+  const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.008, 5, 4), []);
 
   // Custom shader material for holographic glow
   const glowMaterial = useMemo(
@@ -388,6 +679,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         fragmentShader: hologramGlowFragmentShader,
         transparent: true,
         depthWrite: false,
+        depthTest: true,
+        blending: THREE.AdditiveBlending,
         side: THREE.DoubleSide,
       }),
     [],
@@ -517,19 +810,32 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
             }
           }
 
+          // Viseme lip sync: apply Y-offset to lip particles in local space
+          if (point.joint_id === 'head') {
+            const vs = visemeStatesRef.current.get(avatar.label);
+            if (vs && vs.weight > 0) {
+              const lipOffset = VISEME_LIP_OFFSETS[vs.viseme] || VISEME_LIP_OFFSETS.rest;
+              if (isUpperLip(point.offset)) {
+                offset.y += lipOffset.upperY * vs.weight;
+              } else if (isLowerLip(point.offset)) {
+                offset.y += lipOffset.lowerY * vs.weight;
+              }
+            }
+          }
+
           // Apply joint world rotation to point offset (fixes arm/leg rotation)
           offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
-          const pointSize = point.size * 0.02 * sizeScale;
+          const pointSize = point.size * 0.008 * sizeScale;
 
           // Core point
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
           instMesh.setMatrixAt(i * 2, dummy);
-          scaleAttr.setX(i * 2, pointSize / 0.02);
+          scaleAttr.setX(i * 2, pointSize / 0.008);
 
           // Glow sphere
           instMesh.setMatrixAt(i * 2 + 1, dummy);
-          scaleAttr.setX(i * 2 + 1, (pointSize * 1.75) / 0.02);
+          scaleAttr.setX(i * 2 + 1, (pointSize * 2.5) / 0.008);
         }
 
         scaleAttr.needsUpdate = true;
@@ -625,23 +931,23 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
           // Apply joint world rotation to point offset (fixes arm/leg rotation)
           offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
-          const pointSize = point.size * 0.02 * sizeScale;
+          const pointSize = point.size * 0.008 * sizeScale;
 
-          // Core point
+          // Core point — tiny, bright
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
           instancedMesh.setMatrixAt(i * 2, dummy);
-          scaleAttr[i * 2] = pointSize / 0.02;
+          scaleAttr[i * 2] = pointSize / 0.008;
           tempColor.set(point.color || `#${HOLOGRAM_COLOR.toString(16)}`);
           colorAttr[i * 2 * 3] = tempColor.r;
           colorAttr[i * 2 * 3 + 1] = tempColor.g;
           colorAttr[i * 2 * 3 + 2] = tempColor.b;
           glowAttr[i * 2] = 0.5;
 
-          // Glow sphere
+          // Glow sphere — larger, soft, translucent
           const glowIdx = i * 2 + 1;
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
           instancedMesh.setMatrixAt(glowIdx, dummy);
-          scaleAttr[glowIdx] = (pointSize * 1.75) / 0.02;
+          scaleAttr[glowIdx] = (pointSize * 2.5) / 0.008;
           colorAttr[glowIdx * 3] = tempColor.r;
           colorAttr[glowIdx * 3 + 1] = tempColor.g;
           colorAttr[glowIdx * 3 + 2] = tempColor.b;
@@ -702,6 +1008,44 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
       auraMesh.position.set(0, 0.8, -0.3); // behind avatar center
       auraMesh.name = 'aura';
       group.add(auraMesh);
+
+      // ── Particle Hair System ─────────────────────────────
+      const headJointExists = avatar.skeleton.some((j) => j.id === 'head');
+      if (headJointExists) {
+        const hairData = buildHairParticles();
+        const hairGeo = new THREE.BufferGeometry();
+        hairGeo.setAttribute('position', new THREE.BufferAttribute(hairData.positions, 3));
+        hairGeo.setAttribute('color', new THREE.BufferAttribute(hairData.colors, 3));
+        hairGeo.setAttribute('hairT', new THREE.BufferAttribute(hairData.hairT, 1));
+        hairGeo.setAttribute('size', new THREE.BufferAttribute(hairData.sizes, 1));
+
+        const hairUniforms = { uTime: { value: 0 } };
+        const hairMat = new THREE.ShaderMaterial({
+          vertexShader: hairVertexShader,
+          fragmentShader: hairFragmentShader,
+          uniforms: hairUniforms,
+          transparent: true,
+          depthWrite: false,
+          depthTest: true,
+          blending: THREE.AdditiveBlending,
+          vertexColors: true,
+        });
+
+        const hairMesh = new THREE.Points(hairGeo, hairMat);
+        hairMesh.name = 'hair';
+        // Position relative to head joint
+        const headPos = jointPositions.get('head');
+        if (headPos) {
+          hairMesh.position.copy(headPos);
+        }
+        group.add(hairMesh);
+
+        hairSystemsRef.current.set(avatar.id, {
+          geometry: hairGeo,
+          mesh: hairMesh,
+          uniforms: hairUniforms,
+        });
+      }
 
       return group;
     },
@@ -772,17 +1116,41 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
           needsUpdate = true;
         }
 
-        if (needsUpdate || mState.dirty) {
+        // Also update if any viseme is active for this avatar
+        const avatar = avatarsRef.current.find((a) => a.id === avatarId);
+        const hasActiveViseme = avatar && visemeStatesRef.current.get(avatar.label)?.weight;
+
+        if (needsUpdate || mState.dirty || hasActiveViseme) {
           mState.dirty = false;
-          const avatar = avatarsRef.current.find((a) => a.id === avatarId);
           if (avatar) {
             updateAvatarGeometry(avatar, mState);
           }
         }
       }
 
-      // ── Tick aura shader uniforms ────────────────────────
+      // ── Update hair particle system ────────────────────────────
       const elapsed = clock.elapsedTime;
+      for (const [avatarId, hairSystem] of hairSystemsRef.current) {
+        const avatar = avatarsRef.current.find((a) => a.id === avatarId);
+        if (!avatar) continue;
+
+        // Update time uniform for shader-based sway animation
+        hairSystem.uniforms.uTime.value = elapsed;
+
+        // Sync hair mesh position with head joint
+        const mState = morphStateRef.current.get(avatarId);
+        const morphTargets = getEffectiveMorphTargets(avatar);
+        const influences = mState?.currentInfluences ?? new Float32Array(EMOTIONS.length);
+        const effectivePose = blendPoseMulti(avatar.pose, morphTargets, influences);
+        const { positions: jp } = resolveJointTransforms(avatar.skeleton, effectivePose);
+
+        const headPos = jp.get('head');
+        if (headPos) {
+          hairSystem.mesh.position.set(headPos.x, headPos.y, headPos.z);
+        }
+      }
+
+      // ── Tick aura shader uniforms ────────────────────────
       for (const [, uniforms] of auraUniformsRef.current) {
         uniforms.uTime.value = elapsed;
       }
@@ -824,6 +1192,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
       auraUniformsRef.current.clear();
       boneGeometriesRef.current.clear();
       morphStateRef.current.clear();
+      hairSystemsRef.current.clear();
     };
   }, [updateAvatarGeometry]);
 
@@ -846,6 +1215,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         morphStateRef.current.delete(id);
         auraUniformsRef.current.delete(id);
         ikChainsRef.current.delete(id);
+        hairSystemsRef.current.delete(id);
       }
     }
 

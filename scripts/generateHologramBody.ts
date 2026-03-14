@@ -177,60 +177,13 @@ ellipsoidSurface(-0.09, 0.09, 0.0, 0.015, 0.025, 0.01, 18, 'head', 0.35, COLORS.
 ellipsoidSurface(0.09, 0.09, 0.0, 0.015, 0.025, 0.01, 18, 'head', 0.35, COLORS.accent);
 
 // ══════════════════════════════════════════════
-// HAIR (joint: head) - flowing bob cut
+// HAIR — flowing strands rendered in HologramViewer.
+// Thin scalp coverage dots so head doesn't look bald.
 // ══════════════════════════════════════════════
 
-// Top of head - thick layer of hair
-ellipsoidSurface(0, 0.18, -0.01, 0.10, 0.04, 0.10, 150, 'head', 0.5, COLORS.hair);
-ellipsoidSurface(0, 0.16, -0.01, 0.11, 0.03, 0.11, 100, 'head', 0.55, COLORS.hairHighlight);
-
-// Side hair - flows down past ears
-// Left side
-for (let i = 0; i < 80; i++) {
-  const t = rand(0, 1);
-  const y = 0.15 - t * 0.2; // flows from top down to jaw
-  const spread = 0.01 + t * 0.02;
-  points.push({
-    joint_id: 'head',
-    offset: [-(0.09 + t * 0.02) + rand(-spread, 0), y, rand(-0.04, 0.04)],
-    size: rand(0.4, 0.6),
-    color: pick(COLORS.hair, COLORS.hairHighlight),
-  });
-}
-// Right side
-for (let i = 0; i < 80; i++) {
-  const t = rand(0, 1);
-  const y = 0.15 - t * 0.2;
-  const spread = 0.01 + t * 0.02;
-  points.push({
-    joint_id: 'head',
-    offset: [(0.09 + t * 0.02) + rand(0, spread), y, rand(-0.04, 0.04)],
-    size: rand(0.4, 0.6),
-    color: pick(COLORS.hair, COLORS.hairHighlight),
-  });
-}
-
-// Back hair
-for (let i = 0; i < 100; i++) {
-  const t = rand(0, 1);
-  const y = 0.16 - t * 0.25;
-  points.push({
-    joint_id: 'head',
-    offset: [rand(-0.08, 0.08), y, -(0.08 + t * 0.03)],
-    size: rand(0.4, 0.6),
-    color: pick(COLORS.hair, COLORS.hairHighlight),
-  });
-}
-
-// Bangs/fringe
-for (let i = 0; i < 40; i++) {
-  points.push({
-    joint_id: 'head',
-    offset: [rand(-0.07, 0.07), rand(0.13, 0.17), rand(0.07, 0.1)],
-    size: rand(0.4, 0.55),
-    color: pick(COLORS.hair, COLORS.hairHighlight),
-  });
-}
+// Scalp coverage — thin layer on top/back of head
+ellipsoidSurface(0, 0.18, -0.01, 0.10, 0.04, 0.10, 80, 'head', 0.4, COLORS.hair);
+ellipsoidSurface(0, 0.16, -0.01, 0.11, 0.03, 0.11, 50, 'head', 0.45, COLORS.hairHighlight);
 
 // ══════════════════════════════════════════════
 // NECK (joint: neck)

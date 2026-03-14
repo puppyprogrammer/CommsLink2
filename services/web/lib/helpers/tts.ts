@@ -5,9 +5,18 @@ type TTSOptions = {
   volume: number;
 };
 
+type VisemeEntry = {
+  viseme: string;
+  start: number;
+  end: number;
+};
+
+type VisemeCallback = (viseme: string, weight: number) => void;
+
 type QueueItem =
   | { kind: 'utterance'; utterance: SpeechSynthesisUtterance }
-  | { kind: 'audio'; base64: string; volume: number };
+  | { kind: 'audio'; base64: string; volume: number }
+  | { kind: 'audio_viseme'; base64: string; volume: number; visemes: VisemeEntry[]; onViseme: VisemeCallback };
 
 const queue: QueueItem[] = [];
 let isPlaying = false;
@@ -115,6 +124,51 @@ const processQueue = () => {
     item.utterance.onend = done;
     item.utterance.onerror = done;
     speechSynthesis.speak(item.utterance);
+  } else if (item.kind === 'audio_viseme') {
+    const audio = new Audio(`data:audio/mpeg;base64,${item.base64}`);
+    audio.volume = item.volume;
+    currentAudio = audio;
+    const visemes = item.visemes;
+    const onViseme = item.onViseme;
+    let animFrame = 0;
+
+    const syncVisemes = () => {
+      if (!audio || audio.paused || audio.ended) {
+        onViseme('rest', 0);
+        return;
+      }
+      const t = audio.currentTime;
+      // Find current viseme at this timestamp
+      let found = false;
+      for (let i = 0; i < visemes.length; i++) {
+        if (t >= visemes[i].start && t < visemes[i].end) {
+          // Weight: ramp up in first 30%, sustain, ramp down in last 30%
+          const dur = visemes[i].end - visemes[i].start;
+          const progress = (t - visemes[i].start) / dur;
+          const weight = progress < 0.3 ? progress / 0.3 : progress > 0.7 ? (1 - progress) / 0.3 : 1.0;
+          onViseme(visemes[i].viseme, Math.min(weight, 1.0));
+          found = true;
+          break;
+        }
+      }
+      if (!found) onViseme('rest', 0);
+      animFrame = requestAnimationFrame(syncVisemes);
+    };
+
+    const visemeDone = () => {
+      cancelAnimationFrame(animFrame);
+      onViseme('rest', 0);
+      done();
+    };
+
+    audio.onended = visemeDone;
+    audio.onerror = visemeDone;
+    audio
+      .play()
+      .then(() => {
+        animFrame = requestAnimationFrame(syncVisemes);
+      })
+      .catch(visemeDone);
   } else {
     const audio = new Audio(`data:audio/mpeg;base64,${item.base64}`);
     audio.volume = item.volume;
@@ -152,6 +206,16 @@ const playAudioBlob = (base64Audio: string, volume: number = 1.0): void => {
   processQueue();
 };
 
+const playAudioWithVisemes = (
+  base64Audio: string,
+  volume: number,
+  visemes: VisemeEntry[],
+  onViseme: VisemeCallback,
+): void => {
+  queue.push({ kind: 'audio_viseme', base64: base64Audio, volume, visemes, onViseme });
+  processQueue();
+};
+
 const stop = () => {
   queue.length = 0;
   currentAudio?.pause();
@@ -174,5 +238,5 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   speechSynthesis.onvoiceschanged = () => loadVoices();
 }
 
-export { speak, playAudioBlob, stop, onPlayStateChange, getIsPlaying };
-export type { VoiceAvatar, TTSOptions };
+export { speak, playAudioBlob, playAudioWithVisemes, stop, onPlayStateChange, getIsPlaying };
+export type { VoiceAvatar, TTSOptions, VisemeEntry, VisemeCallback };
