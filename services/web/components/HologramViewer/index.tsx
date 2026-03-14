@@ -142,7 +142,7 @@ type HologramViewerProps = {
 const HOLOGRAM_COLOR = 0x63c5c0;
 const BONE_COLOR = 0x2a7a76;
 const GRID_COLOR = 0x1a3a38;
-const MAX_POINT_INSTANCES = 8192;
+const MAX_POINT_INSTANCES = 40000;
 const MORPH_LERP_SPEED = 4.0; // Weight units per second for smooth transitions
 
 // ── Particle Hair System ─────────────────────────────────
@@ -175,13 +175,14 @@ function buildHairParticles(): {
   const allSizes: number[] = [];
 
   // Head geometry constants (relative to head joint)
-  const scalpCenter = new THREE.Vector3(0, 0.1, 0);
-  const scalpRadius = 0.1;
-  const tiePoint = new THREE.Vector3(0, 0.06, -0.11);
-  const ponytailLength = 0.45;
-  const ponytailSpread = 0.06;
+  // New head: center at [0, 0.08, 0], W=0.066, H=0.043, D=0.037
+  const scalpCenter = new THREE.Vector3(0, 0.08, 0);
+  const scalpRadius = 0.07; // slightly larger than head to sit on top
+  const tiePoint = new THREE.Vector3(0, 0.04, -0.08);
+  const ponytailLength = 0.35;
+  const ponytailSpread = 0.05;
   const noiseScale = 5.0;
-  const noiseAmp = 0.04;
+  const noiseAmp = 0.03;
 
   const baseColor = new THREE.Color('#7eeae5'); // bright teal at scalp
   const tipColor = new THREE.Color('#3a9e98'); // darker teal at tips
@@ -629,11 +630,11 @@ const VISEME_LIP_OFFSETS: Record<string, { upperY: number; lowerY: number }> = {
 
 /** Check if a head-joint point is an upper lip particle by its offset coordinates */
 const isUpperLip = (offset: [number, number, number]): boolean =>
-  offset[1] >= 0.033 && offset[1] <= 0.042 && offset[2] >= 0.08 && offset[2] <= 0.09;
+  offset[1] >= 0.06 && offset[1] <= 0.075 && offset[2] >= 0.025 && offset[2] <= 0.035;
 
 /** Check if a head-joint point is a lower lip particle */
 const isLowerLip = (offset: [number, number, number]): boolean =>
-  offset[1] >= 0.024 && offset[1] <= 0.032 && offset[2] >= 0.078 && offset[2] <= 0.088;
+  offset[1] >= 0.05 && offset[1] <= 0.065 && offset[2] >= 0.024 && offset[2] <= 0.034;
 
 const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }) => {
   const containerRef = useRef<HTMLDivElement>(null);
