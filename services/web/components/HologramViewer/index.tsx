@@ -1155,12 +1155,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
         uniforms.uTime.value = elapsed;
       }
 
-      // Slow rotation for hologram effect
-      scene.traverse((obj) => {
-        if (obj.type === 'Group' && obj.parent === scene) {
-          obj.rotation.y += 0.002;
-        }
-      });
+      // Face forward (no rotation)
 
       renderer.render(scene, camera);
     };
