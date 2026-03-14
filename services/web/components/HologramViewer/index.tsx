@@ -8,10 +8,55 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
 // GA-evolved morph target samples (fallback when backend doesn't provide them)
-import gaSamples from '../../../../hologram_samples.json';
+import gaSamples from '../../public/hologram_samples.json';
+
+// Aura shader for emotion-modulated glow
+import { auraVertexShader, auraFragmentShader, AURA_COLORS } from './auraShader';
 
 // Styles
 import classes from './HologramViewer.module.scss';
+
+// ── Binary PoseBuffer constants (must match core/interfaces/hologram.ts) ──
+const POSE_BUFFER_JOINTS = 20;
+const POSE_BUFFER_MORPHS = 4;
+const POSE_BUFFER_BYTE_SIZE = (POSE_BUFFER_JOINTS * 3 + POSE_BUFFER_MORPHS) * 4 + 5; // 261
+const POSE_JOINT_ORDER = [
+  'root', 'spine', 'chest', 'neck', 'head',
+  'l_shoulder', 'l_elbow', 'l_hand',
+  'r_shoulder', 'r_elbow', 'r_hand',
+  'l_hip', 'l_knee', 'l_foot',
+  'r_hip', 'r_knee', 'r_foot',
+  'l_toe', 'r_toe', 'pelvis',
+] as const;
+
+/** Decode binary pose buffer into joint rotations + morph weights */
+const decodePoseBuffer = (data: Uint8Array): {
+  joints: Record<string, { rx: number; ry: number; rz: number }>;
+  morphWeights: [number, number, number, number];
+  emotionIdx: number;
+} | null => {
+  if (data.byteLength < POSE_BUFFER_BYTE_SIZE) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let offset = 0;
+  const joints: Record<string, { rx: number; ry: number; rz: number }> = {};
+  for (let i = 0; i < POSE_BUFFER_JOINTS; i++) {
+    const rx = view.getFloat32(offset, true); offset += 4;
+    const ry = view.getFloat32(offset, true); offset += 4;
+    const rz = view.getFloat32(offset, true); offset += 4;
+    if (rx !== 0 || ry !== 0 || rz !== 0) {
+      joints[POSE_JOINT_ORDER[i]] = { rx, ry, rz };
+    }
+  }
+  const morphWeights: [number, number, number, number] = [
+    view.getFloat32(offset, true),
+    view.getFloat32(offset + 4, true),
+    view.getFloat32(offset + 8, true),
+    view.getFloat32(offset + 12, true),
+  ];
+  offset += 16;
+  const emotionIdx = view.getUint8(offset);
+  return { joints, morphWeights, emotionIdx };
+};
 
 // ── Types ──────────────────────────────────────────────
 
@@ -302,6 +347,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
   const jointMarkersRef = useRef<Map<string, Map<string, THREE.Mesh>>>(new Map());
   const boneGeometriesRef = useRef<Map<string, THREE.BufferGeometry[]>>(new Map());
   const morphStateRef = useRef<Map<string, MorphState>>(new Map());
+  const auraUniformsRef = useRef<Map<string, { uTime: { value: number }; uIntensity: { value: number }; uEmotionColor: { value: number[] }; uEmotionBlend: { value: number } }>>(new Map());
   const avatarsRef = useRef<AvatarData[]>(avatars);
   avatarsRef.current = avatars;
 
@@ -382,7 +428,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
           if (!joint.parent_id) continue;
           const start = jointPositions.get(joint.parent_id);
           const end = jointPositions.get(joint.id);
-          if (!start || !end || bIdx >= boneGeos.length) { bIdx++; continue; }
+          if (!start || !end || bIdx >= boneGeos.length) {
+            bIdx++;
+            continue;
+          }
           const posArr = boneGeos[bIdx].getAttribute('position') as THREE.BufferAttribute;
           posArr.setXYZ(0, start.x, start.y, start.z);
           posArr.setXYZ(1, end.x, end.y, end.z);
@@ -570,6 +619,34 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
       }
       jointMarkersRef.current.set(avatar.id, markerMap);
 
+      // ── Aura glow plane (emotion-modulated) ────────────
+      const emotionIdx = avatar.activeMorph
+        ? (EMOTION_INDEX[avatar.activeMorph] ?? 3)
+        : 3;
+      const emotionKey = EMOTIONS[emotionIdx] || 'neutral';
+      const auraColor = AURA_COLORS[emotionKey as keyof typeof AURA_COLORS] || AURA_COLORS.neutral;
+      const auraUniforms = {
+        uTime: { value: 0 },
+        uIntensity: { value: 0.6 },
+        uEmotionColor: { value: [...auraColor] },
+        uEmotionBlend: { value: emotionIdx === 3 ? 0 : 1 },
+      };
+      auraUniformsRef.current.set(avatar.id, auraUniforms);
+
+      const auraMaterial = new THREE.ShaderMaterial({
+        vertexShader: auraVertexShader,
+        fragmentShader: auraFragmentShader,
+        uniforms: auraUniforms,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const auraGeo = new THREE.PlaneGeometry(1.5, 2.0);
+      const auraMesh = new THREE.Mesh(auraGeo, auraMaterial);
+      auraMesh.position.set(0, 0.8, -0.3); // behind avatar center
+      auraMesh.name = 'aura';
+      group.add(auraMesh);
+
       return group;
     },
     [sharedSphereGeo, glowMaterial, resolveJointPositions],
@@ -637,7 +714,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
           const target = mState.targetInfluences[i];
           if (Math.abs(current - target) > 0.001) {
             const step = MORPH_LERP_SPEED * delta;
-            mState.currentInfluences[i] = current + Math.sign(target - current) * Math.min(step, Math.abs(target - current));
+            mState.currentInfluences[i] =
+              current + Math.sign(target - current) * Math.min(step, Math.abs(target - current));
             needsUpdate = true;
           }
         }
@@ -645,7 +723,9 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         // Lerp overall weight
         if (Math.abs(mState.currentWeight - mState.targetWeight) > 0.001) {
           const step = MORPH_LERP_SPEED * delta;
-          mState.currentWeight += Math.sign(mState.targetWeight - mState.currentWeight) * Math.min(step, Math.abs(mState.targetWeight - mState.currentWeight));
+          mState.currentWeight +=
+            Math.sign(mState.targetWeight - mState.currentWeight) *
+            Math.min(step, Math.abs(mState.targetWeight - mState.currentWeight));
           needsUpdate = true;
         }
 
@@ -656,6 +736,12 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
             updateAvatarGeometry(avatar, mState);
           }
         }
+      }
+
+      // ── Tick aura shader uniforms ────────────────────────
+      const elapsed = clock.elapsedTime;
+      for (const [, uniforms] of auraUniformsRef.current) {
+        uniforms.uTime.value = elapsed;
       }
 
       // Sync IK chain physics body positions to joint markers
@@ -713,6 +799,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
       ikChainsRef.current.clear();
       instancedMeshRef.current.clear();
       jointMarkersRef.current.clear();
+      auraUniformsRef.current.clear();
       boneGeometriesRef.current.clear();
       morphStateRef.current.clear();
     };
@@ -736,6 +823,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         jointMarkersRef.current.delete(id);
         boneGeometriesRef.current.delete(id);
         morphStateRef.current.delete(id);
+        auraUniformsRef.current.delete(id);
         const chains = ikChainsRef.current.get(id);
         if (chains) {
           for (const chain of chains) {
@@ -779,6 +867,16 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         if (idx !== undefined && targetEmotion !== 'neutral') {
           mState.targetInfluences[idx] = targetWeight;
         }
+      }
+
+      // Update aura uniforms to match current emotion
+      const auraUniforms = auraUniformsRef.current.get(avatar.id);
+      if (auraUniforms) {
+        const eIdx = EMOTION_INDEX[targetEmotion] ?? 3;
+        const eKey = EMOTIONS[eIdx] || 'neutral';
+        const rgb = AURA_COLORS[eKey as keyof typeof AURA_COLORS] || AURA_COLORS.neutral;
+        auraUniforms.uEmotionColor.value = [...rgb];
+        auraUniforms.uEmotionBlend.value = eIdx === 3 ? 0 : targetWeight;
       }
 
       // Only rebuild group if avatar is new or structural data changed

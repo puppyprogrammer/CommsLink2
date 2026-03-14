@@ -369,6 +369,7 @@ model hologram_avatar {
   points     Json     // Array of { joint_id, offset, color, size } point configs
   pose          Json?    // Current pose: { joints: { id: { rx, ry, rz } } }
   morph_targets Json?    // GA-evolved morph targets: { emotion: { joints, points_offsets, fitness } }
+  ppo_weights   Json?    // PPO policy weights: { w1, b1, w2, b2, wv, bv, stepCount, lastReward }
   physics       Boolean  @default(true)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt

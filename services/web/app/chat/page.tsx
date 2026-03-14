@@ -1273,9 +1273,18 @@ const ChatPage = () => {
               )}
               {!hologramEditorOpen && hologramAvatars.some((a) => a.userId === session?.user?.id) && (
                 <Box sx={{ px: 1, pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="caption" sx={{ color: '#888', minWidth: 50 }}>Emotion</Typography>
+                  <Typography variant="caption" sx={{ color: '#888', minWidth: 50 }}>
+                    Emotion
+                  </Typography>
                   <select
-                    style={{ background: '#222', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '2px 4px', fontSize: 12 }}
+                    style={{
+                      background: '#222',
+                      color: '#ddd',
+                      border: '1px solid #555',
+                      borderRadius: 4,
+                      padding: '2px 4px',
+                      fontSize: 12,
+                    }}
                     onChange={(e) => {
                       const myAvatar = hologramAvatars.find((a) => a.userId === session?.user?.id);
                       if (myAvatar) {
