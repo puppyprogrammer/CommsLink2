@@ -142,7 +142,7 @@ type HologramViewerProps = {
 const HOLOGRAM_COLOR = 0x63c5c0;
 const BONE_COLOR = 0x2a7a76;
 const GRID_COLOR = 0x1a3a38;
-const MAX_POINT_INSTANCES = 40000;
+const MAX_POINT_INSTANCES = 50000;
 const MORPH_LERP_SPEED = 4.0; // Weight units per second for smooth transitions
 
 // ── Particle Hair System ─────────────────────────────────
