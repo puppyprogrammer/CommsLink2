@@ -260,6 +260,7 @@ const ChatPage = () => {
         setRoomPassword('');
         setRoomError('');
         setHologramAvatars([]);
+        setTypingAgents([]);
         stopTTS();
         socket.emit('hologram_load');
       },
@@ -351,6 +352,9 @@ const ChatPage = () => {
     // Agent typing indicator
     socket.on('agent_typing', (data: { agentName: string }) => {
       setTypingAgents((prev) => (prev.includes(data.agentName) ? prev : [...prev, data.agentName]));
+    });
+    socket.on('agent_done_typing', (data: { agentName: string }) => {
+      setTypingAgents((prev) => prev.filter((name) => name !== data.agentName));
     });
 
     // Alarm trigger

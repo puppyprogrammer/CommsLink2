@@ -5905,6 +5905,46 @@ const loadAutopilotAgents = async (io: SocketServer): Promise<void> => {
 };
 
 // ┌──────────────────────────────────────────┐
+// │ Dormant Agent Check-In                  │
+// │ Gives disabled agents a slow cycle so   │
+// │ they can self-activate autopilot         │
+// └──────────────────────────────────────────┘
+
+const DORMANT_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+const startDormantAgentChecker = (io: SocketServer): void => {
+  console.log("[Dormant] Starting dormant agent checker (every 5min)");
+
+  setInterval(async () => {
+    try {
+      const dormantAgents = await Data.llmAgent.findAutopilotDisabled();
+      for (const agent of dormantAgents) {
+        // Skip if already busy (e.g. from a mention trigger)
+        if (agentBusy.has(agent.id)) continue;
+
+        // Skip if autopilot was re-enabled since we fetched (timer already running)
+        if (autopilotTimers.has(agent.id)) continue;
+
+        // Find the agent's room
+        const roomEntry = Array.from(activeRooms.entries()).find(
+          ([, r]) => r.id === agent.room_id,
+        );
+        if (!roomEntry) continue;
+
+        // Only check in if there are users in the room
+        const [roomName, room] = roomEntry;
+        if (room.users.size === 0) continue;
+
+        console.log(`[Dormant] Running check-in cycle for ${agent.name}`);
+        await runAgentResponse(io, agent, roomName, true);
+      }
+    } catch (err) {
+      console.error("[Dormant] Error in dormant agent checker:", err);
+    }
+  }, DORMANT_CHECK_INTERVAL_MS);
+};
+
+// ┌──────────────────────────────────────────┐
 // │ Schedule Job Runner                     │
 // └──────────────────────────────────────────┘
 
@@ -6019,6 +6059,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
   // Load autopilot agents
   await loadAutopilotAgents(io);
+
+  // Start dormant agent checker (lets disabled agents self-activate)
+  startDormantAgentChecker(io);
 
   // Start scheduled job runner
   startScheduleRunner(io);

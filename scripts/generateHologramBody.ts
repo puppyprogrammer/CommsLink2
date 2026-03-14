@@ -1,8 +1,12 @@
 /**
  * Generate a realistic feminine humanoid point cloud for the hologram avatar.
  * Uses Catmull-Rom spline interpolation across cross-sections for a smooth,
- * continuous surface. Includes hip-to-leg bifurcation zone, 3D Perlin noise
- * displacement, and varied particle sizes for organic feel.
+ * continuous surface. Includes hip-to-leg bifurcation zone and small random
+ * displacement for organic feel.
+ *
+ * IMPORTANT: Joint world positions MUST match the DB skeleton resolved via FK.
+ * The DB skeleton stores relative offsets from parent joints. The world positions
+ * below are computed by resolving that parent chain.
  *
  * Run: npx ts-node scripts/generateHologramBody.ts
  * Output: scripts/hologram_body.json
@@ -17,9 +21,8 @@ type Point = {
 
 const points: Point[] = [];
 
-// Scale: spec uses h=2.0, our figure is ~1.55 units tall
-const H = 1.55;
-const S = H / 2.0;
+// Body width scale factor (controls overall body thickness)
+const S = 0.7;
 
 const COL = {
   body: '#4dd8d0',
@@ -32,15 +35,41 @@ const COL = {
   lip: '#6de0da',
 };
 
+// ══════════════════════════════════════════════════════════════
+// JOINT WORLD POSITIONS — resolved from DB skeleton via FK
+// DB skeleton: root is absolute, all others are relative to parent.
+//
+// root:       [0, 0, 0]       (absolute)
+// spine:      root + [0, 0.3, 0]        = [0, 0.3, 0]
+// chest:      spine + [0, 0.25, 0]      = [0, 0.55, 0]
+// neck:       chest + [0, 0.15, 0]      = [0, 0.7, 0]
+// head:       neck + [0, 0.15, 0]       = [0, 0.85, 0]
+// l_shoulder: chest + [-0.15, 0, 0]     = [-0.15, 0.55, 0]
+// l_elbow:    l_shoulder + [0, -0.2, 0] = [-0.15, 0.35, 0]
+// l_hand:     l_elbow + [0, -0.18, 0]   = [-0.15, 0.17, 0]
+// l_hip:      root + [-0.1, 0, 0]       = [-0.1, 0, 0]
+// l_knee:     l_hip + [0, -0.35, 0]     = [-0.1, -0.35, 0]
+// l_foot:     l_knee + [0, -0.35, 0]    = [-0.1, -0.7, 0]
+// ══════════════════════════════════════════════════════════════
+
 const JOINTS: Record<string, [number, number, number]> = {
-  root: [0, 0.9, 0], spine: [0, 1.05, 0], chest: [0, 1.2, 0],
-  neck: [0, 1.3, 0], head: [0, 1.45, 0],
-  l_shoulder: [-0.18, 1.2, 0], r_shoulder: [0.18, 1.2, 0],
-  l_elbow: [-0.43, 1.2, 0], r_elbow: [0.43, 1.2, 0],
-  l_hand: [-0.65, 1.2, 0], r_hand: [0.65, 1.2, 0],
-  l_hip: [-0.1, 0.9, 0], r_hip: [0.1, 0.9, 0],
-  l_knee: [-0.1, 0.5, 0], r_knee: [0.1, 0.5, 0],
-  l_foot: [-0.1, 0.1, 0], r_foot: [0.1, 0.1, 0],
+  root: [0, 0, 0],
+  spine: [0, 0.3, 0],
+  chest: [0, 0.55, 0],
+  neck: [0, 0.7, 0],
+  head: [0, 0.85, 0],
+  l_shoulder: [-0.15, 0.55, 0],
+  r_shoulder: [0.15, 0.55, 0],
+  l_elbow: [-0.15, 0.35, 0],
+  r_elbow: [0.15, 0.35, 0],
+  l_hand: [-0.15, 0.17, 0],
+  r_hand: [0.15, 0.17, 0],
+  l_hip: [-0.1, 0, 0],
+  r_hip: [0.1, 0, 0],
+  l_knee: [-0.1, -0.35, 0],
+  r_knee: [0.1, -0.35, 0],
+  l_foot: [-0.1, -0.7, 0],
+  r_foot: [0.1, -0.7, 0],
 };
 
 function rand(min: number, max: number): number {
@@ -49,27 +78,6 @@ function rand(min: number, max: number): number {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
-}
-
-// ── 3D Perlin-like noise (hash-based, deterministic) ──
-function fade(t: number): number { return t * t * t * (t * (t * 6 - 15) + 10); }
-function hashN(x: number, y: number, z: number): number {
-  let h = (x * 374761393 + y * 668265263 + z * 1274126177) | 0;
-  h = ((h ^ (h >> 13)) * 1103515245) | 0;
-  return ((h & 0x7fffffff) / 0x7fffffff) * 2 - 1;
-}
-function noise3D(x: number, y: number, z: number): number {
-  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
-  const fx = fade(x - ix), fy = fade(y - iy), fz = fade(z - iz);
-  const n000 = hashN(ix, iy, iz), n100 = hashN(ix + 1, iy, iz);
-  const n010 = hashN(ix, iy + 1, iz), n110 = hashN(ix + 1, iy + 1, iz);
-  const n001 = hashN(ix, iy, iz + 1), n101 = hashN(ix + 1, iy, iz + 1);
-  const n011 = hashN(ix, iy + 1, iz + 1), n111 = hashN(ix + 1, iy + 1, iz + 1);
-  return lerp(
-    lerp(lerp(n000, n100, fx), lerp(n010, n110, fx), fy),
-    lerp(lerp(n001, n101, fx), lerp(n011, n111, fx), fy),
-    fz,
-  );
 }
 
 /** Catmull-Rom spline interpolation */
@@ -84,27 +92,18 @@ function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): 
   );
 }
 
-/** Add a point at world pos, converting to joint-relative offset with noise + random displacement */
+/** Add a point at world pos, converting to joint-relative offset with small random displacement */
 function addPoint(worldX: number, worldY: number, worldZ: number, jointId: string, size: number, color: string): void {
   const j = JOINTS[jointId];
-  // Random displacement ±0.008
-  const disp = 0.008;
-  // 3D Perlin noise displacement: scale 3.0, amplitude 0.015
-  const ns = 3.0;
-  const na = 0.015;
-  const nx = noise3D(worldX * ns, worldY * ns, worldZ * ns) * na;
-  const ny = noise3D(worldX * ns + 100, worldY * ns + 100, worldZ * ns + 100) * na;
-  const nz = noise3D(worldX * ns + 200, worldY * ns + 200, worldZ * ns + 200) * na;
-
+  const disp = 0.004;
   points.push({
     joint_id: jointId,
     offset: [
-      worldX - j[0] + rand(-disp, disp) + nx,
-      worldY - j[1] + rand(-disp, disp) + ny,
-      worldZ - j[2] + rand(-disp, disp) + nz,
+      worldX - j[0] + rand(-disp, disp),
+      worldY - j[1] + rand(-disp, disp),
+      worldZ - j[2] + rand(-disp, disp),
     ],
-    // Varied particle size: 0.25..0.7 (maps to ~1.5px..4px in renderer)
-    size: size * rand(0.6, 1.4),
+    size: size * rand(0.85, 1.15),
     color,
   });
 }
@@ -128,12 +127,11 @@ function ellipsoid(
   }
 }
 
-function specY(ratio: number): number {
-  return 0.1 + ratio * H;
-}
-
 // ══════════════════════════════════════════════════════════════
 // CROSS-SECTION DEFINITIONS — Torso
+// All Y values are absolute world coordinates matching the skeleton.
+// Figure spans from Y=-0.7 (feet) to Y=0.93 (top of head).
+// Root/hips at Y=0, chest at Y=0.55, neck at Y=0.7, head at Y=0.85.
 // ══════════════════════════════════════════════════════════════
 
 type Section = {
@@ -145,36 +143,36 @@ type Section = {
 };
 
 const sections: Section[] = [
-  // Crotch / leg divide — starts the bifurcation zone
-  { y: specY(0.50), w: 0.105 * S, d: 0.075 * S, joint: 'root' },
+  // Crotch / leg divide
+  { y: -0.02, w: 0.105 * S, d: 0.075 * S, joint: 'root' },
   // Lower hip
-  { y: specY(0.54), w: 0.108 * S, d: 0.078 * S, joint: 'root' },
+  { y: 0.02, w: 0.108 * S, d: 0.078 * S, joint: 'root' },
   // Hip bone (widest)
-  { y: specY(0.58), w: 0.110 * S, d: 0.080 * S, joint: 'root' },
+  { y: 0.06, w: 0.110 * S, d: 0.080 * S, joint: 'root' },
   // Above hips — start narrowing
-  { y: specY(0.61), w: 0.095 * S, d: 0.070 * S, joint: 'spine' },
+  { y: 0.12, w: 0.095 * S, d: 0.070 * S, joint: 'root' },
   // Navel
-  { y: specY(0.63), w: 0.085 * S, d: 0.065 * S, joint: 'spine' },
-  // Natural waist (narrowest — EXAGGERATED for feminine silhouette)
-  { y: specY(0.66), w: 0.062 * S, d: 0.052 * S, joint: 'spine' },
+  { y: 0.18, w: 0.085 * S, d: 0.065 * S, joint: 'spine' },
+  // Natural waist (narrowest — exaggerated for feminine silhouette)
+  { y: 0.25, w: 0.062 * S, d: 0.052 * S, joint: 'spine' },
   // Above waist
-  { y: specY(0.69), w: 0.075 * S, d: 0.058 * S, joint: 'chest' },
+  { y: 0.33, w: 0.075 * S, d: 0.058 * S, joint: 'chest' },
   // Under-bust / ribcage
-  { y: specY(0.71), w: 0.085 * S, d: 0.062 * S, joint: 'chest' },
+  { y: 0.38, w: 0.085 * S, d: 0.062 * S, joint: 'chest' },
   // Bust line
-  { y: specY(0.75), w: 0.100 * S, d: 0.072 * S, joint: 'chest', bust: 0.025 * S },
+  { y: 0.45, w: 0.100 * S, d: 0.072 * S, joint: 'chest', bust: 0.025 * S },
   // Above bust
-  { y: specY(0.78), w: 0.095 * S, d: 0.065 * S, joint: 'chest', bust: 0.008 * S },
+  { y: 0.50, w: 0.095 * S, d: 0.065 * S, joint: 'chest', bust: 0.008 * S },
   // Armpit / upper chest
-  { y: specY(0.80), w: 0.095 * S, d: 0.060 * S, joint: 'chest' },
-  // Shoulder line
-  { y: specY(0.82), w: 0.110 * S, d: 0.055 * S, joint: 'chest' },
+  { y: 0.52, w: 0.095 * S, d: 0.060 * S, joint: 'chest' },
+  // Shoulder line (matches chest joint Y=0.55)
+  { y: 0.55, w: 0.110 * S, d: 0.055 * S, joint: 'chest' },
   // Neck base / collarbone
-  { y: specY(0.84), w: 0.060 * S, d: 0.040 * S, joint: 'neck' },
+  { y: 0.60, w: 0.060 * S, d: 0.040 * S, joint: 'neck' },
   // Mid neck
-  { y: specY(0.86), w: 0.028 * S, d: 0.028 * S, joint: 'neck' },
+  { y: 0.65, w: 0.028 * S, d: 0.028 * S, joint: 'neck' },
   // Upper neck
-  { y: specY(0.875), w: 0.025 * S, d: 0.025 * S, joint: 'neck' },
+  { y: 0.68, w: 0.025 * S, d: 0.025 * S, joint: 'neck' },
 ];
 
 /** Evaluate the torso profile at any Y using Catmull-Rom */
@@ -212,7 +210,7 @@ function evalTorsoAt(y: number): { w: number; d: number; joint: string; bust: nu
 const torsoYMin = sections[0].y;
 const torsoYMax = sections[sections.length - 1].y;
 
-for (let i = 0; i < 7000; i++) {
+for (let i = 0; i < 10000; i++) {
   const y = rand(torsoYMin, torsoYMax);
   const profile = evalTorsoAt(y);
   if (!profile) continue;
@@ -236,44 +234,36 @@ for (let i = 0; i < 7000; i++) {
     }
   }
 
-  addPoint(x, y, z, profile.joint, rand(0.35, 0.6), COL.body);
+  addPoint(x, y, z, profile.joint, 0.38, COL.body);
 }
 
 // Glute volume
-for (let i = 0; i < 400; i++) {
-  const y = rand(specY(0.50), specY(0.57));
-  const profile = evalTorsoAt(y);
+for (let i = 0; i < 600; i++) {
+  const y = rand(-0.02, 0.05);
+  const profile = evalTorsoAt(Math.max(y, sections[0].y));
   if (!profile) continue;
   const angle = rand(Math.PI * 0.6, Math.PI * 1.4);
   addPoint(
     profile.w * Math.cos(angle) * rand(0.95, 1.05), y,
     profile.d * Math.sin(angle) * rand(1.0, 1.15),
-    'root', rand(0.35, 0.55), COL.body,
+    'root', 0.38, COL.body,
   );
 }
 
 // ══════════════════════════════════════════════════════════════
 // HIP-TO-LEG BIFURCATION ZONE
-// At the crotch level, the single torso ellipse gradually splits
-// into two separate leg tubes. This creates a smooth, continuous
-// transition with no seam or gap.
-//
-// bifurcTop (specY(0.54)): single hip ellipse, slight inner pinch
-// bifurcBot (specY(0.47)): two fully separated leg ellipses
 // ══════════════════════════════════════════════════════════════
 
-const bifurcTop = specY(0.54);  // fully merged (hip)
-const bifurcBot = specY(0.46);  // fully separated (legs)
-const legCenterX = 0.055;       // X center of each leg at full separation
-const legRadiusW = 0.048;       // leg half-width at separation
-const legRadiusD = 0.042;       // leg half-depth at separation
+const bifurcTop = 0.02;
+const bifurcBot = -0.10;
+const legCenterX = 0.055;
+const legRadiusW = 0.048;
+const legRadiusD = 0.042;
 
-for (let i = 0; i < 2500; i++) {
+for (let i = 0; i < 3500; i++) {
   const y = rand(bifurcBot, bifurcTop);
-  // blend: 0 = fully separated, 1 = fully merged
   const blend = (y - bifurcBot) / (bifurcTop - bifurcBot);
 
-  // Get torso profile at this height for the merged shape
   const hipProfile = evalTorsoAt(Math.max(y, sections[0].y));
   const hipW = hipProfile ? hipProfile.w : 0.105 * S;
   const hipD = hipProfile ? hipProfile.d : 0.075 * S;
@@ -281,79 +271,63 @@ for (let i = 0; i < 2500; i++) {
   const angle = rand(0, Math.PI * 2);
 
   if (blend > 0.85) {
-    // Near top: mostly single ellipse with slight inner pinch
-    const pinch = 1 - (1 - blend) * 3; // 1.0 at blend=1, 0.55 at blend=0.85
+    const pinch = 1 - (1 - blend) * 3;
     let x = hipW * Math.cos(angle);
     const z = hipD * Math.sin(angle);
-    // Pinch center inward slightly
     if (Math.abs(x) < hipW * 0.3) {
       x *= lerp(0.7, 1.0, pinch);
     }
-    addPoint(x, y, z, 'root', rand(0.35, 0.6), COL.body);
+    addPoint(x, y, z, 'root', 0.38, COL.body);
   } else {
-    // Below: two separate ellipses blending in from single
-    // Pick which leg
     const side = Math.random() < 0.5 ? -1 : 1;
-    // Interpolate between merged position and separated position
     const sepCx = side * legCenterX;
-    const sepW = legRadiusW;
-    const sepD = legRadiusD;
-    // Merged: point on the full hip ellipse
     const mergedX = hipW * Math.cos(angle);
     const mergedZ = hipD * Math.sin(angle);
-    // Separated: point on individual leg ellipse
-    const sepX = sepCx + sepW * Math.cos(angle);
-    const sepZ = sepD * Math.sin(angle);
-    // Blend between them
+    const sepX = sepCx + legRadiusW * Math.cos(angle);
+    const sepZ = legRadiusD * Math.sin(angle);
     const x = lerp(sepX, mergedX, blend / 0.85);
     const z = lerp(sepZ, mergedZ, blend / 0.85);
 
     const joint = side === -1 ? 'l_hip' : 'r_hip';
-    addPoint(x, y, z, joint, rand(0.35, 0.6), COL.body);
+    addPoint(x, y, z, joint, 0.38, COL.body);
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// LEGS — Elliptical tube cross-sections, NOT rectangles
-// Each leg: sample random Y along length, compute elliptical
-// cross-section at that Y, place particle on ellipse perimeter
+// LEGS — Elliptical tube cross-sections
+// Hip Y=0, Knee Y=-0.35, Foot Y=-0.7
 // ══════════════════════════════════════════════════════════════
 
 type EllipseSection = { y: number; cx: number; rw: number; rd: number };
 
-/** Sample a limb as a series of elliptical cross-sections with Catmull-Rom */
-function sampleEllipticalLimb(sections: EllipseSection[], count: number, jointId: string, cz: number = 0): void {
+function sampleEllipticalLimb(secs: EllipseSection[], count: number, jointId: string, cz: number = 0): void {
   for (let i = 0; i < count; i++) {
-    // Random position along the limb
-    const yMin = sections[sections.length - 1].y; // bottom
-    const yMax = sections[0].y; // top
+    const yMin = secs[secs.length - 1].y;
+    const yMax = secs[0].y;
     const y = rand(yMin, yMax);
 
-    // Find segment
-    // Sections go top-to-bottom (descending Y)
     let idx = 0;
-    for (let s = 0; s < sections.length - 1; s++) {
-      if (y <= sections[s].y && y >= sections[s + 1].y) { idx = s; break; }
+    for (let s = 0; s < secs.length - 1; s++) {
+      if (y <= secs[s].y && y >= secs[s + 1].y) { idx = s; break; }
     }
 
-    const segLen = sections[idx].y - sections[idx + 1].y;
-    const t = segLen === 0 ? 0 : (sections[idx].y - y) / segLen;
+    const segLen = secs[idx].y - secs[idx + 1].y;
+    const t = segLen === 0 ? 0 : (secs[idx].y - y) / segLen;
 
     const i0 = Math.max(0, idx - 1);
     const i1 = idx;
-    const i2 = Math.min(sections.length - 1, idx + 1);
-    const i3 = Math.min(sections.length - 1, idx + 2);
+    const i2 = Math.min(secs.length - 1, idx + 1);
+    const i3 = Math.min(secs.length - 1, idx + 2);
 
-    const cx = catmullRom(sections[i0].cx, sections[i1].cx, sections[i2].cx, sections[i3].cx, t);
-    const rw = Math.max(catmullRom(sections[i0].rw, sections[i1].rw, sections[i2].rw, sections[i3].rw, t), 0.003);
-    const rd = Math.max(catmullRom(sections[i0].rd, sections[i1].rd, sections[i2].rd, sections[i3].rd, t), 0.003);
+    const cx = catmullRom(secs[i0].cx, secs[i1].cx, secs[i2].cx, secs[i3].cx, t);
+    const rw = Math.max(catmullRom(secs[i0].rw, secs[i1].rw, secs[i2].rw, secs[i3].rw, t), 0.003);
+    const rd = Math.max(catmullRom(secs[i0].rd, secs[i1].rd, secs[i2].rd, secs[i3].rd, t), 0.003);
 
-    // Sample on ellipse perimeter at this cross-section
     const angle = rand(0, Math.PI * 2);
     const x = cx + rw * Math.cos(angle);
     const z = cz + rd * Math.sin(angle);
 
-    addPoint(x, y, z, jointId, rand(0.35, 0.55), COL.body);
+    addPoint(x, y, z, jointId, 0.38, COL.body);
   }
 }
 
@@ -361,36 +335,35 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
   [-1, 'l_hip', 'l_knee', 'l_foot'],
   [1, 'r_hip', 'r_knee', 'r_foot'],
 ] as const) {
-  const lx = side * legCenterX; // matches bifurcation zone
+  const hipX = side * legCenterX;
   const kneeX = side * 0.1;
   const ankleX = side * 0.1;
+  const kneeY = -0.35;
+  const footY = -0.7;
 
-  // Thigh: starts where bifurcation ends, tapers to knee
   const thighSections: EllipseSection[] = [
-    { y: bifurcBot, cx: lx, rw: legRadiusW, rd: legRadiusD },
-    { y: bifurcBot - 0.05, cx: lerp(lx, kneeX, 0.15), rw: 0.044, rd: 0.040 },
-    { y: lerp(bifurcBot, 0.5, 0.4), cx: lerp(lx, kneeX, 0.4), rw: 0.038, rd: 0.034 },
-    { y: lerp(bifurcBot, 0.5, 0.7), cx: lerp(lx, kneeX, 0.7), rw: 0.032, rd: 0.028 },
-    { y: 0.5, cx: kneeX, rw: 0.028, rd: 0.024 },
+    { y: bifurcBot, cx: hipX, rw: legRadiusW, rd: legRadiusD },
+    { y: bifurcBot - 0.05, cx: lerp(hipX, kneeX, 0.15), rw: 0.044, rd: 0.040 },
+    { y: lerp(bifurcBot, kneeY, 0.4), cx: lerp(hipX, kneeX, 0.4), rw: 0.038, rd: 0.034 },
+    { y: lerp(bifurcBot, kneeY, 0.7), cx: lerp(hipX, kneeX, 0.7), rw: 0.032, rd: 0.028 },
+    { y: kneeY, cx: kneeX, rw: 0.028, rd: 0.024 },
   ];
-  sampleEllipticalLimb(thighSections, 2000, hipJoint);
+  sampleEllipticalLimb(thighSections, 3000, hipJoint);
 
-  // Calf: knee to ankle with muscle bulge
   const calfSections: EllipseSection[] = [
-    { y: 0.50, cx: kneeX, rw: 0.028, rd: 0.025 },
-    { y: 0.42, cx: kneeX, rw: 0.026, rd: 0.027 }, // calf bulge
-    { y: 0.34, cx: kneeX, rw: 0.022, rd: 0.021 },
-    { y: 0.22, cx: ankleX, rw: 0.017, rd: 0.016 },
-    { y: 0.12, cx: ankleX, rw: 0.014, rd: 0.013 },
+    { y: kneeY, cx: kneeX, rw: 0.028, rd: 0.025 },
+    { y: lerp(kneeY, footY, 0.25), cx: kneeX, rw: 0.026, rd: 0.027 },
+    { y: lerp(kneeY, footY, 0.5), cx: kneeX, rw: 0.022, rd: 0.021 },
+    { y: lerp(kneeY, footY, 0.75), cx: ankleX, rw: 0.017, rd: 0.016 },
+    { y: footY + 0.04, cx: ankleX, rw: 0.014, rd: 0.013 },
   ];
-  sampleEllipticalLimb(calfSections, 1400, kneeJoint);
+  sampleEllipticalLimb(calfSections, 2000, kneeJoint);
 
-  // Foot
   const fx = side * 0.1;
-  const fy = 0.1;
-  ellipsoid(fx, fy, 0, 0.018, 0.013, 0.018, 60, footJoint, 0.35, COL.body);
-  ellipsoid(fx, fy - 0.015, 0.03, 0.022, 0.01, 0.045, 100, footJoint, 0.35, COL.body);
-  ellipsoid(fx, fy - 0.012, -0.015, 0.013, 0.01, 0.013, 30, footJoint, 0.3, COL.dim);
+  const fy = footY;
+  ellipsoid(fx, fy, 0, 0.018, 0.013, 0.018, 100, footJoint, 0.35, COL.body);
+  ellipsoid(fx, fy - 0.015, 0.03, 0.022, 0.01, 0.045, 150, footJoint, 0.35, COL.body);
+  ellipsoid(fx, fy - 0.012, -0.015, 0.013, 0.01, 0.013, 50, footJoint, 0.3, COL.dim);
   for (let t = 0; t < 5; t++) {
     const tx = fx - 0.012 + t * 0.006;
     const ts = t === 0 ? 0.006 : 0.004;
@@ -399,42 +372,50 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
 }
 
 // ══════════════════════════════════════════════════════════════
-// ARMS — Elliptical tubes connected smoothly to shoulders
+// SHOULDER CAPS — bridge torso edge to arm tops
+// ══════════════════════════════════════════════════════════════
+for (const sx of [-1, 1]) {
+  const shX = sx * 0.15;
+  const shJoint = sx === -1 ? 'l_shoulder' : 'r_shoulder';
+  ellipsoid(shX, 0.55, 0, 0.042, 0.025, 0.035, 300, shJoint, 0.38, COL.body);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ARMS — Elliptical tubes
+// Shoulders at Y=0.55, elbows at Y=0.35, hands at Y=0.17
+// All at X=±0.15
 // ══════════════════════════════════════════════════════════════
 
 for (const [side, shJoint, elJoint, haJoint] of [
   [-1, 'l_shoulder', 'l_elbow', 'l_hand'],
   [1, 'r_shoulder', 'r_elbow', 'r_hand'],
 ] as const) {
-  const shoulderX = side * 0.11 * S;
-  const shoulderY = specY(0.82);
-  const elbowX = side * 0.18;
-  const elbowY = specY(0.58);
-  const wristX = side * 0.20;
-  const wristY = specY(0.42);
+  const shoulderX = side * 0.15;
+  const shoulderY = 0.55;
+  const elbowX = side * 0.15;
+  const elbowY = 0.35;
+  const wristX = side * 0.15;
+  const wristY = 0.17;
 
-  // Upper arm
   const upperArmSections: EllipseSection[] = [
     { y: shoulderY, cx: shoulderX, rw: 0.038, rd: 0.033 },
     { y: lerp(shoulderY, elbowY, 0.2), cx: lerp(shoulderX, elbowX, 0.2), rw: 0.030, rd: 0.028 },
     { y: lerp(shoulderY, elbowY, 0.5), cx: lerp(shoulderX, elbowX, 0.5), rw: 0.026, rd: 0.024 },
     { y: elbowY, cx: elbowX, rw: 0.022, rd: 0.021 },
   ];
-  sampleEllipticalLimb(upperArmSections, 1200, shJoint);
+  sampleEllipticalLimb(upperArmSections, 1800, shJoint);
 
-  // Forearm
   const forearmSections: EllipseSection[] = [
     { y: elbowY, cx: elbowX, rw: 0.022, rd: 0.021 },
     { y: lerp(elbowY, wristY, 0.3), cx: lerp(elbowX, wristX, 0.3), rw: 0.019, rd: 0.018 },
     { y: lerp(elbowY, wristY, 0.7), cx: lerp(elbowX, wristX, 0.7), rw: 0.015, rd: 0.014 },
     { y: wristY, cx: wristX, rw: 0.012, rd: 0.011 },
   ];
-  sampleEllipticalLimb(forearmSections, 900, elJoint);
+  sampleEllipticalLimb(forearmSections, 1400, elJoint);
 
-  // Hand
   const hx = wristX;
   const hy = wristY;
-  ellipsoid(hx, hy - 0.02, 0, 0.018, 0.022, 0.008, 80, haJoint, 0.3, COL.body);
+  ellipsoid(hx, hy - 0.02, 0, 0.018, 0.022, 0.008, 120, haJoint, 0.3, COL.body);
   const fingers = [
     { dx: -0.012, len: 0.03 }, { dx: -0.005, len: 0.035 },
     { dx: 0.002, len: 0.04 }, { dx: 0.009, len: 0.035 },
@@ -452,18 +433,30 @@ for (const [side, shJoint, elJoint, haJoint] of [
 }
 
 // ══════════════════════════════════════════════════════════════
-// HEAD
+// NECK-TO-HEAD CONNECTOR — fills the gap between upper neck
+// (Y=0.68) and the bottom of the skull (~Y=0.82)
 // ══════════════════════════════════════════════════════════════
-const headJY = 1.45;
+const neckConnectorSecs: EllipseSection[] = [
+  { y: 0.68, cx: 0, rw: 0.025 * S, rd: 0.025 * S },
+  { y: 0.73, cx: 0, rw: 0.024 * S, rd: 0.024 * S },
+  { y: 0.78, cx: 0, rw: 0.026 * S, rd: 0.027 * S },
+  { y: 0.82, cx: 0, rw: 0.030 * S, rd: 0.030 * S },
+];
+sampleEllipticalLimb(neckConnectorSecs, 600, 'head');
+
+// ══════════════════════════════════════════════════════════════
+// HEAD — centered at Y=0.93 (head joint at 0.85 + 0.08 offset)
+// ══════════════════════════════════════════════════════════════
+const headJY = 0.85;
 const headCY = headJY + 0.08;
 const headW = 0.085 * S / 2;
 const headD = 0.095 * S / 2;
 const headH = 0.11 * S / 2;
 
-// Skull (lower half for hair)
-ellipsoid(0, headCY, 0, headW, headH, headD, 800, 'head', 0.4, COL.body, -Math.PI / 2, Math.PI / 5);
+// Skull
+ellipsoid(0, headCY, 0, headW, headH, headD, 1200, 'head', 0.4, COL.body, -Math.PI / 2, Math.PI / 5);
 // Face
-ellipsoid(0, headCY - 0.01, headD * 0.6, headW * 0.85, headH * 0.8, headD * 0.25, 600, 'head', 0.3, COL.highlight, -Math.PI / 3, Math.PI / 4);
+ellipsoid(0, headCY - 0.01, headD * 0.6, headW * 0.85, headH * 0.8, headD * 0.25, 900, 'head', 0.3, COL.highlight, -Math.PI / 3, Math.PI / 4);
 // Jawline
 for (let i = 0; i < 80; i++) {
   const t = rand(-1, 1);

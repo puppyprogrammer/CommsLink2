@@ -44,6 +44,9 @@ const findByRoom = async (roomId: string): Promise<llm_agent[]> =>
 const findAutopilotEnabled = async (): Promise<llm_agent[]> =>
   prisma.llm_agent.findMany({ where: { autopilot_enabled: true } });
 
+const findAutopilotDisabled = async (): Promise<llm_agent[]> =>
+  prisma.llm_agent.findMany({ where: { autopilot_enabled: false } });
+
 const update = async (id: string, data: UpdateAgentDTO): Promise<llm_agent> =>
   prisma.llm_agent.update({ where: { id }, data });
 
@@ -53,4 +56,4 @@ const remove = async (id: string): Promise<llm_agent> =>
 const countByRoom = async (roomId: string): Promise<number> =>
   prisma.llm_agent.count({ where: { room_id: roomId } });
 
-export default { create, findById, findByRoom, findAutopilotEnabled, update, remove, countByRoom };
+export default { create, findById, findByRoom, findAutopilotEnabled, findAutopilotDisabled, update, remove, countByRoom };

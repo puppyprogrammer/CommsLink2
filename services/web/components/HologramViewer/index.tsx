@@ -142,7 +142,7 @@ type HologramViewerProps = {
 const HOLOGRAM_COLOR = 0x63c5c0;
 const BONE_COLOR = 0x2a7a76;
 const GRID_COLOR = 0x1a3a38;
-const MAX_POINT_INSTANCES = 50000;
+const MAX_POINT_INSTANCES = 80000;
 const MORPH_LERP_SPEED = 4.0; // Weight units per second for smooth transitions
 
 // ── Particle Hair System ─────────────────────────────────
@@ -418,12 +418,16 @@ type MorphState = {
 // ── Custom Glow Shader ────────────────────────────────
 
 const hologramGlowVertexShader = `
+  uniform float uTime;
+
   attribute float instanceScale;
   attribute vec3 instanceColor;
   attribute float instanceGlow;
+  attribute float instanceOpacity;
 
   varying vec3 vColor;
   varying float vGlow;
+  varying float vOpacity;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
   varying float vDepth;
@@ -431,11 +435,27 @@ const hologramGlowVertexShader = `
   void main() {
     vColor = instanceColor;
     vGlow = instanceGlow;
+    vOpacity = instanceOpacity;
     vNormal = normalMatrix * normal;
 
-    vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position * instanceScale, 1.0);
+    // Per-particle drift: unique phase per instance, slow sine wave ±0.005 units
+    float instanceId = float(gl_InstanceID);
+    float phaseX = instanceId * 1.37;
+    float phaseY = instanceId * 2.19;
+    float phaseZ = instanceId * 0.83;
+    vec3 drift = vec3(
+      sin(uTime * 0.5 + phaseX) * 0.005,
+      sin(uTime * 0.4 + phaseY) * 0.005,
+      sin(uTime * 0.6 + phaseZ) * 0.003
+    );
+
+    vec3 scaledPos = position * instanceScale;
+    vec4 worldPos = instanceMatrix * vec4(scaledPos, 1.0);
+    worldPos.xyz += drift;
+
+    vec4 mvPosition = modelViewMatrix * worldPos;
     vViewPosition = -mvPosition.xyz;
-    vDepth = -mvPosition.z; // camera-space depth (larger = farther)
+    vDepth = -mvPosition.z;
 
     gl_Position = projectionMatrix * mvPosition;
   }
@@ -444,6 +464,7 @@ const hologramGlowVertexShader = `
 const hologramGlowFragmentShader = `
   varying vec3 vColor;
   varying float vGlow;
+  varying float vOpacity;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
   varying float vDepth;
@@ -455,15 +476,11 @@ const hologramGlowFragmentShader = `
     float softEdge = pow(facing, 0.6);
 
     // Depth-based brightness: front dots brighter, back dots dimmer
-    // Map depth to 0..1 range (typical view range ~0.5 to 2.5)
     float depthNorm = clamp((vDepth - 0.5) / 2.0, 0.0, 1.0);
-    float depthBrightness = mix(1.3, 0.4, depthNorm); // front=1.3x, back=0.4x
+    float depthBrightness = mix(1.3, 0.4, depthNorm);
 
-    // Core emission with depth modulation
     vec3 coreColor = vColor * depthBrightness;
 
-    // Glow spheres (instanceGlow=1.0) get a soft radial falloff
-    // Core spheres (instanceGlow=0.5) are small and bright
     float glowFalloff = vGlow > 0.75 ? pow(softEdge, 1.5) : softEdge;
 
     vec3 finalColor = coreColor * (0.8 + 0.6 * vGlow);
@@ -472,10 +489,9 @@ const hologramGlowFragmentShader = `
     float scanline = sin(gl_FragCoord.y * 1.2) * 0.03 * vGlow;
     finalColor += vec3(scanline);
 
-    // Alpha: glow spheres are very translucent, core is semi-transparent
-    // Both modulated by depth — back dots more transparent
+    // Alpha: per-particle opacity variation applied on top of glow/depth
     float baseAlpha = vGlow > 0.75 ? 0.12 : 0.45;
-    float alpha = baseAlpha * glowFalloff * mix(1.0, 0.5, depthNorm);
+    float alpha = baseAlpha * glowFalloff * mix(1.0, 0.5, depthNorm) * vOpacity;
 
     gl_FragColor = vec4(finalColor, alpha);
   }
@@ -672,12 +688,14 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
   // Shared instanced sphere geometry for all point rendering
   const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.008, 5, 4), []);
 
-  // Custom shader material for holographic glow
+  // Custom shader material for holographic glow with per-particle drift
+  const bodyTimeUniform = useMemo(() => ({ uTime: { value: 0 } }), []);
   const glowMaterial = useMemo(
     () =>
       new THREE.ShaderMaterial({
         vertexShader: hologramGlowVertexShader,
         fragmentShader: hologramGlowFragmentShader,
+        uniforms: bodyTimeUniform,
         transparent: true,
         depthWrite: false,
         depthTest: true,
@@ -903,6 +921,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
         const scaleAttr = new Float32Array(instanceCount);
         const colorAttr = new Float32Array(instanceCount * 3);
         const glowAttr = new Float32Array(instanceCount);
+        const opacityAttr = new Float32Array(instanceCount);
 
         const dummy = new THREE.Matrix4();
         const tempColor = new THREE.Color();
@@ -943,6 +962,9 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
           colorAttr[i * 2 * 3 + 1] = tempColor.g;
           colorAttr[i * 2 * 3 + 2] = tempColor.b;
           glowAttr[i * 2] = 0.5;
+          // Per-particle opacity: random 0.4-1.0
+          const particleOpacity = 0.4 + Math.random() * 0.6;
+          opacityAttr[i * 2] = particleOpacity;
 
           // Glow sphere — larger, soft, translucent
           const glowIdx = i * 2 + 1;
@@ -953,11 +975,13 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
           colorAttr[glowIdx * 3 + 1] = tempColor.g;
           colorAttr[glowIdx * 3 + 2] = tempColor.b;
           glowAttr[glowIdx] = 1.0;
+          opacityAttr[glowIdx] = particleOpacity;
         }
 
         instancedMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(scaleAttr, 1));
         instancedMesh.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(colorAttr, 3));
         instancedMesh.geometry.setAttribute('instanceGlow', new THREE.InstancedBufferAttribute(glowAttr, 1));
+        instancedMesh.geometry.setAttribute('instanceOpacity', new THREE.InstancedBufferAttribute(opacityAttr, 1));
 
         instancedMesh.count = Math.min(pointCount * 2, instanceCount);
         instancedMesh.instanceMatrix.needsUpdate = true;
@@ -1006,7 +1030,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
       });
       const auraGeo = new THREE.PlaneGeometry(1.5, 2.0);
       const auraMesh = new THREE.Mesh(auraGeo, auraMaterial);
-      auraMesh.position.set(0, 0.8, -0.3); // behind avatar center
+      auraMesh.position.set(0, 0.1, -0.3); // behind avatar center
       auraMesh.name = 'aura';
       group.add(auraMesh);
 
@@ -1064,8 +1088,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
 
     // Camera
     const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
-    camera.position.set(0, 1.2, 3);
-    camera.lookAt(0, 0.8, 0);
+    camera.position.set(0, 0.15, 2.5);
+    camera.lookAt(0, 0.1, 0);
     cameraRef.current = camera;
 
     // Renderer
@@ -1076,8 +1100,9 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Ground grid (hologram aesthetic)
+    // Ground grid (hologram aesthetic) — at foot level Y=-0.7
     const gridHelper = new THREE.GridHelper(4, 20, GRID_COLOR, GRID_COLOR);
+    gridHelper.position.y = -0.7;
     (gridHelper.material as THREE.Material).transparent = true;
     (gridHelper.material as THREE.Material).opacity = 0.3;
     scene.add(gridHelper);
@@ -1129,8 +1154,11 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
         }
       }
 
-      // ── Update hair particle system ────────────────────────────
+      // ── Update body particle drift ──────────────────────────────
       const elapsed = clock.elapsedTime;
+      bodyTimeUniform.uTime.value = elapsed;
+
+      // ── Update hair particle system ────────────────────────────
       for (const [avatarId, hairSystem] of hairSystemsRef.current) {
         const avatar = avatarsRef.current.find((a) => a.id === avatarId);
         if (!avatar) continue;
