@@ -114,8 +114,9 @@ function ring(
 // Head joint is at top of neck. Head extends upward.
 // ══════════════════════════════════════════════
 
-// Skull - main sphere
-ellipsoidSurface(0, 0.1, 0, 0.09, 0.11, 0.09, 250, 'head', 0.6, COLORS.body);
+// Skull - lower hemisphere only (upper is covered by particle hair system)
+ellipsoidSurface(0, 0.1, 0, 0.09, 0.11, 0.09, 200, 'head', 0.6, COLORS.body,
+  -Math.PI / 2, Math.PI / 6); // stop well below the crown
 
 // Face front - denser points on the front face area
 ellipsoidSurface(0, 0.08, 0.05, 0.08, 0.09, 0.03, 120, 'head', 0.4, COLORS.highlight,
@@ -176,14 +177,8 @@ ellipsoidSurface(-0.09, 0.09, 0.0, 0.015, 0.025, 0.01, 18, 'head', 0.35, COLORS.
 // Right ear
 ellipsoidSurface(0.09, 0.09, 0.0, 0.015, 0.025, 0.01, 18, 'head', 0.35, COLORS.accent);
 
-// ══════════════════════════════════════════════
-// HAIR — flowing strands rendered in HologramViewer.
-// Thin scalp coverage dots so head doesn't look bald.
-// ══════════════════════════════════════════════
-
-// Scalp coverage — thin layer on top/back of head
-ellipsoidSurface(0, 0.18, -0.01, 0.10, 0.04, 0.10, 80, 'head', 0.4, COLORS.hair);
-ellipsoidSurface(0, 0.16, -0.01, 0.11, 0.03, 0.11, 50, 'head', 0.45, COLORS.hairHighlight);
+// Hair is rendered as a separate particle system in HologramViewer.
+// No scalp dots here — they interfere with the particle hair.
 
 // ══════════════════════════════════════════════
 // NECK (joint: neck)

@@ -210,7 +210,7 @@ function buildHairParticles(): {
     allHairT.push(0); // scalp = 0
     const c = baseColor.clone().lerp(tipColor, Math.random() * 0.2);
     allColors.push(c.r, c.g, c.b);
-    allSizes.push(0.005 + Math.random() * 0.003);
+    allSizes.push(0.008 + Math.random() * 0.005);
   }
 
   // ── Zone 2: Swept-Back Flow (~2000 particles, 40 guide curves) ──
@@ -268,7 +268,7 @@ function buildHairParticles(): {
       allHairT.push(0.1 + t * 0.4); // 0.1..0.5 for flow zone
       const c = baseColor.clone().lerp(tipColor, t * 0.4);
       allColors.push(c.r, c.g, c.b);
-      allSizes.push(0.005 + Math.random() * 0.002);
+      allSizes.push(0.007 + Math.random() * 0.004);
     }
   }
 
@@ -324,7 +324,7 @@ function buildHairParticles(): {
       allHairT.push(0.5 + t * 0.5); // 0.5..1.0 for ponytail
       const c = baseColor.clone().lerp(tipColor, 0.3 + t * 0.5);
       allColors.push(c.r, c.g, c.b);
-      allSizes.push(0.006 + Math.random() * 0.003 - t * 0.002); // slightly smaller at tips
+      allSizes.push(0.009 + Math.random() * 0.004 - t * 0.003); // slightly smaller at tips
     }
   }
 
@@ -363,7 +363,7 @@ const hairVertexShader = `
 
     gl_Position = projectionMatrix * mvPosition;
     // Size: larger when close, attenuated by depth
-    gl_PointSize = size * 300.0 / -mvPosition.z;
+    gl_PointSize = size * 500.0 / -mvPosition.z;
   }
 `;
 
@@ -382,8 +382,8 @@ const hairFragmentShader = `
     float depthNorm = clamp((vDepth - 0.5) / 2.0, 0.0, 1.0);
     float depthBrightness = mix(1.3, 0.5, depthNorm);
 
-    vec3 finalColor = vColor * depthBrightness * 1.2;
-    float alpha = vAlpha * softEdge * mix(0.8, 0.35, depthNorm);
+    vec3 finalColor = vColor * depthBrightness * 1.5;
+    float alpha = vAlpha * softEdge * mix(0.9, 0.45, depthNorm);
 
     gl_FragColor = vec4(finalColor, alpha);
   }
