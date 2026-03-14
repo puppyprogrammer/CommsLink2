@@ -148,7 +148,7 @@ const moderateImage = async (
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'grok-2-vision-latest',
+      model: 'grok-4-1-fast-non-reasoning',
       messages: [
         {
           role: 'system',
@@ -224,7 +224,7 @@ const describeImage = async (
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'grok-2-vision-latest',
+      model: 'grok-4-1-fast-non-reasoning',
       messages: [
         {
           role: 'system',

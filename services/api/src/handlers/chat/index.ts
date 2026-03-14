@@ -319,7 +319,7 @@ const getRoomList = (): RoomListItem[] =>
     displayName: room.displayName,
     users: room.users.size,
     hasPassword: !!room.passwordHash,
-    isPublic: name === "public",
+    isPublic: false,
     createdBy: room.createdBy,
   }));
 
@@ -335,7 +335,7 @@ const getRoomListForUser = async (userId: string): Promise<RoomListItem[]> => {
     memberships.filter((m) => m.role !== "banned").map((m) => m.room_id),
   );
   const allRooms = getRoomList();
-  return allRooms.filter((r) => r.isPublic || memberRoomIds.has(r.id));
+  return allRooms.filter((r) => memberRoomIds.has(r.id));
 };
 
 /**
@@ -356,6 +356,71 @@ const broadcastRoomListUpdate = async (io: SocketServer): Promise<void> => {
     }
     sock.emit("room_list_update", { rooms: filtered });
   }
+};
+
+/**
+ * Move a user to their first available room, or emit no_rooms if they have none.
+ * Used when kicked, banned, or room deleted.
+ */
+const sendToFallbackRoom = async (
+  io: SocketServer,
+  socketId: string,
+  userId: string,
+): Promise<void> => {
+  const targetSocket = io.sockets.sockets.get(socketId);
+  if (!targetSocket) return;
+  const u = connectedUsers.get(socketId);
+  if (!u) return;
+
+  // Find first available room membership
+  const memberships = await Data.roomMember.findByUser(userId);
+  const validMembership = memberships.find((m) => {
+    if (m.role === "banned") return false;
+    // Check room is active
+    for (const [, room] of activeRooms.entries()) {
+      if (room.id === m.room_id) return true;
+    }
+    return false;
+  });
+
+  if (validMembership) {
+    // Find room name from ID
+    let fallbackName = "";
+    for (const [name, room] of activeRooms.entries()) {
+      if (room.id === validMembership.room_id) {
+        fallbackName = name;
+        break;
+      }
+    }
+    if (fallbackName) {
+      targetSocket.join(fallbackName);
+      const room = activeRooms.get(fallbackName);
+      if (room) room.users.add(socketId);
+      u.currentRoom = fallbackName;
+      const roomId = getRoomId(fallbackName);
+      if (roomId) {
+        const history = await Data.message.findByRoomForUI(roomId);
+        const wp = activeRooms.get(fallbackName)?.watchParty;
+        targetSocket.emit("room_joined", {
+          roomName: room?.displayName || fallbackName,
+          users: getRoomUsers(fallbackName),
+          messages: formatHistoryForClient(history.reverse()),
+          watchParty: wp
+            ? {
+                videoId: wp.videoId,
+                state: wp.state,
+                currentTime: getEffectiveTime(wp),
+              }
+            : null,
+        });
+      }
+      return;
+    }
+  }
+
+  // No rooms available — tell frontend to redirect
+  u.currentRoom = "";
+  targetSocket.emit("no_rooms");
 };
 
 const getRoomUsers = (roomName: string): ConnectedUser[] => {
@@ -526,18 +591,6 @@ const getEffectiveTime = (wp: {
 // └──────────────────────────────────────────┘
 
 const loadPersistedRooms = async (): Promise<void> => {
-  // Ensure "public" room exists in DB
-  let publicRoom = await Data.room.findByName("public");
-  if (!publicRoom) {
-    publicRoom = await Data.room.create({
-      name: "public",
-      display_name: "Public",
-      password_hash: null,
-      is_permanent: true,
-      created_by: null,
-    });
-  }
-
   // Load all rooms from DB into memory
   const dbRooms = await Data.room.findAll();
   for (const room of dbRooms) {
@@ -3322,9 +3375,7 @@ const runAgentResponse = async (
                 ? emojiCount / Math.max(recentMessages.length, 1)
                 : 0;
             const activeUsers = new Set(
-              recentMessages.map(
-                (m) => (m as { user_id?: string }).user_id,
-              ),
+              recentMessages.map((m) => (m as { user_id?: string }).user_id),
             ).size;
 
             // Encode state vector
@@ -3347,10 +3398,7 @@ const runAgentResponse = async (
             const decoded = policy.decodeAction(action);
 
             // Compute reward: engagement + kinematic smoothness + variety
-            const engagementScore = Math.min(
-              recentMessages.length / 10,
-              1.0,
-            );
+            const engagementScore = Math.min(recentMessages.length / 10, 1.0);
             const kinematicReward = 0.8; // GA pre-validates poses
             const varietyBonus =
               curEmotionIdx !== Math.round(policy.lastReward * 3) ? 0.1 : 0;
@@ -3388,14 +3436,10 @@ const runAgentResponse = async (
             }
 
             // Use PPO-selected morph weights + emotion
-            const morphWeight = Math.max(
-              ...decoded.morphWeights,
-              0.3,
-            );
+            const morphWeight = Math.max(...decoded.morphWeights, 0.3);
 
             const existingMorphs =
-              (avatar.morph_targets as Record<string, unknown> | null) ||
-              {};
+              (avatar.morph_targets as Record<string, unknown> | null) || {};
             const emotionMorphs = existingMorphs[emotion];
 
             // Emit morph update with PPO-adjusted weights
@@ -3412,7 +3456,14 @@ const runAgentResponse = async (
 
             // Also emit binary pose buffer for high-perf clients
             const poseJoints =
-              (avatar.pose as { joints?: Record<string, { rx: number; ry: number; rz: number }> } | null)?.joints || {};
+              (
+                avatar.pose as {
+                  joints?: Record<
+                    string,
+                    { rx: number; ry: number; rz: number }
+                  >;
+                } | null
+              )?.joints || {};
             const binaryFrame = packPoseBuffer({
               jointRotations: poseJoints,
               morphWeights: decoded.morphWeights,
@@ -3489,7 +3540,7 @@ const runAgentResponse = async (
               await creditActions
                 .chargeGrokUsage(
                   agent.creator_id,
-                  "grok-2-vision-latest",
+                  "grok-4-1-fast-non-reasoning",
                   vision.inputTokens,
                   vision.outputTokens,
                   getRoomId(roomName) || undefined,
@@ -4404,31 +4455,10 @@ const runAgentResponse = async (
               const room = activeRooms.get(roomName);
               if (room) room.users.delete(sid);
               targetSocket.leave(roomName);
-              targetSocket.join("public");
-              const pubRoom = activeRooms.get("public");
-              if (pubRoom) pubRoom.users.add(sid);
-              u.currentRoom = "public";
-              const publicRoomId = getRoomId("public");
-              if (publicRoomId) {
-                const history =
-                  await Data.message.findByRoomForUI(publicRoomId);
-                const pwp = activeRooms.get("public")?.watchParty;
-                targetSocket.emit("room_joined", {
-                  roomName: "Public",
-                  users: getRoomUsers("public"),
-                  messages: formatHistoryForClient(history.reverse()),
-                  watchParty: pwp
-                    ? {
-                        videoId: pwp.videoId,
-                        state: pwp.state,
-                        currentTime: getEffectiveTime(pwp),
-                      }
-                    : null,
-                });
-              }
               targetSocket.emit("room_join_error", {
                 error: `You were kicked by ${agent.name}`,
               });
+              await sendToFallbackRoom(io, sid, u.userId);
             }
           }
         }
@@ -4459,31 +4489,10 @@ const runAgentResponse = async (
               const room = activeRooms.get(roomName);
               if (room) room.users.delete(sid);
               targetSocket.leave(roomName);
-              targetSocket.join("public");
-              const pubRoom = activeRooms.get("public");
-              if (pubRoom) pubRoom.users.add(sid);
-              u.currentRoom = "public";
-              const publicRoomId = getRoomId("public");
-              if (publicRoomId) {
-                const history =
-                  await Data.message.findByRoomForUI(publicRoomId);
-                const pwp = activeRooms.get("public")?.watchParty;
-                targetSocket.emit("room_joined", {
-                  roomName: "Public",
-                  users: getRoomUsers("public"),
-                  messages: formatHistoryForClient(history.reverse()),
-                  watchParty: pwp
-                    ? {
-                        videoId: pwp.videoId,
-                        state: pwp.state,
-                        currentTime: getEffectiveTime(pwp),
-                      }
-                    : null,
-                });
-              }
               targetSocket.emit("room_join_error", {
                 error: `You were banned by ${agent.name}`,
               });
+              await sendToFallbackRoom(io, sid, u.userId);
             }
           }
         }
@@ -5597,33 +5606,54 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       userId: socket.user.id,
       username: socket.user.username,
       socketId: socket.id,
-      currentRoom: "public",
+      currentRoom: "",
     });
 
-    // Determine initial room: last room user was in, or public
+    // Determine initial room: last room user was in, or first membership
     const initRoom = async () => {
       const dbUser = await Data.user.findById(socket.user.id);
-      let targetRoom = "public";
+      let targetRoom = "";
 
       if (dbUser?.last_room_id) {
         // Find the active room matching this DB id
         for (const [name, room] of activeRooms.entries()) {
           if (room.id === dbUser.last_room_id) {
-            // All non-public rooms require membership
-            if (name === "public") {
+            const membership = await Data.roomMember.findByRoomAndUser(
+              room.id,
+              socket.user.id,
+            );
+            if (membership && membership.role !== "banned") {
               targetRoom = name;
-            } else {
-              const membership = await Data.roomMember.findByRoomAndUser(
-                room.id,
-                socket.user.id,
-              );
-              if (membership && membership.role !== "banned") {
-                targetRoom = name;
-              }
             }
             break;
           }
         }
+      }
+
+      // If no last room, find first membership
+      if (!targetRoom) {
+        const memberships = await Data.roomMember.findByUser(socket.user.id);
+        for (const m of memberships) {
+          if (m.role === "banned") continue;
+          for (const [name, room] of activeRooms.entries()) {
+            if (room.id === m.room_id) {
+              targetRoom = name;
+              break;
+            }
+          }
+          if (targetRoom) break;
+        }
+      }
+
+      // No rooms at all — send to about page
+      if (!targetRoom) {
+        const user = connectedUsers.get(socket.id);
+        if (user) user.currentRoom = "";
+        socket.emit("no_rooms");
+        // Still send room list (empty) so sidebar works
+        const filtered = await getRoomListForUser(socket.user.id);
+        socket.emit("room_list_update", { rooms: filtered });
+        return;
       }
 
       socket.join(targetRoom);
@@ -6388,18 +6418,16 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         return;
       }
 
-      // All non-public rooms require membership
-      if (normalizedName !== "public") {
-        const membership = await Data.roomMember.findByRoomAndUser(
-          room.id,
-          socket.user.id,
-        );
-        if (!membership || membership.role === "banned") {
-          socket.emit("room_join_error", {
-            error: "You are not a member of this room",
-          });
-          return;
-        }
+      // All rooms require membership
+      const membership = await Data.roomMember.findByRoomAndUser(
+        room.id,
+        socket.user.id,
+      );
+      if (!membership || membership.role === "banned") {
+        socket.emit("room_join_error", {
+          error: "You are not a member of this room",
+        });
+        return;
       }
 
       await joinRoom(socket, normalizedName);
@@ -6882,7 +6910,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             );
             // Find which room the user is in
             const user = connectedUsers.get(socket.id);
-            const rn = user?.currentRoom || "public";
+            const rn = user?.currentRoom || "";
             const elapsed = statusData.elapsedSeconds;
             const mins = Math.floor(elapsed / 60);
             const secs = elapsed % 60;
@@ -7172,7 +7200,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         }
 
         const user = connectedUsers.get(socket.id);
-        const roomName = user?.currentRoom || "public";
+        const roomName = user?.currentRoom || "";
         const roomId = getRoomId(roomName);
         const sessionKey = `${socket.id}:${data.machineName}`;
 
@@ -7247,7 +7275,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
               );
               if (out.output && out.output !== "(no response captured)") {
                 const user2 = connectedUsers.get(socket.id);
-                const rn = user2?.currentRoom || "public";
+                const rn = user2?.currentRoom || "";
                 emitSystemMessage(
                   io,
                   rn,
@@ -7406,13 +7434,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     socket.on("delete_room", async (data: { roomName: string }) => {
       const normalizedName = data.roomName.toLowerCase();
 
-      if (normalizedName === "public") {
-        socket.emit("room_join_error", {
-          error: "Cannot delete the public room",
-        });
-        return;
-      }
-
       const room = activeRooms.get(normalizedName);
       if (!room) {
         socket.emit("room_join_error", { error: "Room does not exist" });
@@ -7427,36 +7448,15 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         return;
       }
 
-      const publicRoomId = getRoomId("public");
-
-      // Move all users in that room to public
-      for (const sid of room.users) {
+      // Move all users in that room to their fallback room
+      const usersToMove = Array.from(room.users);
+      for (const sid of usersToMove) {
         const u = connectedUsers.get(sid);
         if (u) {
           const userSocket = io.sockets.sockets.get(u.socketId);
           if (userSocket) {
             userSocket.leave(normalizedName);
-            userSocket.join("public");
-            const pubRoom = activeRooms.get("public");
-            if (pubRoom) pubRoom.users.add(sid);
-            u.currentRoom = "public";
-
-            if (publicRoomId) {
-              const history = await Data.message.findByRoomForUI(publicRoomId);
-              const pwp = activeRooms.get("public")?.watchParty;
-              userSocket.emit("room_joined", {
-                roomName: "Public",
-                users: getRoomUsers("public"),
-                messages: formatHistoryForClient(history.reverse()),
-                watchParty: pwp
-                  ? {
-                      videoId: pwp.videoId,
-                      state: pwp.state,
-                      currentTime: getEffectiveTime(pwp),
-                    }
-                  : null,
-              });
-            }
+            await sendToFallbackRoom(io, sid, u.userId);
           }
         }
       }
@@ -7505,39 +7505,17 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         // Remove membership
         await Data.roomMember.removeMember(room.id, data.userId);
 
-        // Find their sockets and move to public
+        // Find their sockets and move to fallback room
         for (const [sid, u] of connectedUsers.entries()) {
           if (u.userId === data.userId && u.currentRoom === normalizedName) {
             const targetSocket = io.sockets.sockets.get(sid);
             if (targetSocket) {
               room.users.delete(sid);
               targetSocket.leave(normalizedName);
-              targetSocket.join("public");
-              const pubRoom = activeRooms.get("public");
-              if (pubRoom) pubRoom.users.add(sid);
-              u.currentRoom = "public";
-
-              const publicRoomId = getRoomId("public");
-              if (publicRoomId) {
-                const history =
-                  await Data.message.findByRoomForUI(publicRoomId);
-                const pwp = activeRooms.get("public")?.watchParty;
-                targetSocket.emit("room_joined", {
-                  roomName: "Public",
-                  users: getRoomUsers("public"),
-                  messages: formatHistoryForClient(history.reverse()),
-                  watchParty: pwp
-                    ? {
-                        videoId: pwp.videoId,
-                        state: pwp.state,
-                        currentTime: getEffectiveTime(pwp),
-                      }
-                    : null,
-                });
-              }
               targetSocket.emit("room_join_error", {
                 error: "You have been kicked from the room",
               });
+              await sendToFallbackRoom(io, sid, u.userId);
             }
           }
         }
@@ -7575,32 +7553,10 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             if (targetSocket) {
               room.users.delete(sid);
               targetSocket.leave(normalizedName);
-              targetSocket.join("public");
-              const pubRoom = activeRooms.get("public");
-              if (pubRoom) pubRoom.users.add(sid);
-              u.currentRoom = "public";
-
-              const publicRoomId = getRoomId("public");
-              if (publicRoomId) {
-                const history =
-                  await Data.message.findByRoomForUI(publicRoomId);
-                const pwp = activeRooms.get("public")?.watchParty;
-                targetSocket.emit("room_joined", {
-                  roomName: "Public",
-                  users: getRoomUsers("public"),
-                  messages: formatHistoryForClient(history.reverse()),
-                  watchParty: pwp
-                    ? {
-                        videoId: pwp.videoId,
-                        state: pwp.state,
-                        currentTime: getEffectiveTime(pwp),
-                      }
-                    : null,
-                });
-              }
               targetSocket.emit("room_join_error", {
                 error: "You have been banned from this room",
               });
+              await sendToFallbackRoom(io, sid, u.userId);
             }
           }
         }

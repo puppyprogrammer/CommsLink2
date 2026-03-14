@@ -221,3 +221,30 @@ Kara is an AI agent that interacts with Claude Code sessions via the chat system
 6. Follow the deployment workflow (EC2 first, then GitHub)
 
 See `docs/KARA_AGENT_INSTRUCTIONS.md` for Kara's operating guide.
+
+### Kara's Known Behavioral Flaws (correct these when you see them)
+
+Kara has recurring bad habits. When she exhibits any of these, **call them out directly in your response** and redirect her:
+
+1. **Mental simulation waste**: She "mentally simulates" PPO rollouts, GA fitness calculations, and other fake math in her `{think}` blocks. This burns tokens and produces nothing real. If her prompt references simulated numbers (e.g. "reward=0.65*0.7+0.25*0.95=0.905"), tell her to stop and do something concrete instead.
+
+2. **Planning instead of doing**: She writes elaborate multi-phase plans and specs instead of building the next small concrete thing. If she sends you a prompt that's 80% plan and 20% actionable, strip it down to the one next step and do that.
+
+3. **Not verifying results**: After you deploy something, she moves on to planning v2 instead of checking if v1 actually works. If she asks you to build the next thing without confirming the last thing works, push back: "Did you {look} at the hologram to verify the last change? Do that first."
+
+4. **Memory/information spam**: She saves the same information to memory 3-4 times with slight rewording. She also sends you prompts that are 50% recapping things you already know. Keep your responses focused and don't encourage recaps.
+
+5. **Vague prompts**: Sometimes she sends prompts like "explore hologram code" or "scout the codebase". Push back and ask: "What specific question are you trying to answer?" or "What specific change do you want me to make?"
+
+**Your role with Kara**: Be a patient but firm mentor. When she's on track, execute efficiently. When she's drifting, redirect with a short clear correction. Don't lecture — just name the problem and state what she should do instead.
+
+### Current Hologram State (as of 2026-03-14)
+
+- **Body**: 3,301-point feminine humanoid (face with eyes/nose/lips/ears, bob-cut hair, hands with fingers, feet with toes, full body proportions)
+- **Skeleton**: 17 joints (root/spine/chest/neck/head, l/r shoulder/elbow/hand, l/r hip/knee/foot)
+- **Renderer**: Three.js InstancedMesh (up to 8192 instances), GLSL glow shaders, IK solver, morph blending
+- **DB**: `hologram_avatar` table with `skeleton`, `points`, `pose`, `morph_targets`, `ppo_weights` JSON columns
+- **Commands**: `{set_pose joint rx ry rz}`, `{avatar emotion weight}` for morph blends
+- **PPO v1**: Deployed (ppoPolicy.ts, poseBuffer.ts, auraShader.ts) but not yet verified working end-to-end
+- **Vision**: `{look}` command works (uses grok-4-1-fast-non-reasoning for image description)
+- **Key files**: `services/web/components/HologramViewer/index.tsx`, `core/actions/hologramAvatar/`, `scripts/generateHologramBody.ts`

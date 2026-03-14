@@ -82,8 +82,8 @@ const ChatPage = () => {
   const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [currentRoom, setCurrentRoom] = useState<string>('public');
-  const [currentRoomDisplay, setCurrentRoomDisplay] = useState<string>('Public');
+  const [currentRoom, setCurrentRoom] = useState<string>('');
+  const [currentRoomDisplay, setCurrentRoomDisplay] = useState<string>('');
   const [input, setInput] = useState(''); // kept for speech recognition
   const [isListening, setIsListening] = useState(false);
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
@@ -255,6 +255,11 @@ const ChatPage = () => {
         socket.emit('hologram_load');
       },
     );
+
+    socket.on('no_rooms', () => {
+      // User has no room memberships — redirect to about page
+      window.location.href = '/about';
+    });
 
     socket.on('room_join_error', (data: { error: string }) => {
       if (data.error === 'Password required for this room') {

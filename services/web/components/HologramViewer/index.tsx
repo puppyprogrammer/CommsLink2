@@ -5,7 +5,6 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 
 // Node modules
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
 
 // GA-evolved morph target samples (fallback when backend doesn't provide them)
 import gaSamples from '../../public/hologram_samples.json';
@@ -137,10 +136,12 @@ type HologramViewerProps = {
 const HOLOGRAM_COLOR = 0x63c5c0;
 const BONE_COLOR = 0x2a7a76;
 const GRID_COLOR = 0x1a3a38;
-const MAX_POINT_INSTANCES = 256;
-const IK_ITERATIONS = 5;
-const IK_DAMPING = 0.85;
+const MAX_POINT_INSTANCES = 8192;
 const MORPH_LERP_SPEED = 4.0; // Weight units per second for smooth transitions
+
+// FABRIK IK constants
+const FABRIK_ITERATIONS = 10;
+const FABRIK_TOLERANCE = 0.001;
 
 // Emotion → index mapping for morphTargetInfluences-style array
 const EMOTIONS = ['happy', 'sad', 'angry', 'neutral'] as const;
@@ -213,88 +214,78 @@ const hologramGlowFragmentShader = `
   }
 `;
 
-// ── Momentum IK Solver (Cannon-es based) ──────────────
+// ── FABRIK IK Solver ──────────────────────────────────
 
-type IKChain = {
+type FABRIKChain = {
   jointIds: string[];
-  bodies: CANNON.Body[];
-  constraints: CANNON.DistanceConstraint[];
+  boneLengths: number[]; // distances between consecutive joints
 };
 
-const buildIKChain = (
-  world: CANNON.World,
-  skeleton: JointDef[],
-  jointPositions: Map<string, THREE.Vector3>,
-  chainJointIds: string[],
-): IKChain => {
-  const bodies: CANNON.Body[] = [];
-  const constraints: CANNON.DistanceConstraint[] = [];
+/** Build a FABRIK chain from resolved joint positions */
+const buildFABRIKChain = (positions: Map<string, THREE.Vector3>, chainJointIds: string[]): FABRIKChain | null => {
+  const boneLengths: number[] = [];
+  for (let i = 1; i < chainJointIds.length; i++) {
+    const prev = positions.get(chainJointIds[i - 1]);
+    const curr = positions.get(chainJointIds[i]);
+    if (!prev || !curr) return null;
+    boneLengths.push(prev.distanceTo(curr));
+  }
+  return { jointIds: chainJointIds, boneLengths };
+};
 
-  for (let i = 0; i < chainJointIds.length; i++) {
-    const jointId = chainJointIds[i];
-    const pos = jointPositions.get(jointId);
-    if (!pos) continue;
+/** FABRIK: solve IK chain so end effector reaches target position */
+const solveFABRIK = (
+  chain: FABRIKChain,
+  positions: Map<string, THREE.Vector3>,
+  target: THREE.Vector3,
+): Map<string, THREE.Vector3> => {
+  const n = chain.jointIds.length;
+  if (n < 2) return new Map(positions);
 
-    const isRoot = i === 0;
-    const body = new CANNON.Body({
-      mass: isRoot ? 0 : 0.5, // Root is fixed
-      position: new CANNON.Vec3(pos.x, pos.y, pos.z),
-      shape: new CANNON.Sphere(0.02),
-      linearDamping: IK_DAMPING,
-      angularDamping: IK_DAMPING,
-    });
-    world.addBody(body);
-    bodies.push(body);
+  const pts = chain.jointIds.map((id) => positions.get(id)!.clone());
+  const root = pts[0].clone();
 
-    // Distance constraint to previous joint
-    if (i > 0) {
-      const prevJoint = skeleton.find((j) => j.id === chainJointIds[i]);
-      if (prevJoint) {
-        const boneLength = Math.sqrt(
-          prevJoint.position[0] ** 2 + prevJoint.position[1] ** 2 + prevJoint.position[2] ** 2,
-        );
-        const constraint = new CANNON.DistanceConstraint(bodies[i - 1], body, boneLength, 1e4);
-        world.addConstraint(constraint);
-        constraints.push(constraint);
+  // Check reachability
+  const totalLength = chain.boneLengths.reduce((a, b) => a + b, 0);
+  const distToTarget = root.distanceTo(target);
+  if (distToTarget > totalLength) {
+    // Target unreachable — stretch toward it
+    const dir = target.clone().sub(root).normalize();
+    for (let i = 1; i < n; i++) {
+      pts[i].copy(pts[i - 1].clone().add(dir.clone().multiplyScalar(chain.boneLengths[i - 1])));
+    }
+  } else {
+    // Iterative FABRIK
+    for (let iter = 0; iter < FABRIK_ITERATIONS; iter++) {
+      if (pts[n - 1].distanceTo(target) < FABRIK_TOLERANCE) break;
+
+      // Forward reaching (end → root)
+      pts[n - 1].copy(target);
+      for (let i = n - 2; i >= 0; i--) {
+        const dir = pts[i]
+          .clone()
+          .sub(pts[i + 1])
+          .normalize();
+        pts[i].copy(pts[i + 1].clone().add(dir.multiplyScalar(chain.boneLengths[i])));
+      }
+
+      // Backward reaching (root → end)
+      pts[0].copy(root);
+      for (let i = 1; i < n; i++) {
+        const dir = pts[i]
+          .clone()
+          .sub(pts[i - 1])
+          .normalize();
+        pts[i].copy(pts[i - 1].clone().add(dir.multiplyScalar(chain.boneLengths[i - 1])));
       }
     }
   }
 
-  return { jointIds: chainJointIds, bodies, constraints };
-};
-
-const solveIK = (chain: IKChain, targetPos: THREE.Vector3, world: CANNON.World): Map<string, THREE.Vector3> => {
-  const results = new Map<string, THREE.Vector3>();
-
-  // Apply target force to end effector
-  const endBody = chain.bodies[chain.bodies.length - 1];
-  if (endBody) {
-    const target = new CANNON.Vec3(targetPos.x, targetPos.y, targetPos.z);
-    const diff = target.vsub(endBody.position);
-    endBody.applyForce(diff.scale(50));
+  const result = new Map<string, THREE.Vector3>();
+  for (let i = 0; i < n; i++) {
+    result.set(chain.jointIds[i], pts[i]);
   }
-
-  // Step physics
-  for (let i = 0; i < IK_ITERATIONS; i++) {
-    world.step(1 / 120);
-  }
-
-  // Read back positions
-  for (let i = 0; i < chain.jointIds.length; i++) {
-    const body = chain.bodies[i];
-    results.set(chain.jointIds[i], new THREE.Vector3(body.position.x, body.position.y, body.position.z));
-  }
-
-  return results;
-};
-
-const cleanupIKChain = (chain: IKChain, world: CANNON.World): void => {
-  for (const constraint of chain.constraints) {
-    world.removeConstraint(constraint);
-  }
-  for (const body of chain.bodies) {
-    world.removeBody(body);
-  }
+  return result;
 };
 
 // ── Helper: get effective morph targets (avatar-provided or GA fallback) ──
@@ -351,6 +342,13 @@ const blendPoseMulti = (
   return { joints: blended };
 };
 
+// ── Joint transform result (position + world rotation) ──
+
+type JointTransforms = {
+  positions: Map<string, THREE.Vector3>;
+  rotations: Map<string, THREE.Quaternion>;
+};
+
 // ── Component ──────────────────────────────────────────
 
 const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
@@ -358,11 +356,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const worldRef = useRef<CANNON.World | null>(null);
   const frameRef = useRef<number>(0);
   const avatarGroupsRef = useRef<Map<string, THREE.Group>>(new Map());
   const instancedMeshRef = useRef<Map<string, THREE.InstancedMesh>>(new Map());
-  const ikChainsRef = useRef<Map<string, IKChain[]>>(new Map());
+  const ikChainsRef = useRef<Map<string, FABRIKChain[]>>(new Map());
   const jointMarkersRef = useRef<Map<string, Map<string, THREE.Mesh>>>(new Map());
   const boneGeometriesRef = useRef<Map<string, THREE.BufferGeometry[]>>(new Map());
   const morphStateRef = useRef<Map<string, MorphState>>(new Map());
@@ -381,7 +378,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
   avatarsRef.current = avatars;
 
   // Shared instanced sphere geometry for all point rendering
-  const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.02, 10, 8), []);
+  const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.02, 5, 4), []);
 
   // Custom shader material for holographic glow
   const glowMaterial = useMemo(
@@ -396,58 +393,81 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
     [],
   );
 
-  // Resolve joint positions from skeleton + pose
-  const resolveJointPositions = useCallback(
-    (skeleton: JointDef[], pose: PoseData | null): Map<string, THREE.Vector3> => {
-      const jointPositions = new Map<string, THREE.Vector3>();
+  // Resolve joint positions AND world rotations from skeleton + pose using recursive FK.
+  // Accumulates world-space rotations so that rotating a parent (e.g. chest)
+  // correctly propagates through all descendants (neck → head, shoulder → elbow → hand).
+  const resolveJointTransforms = useCallback((skeleton: JointDef[], pose: PoseData | null): JointTransforms => {
+    const positions = new Map<string, THREE.Vector3>();
+    const rotations = new Map<string, THREE.Quaternion>();
 
-      for (const joint of skeleton) {
-        const base = new THREE.Vector3(...joint.position);
-        if (joint.parent_id && jointPositions.has(joint.parent_id)) {
-          base.add(jointPositions.get(joint.parent_id)!);
+    // Build child lookup for recursive traversal
+    const childrenOf = new Map<string | null, JointDef[]>();
+    for (const joint of skeleton) {
+      const siblings = childrenOf.get(joint.parent_id) || [];
+      siblings.push(joint);
+      childrenOf.set(joint.parent_id, siblings);
+    }
+
+    // Recursive FK: traverse from roots, accumulating world rotation
+    const traverse = (joint: JointDef, parentWorldPos: THREE.Vector3, parentWorldRot: THREE.Quaternion): void => {
+      // Local offset rotated by parent's accumulated world rotation
+      const localOffset = new THREE.Vector3(...joint.position).applyQuaternion(parentWorldRot);
+      const worldPos = parentWorldPos.clone().add(localOffset);
+
+      // This joint's own local rotation from pose data
+      const poseJoint = pose?.joints?.[joint.id];
+      const localRot = poseJoint
+        ? new THREE.Quaternion().setFromEuler(new THREE.Euler(poseJoint.rx, poseJoint.ry, poseJoint.rz))
+        : new THREE.Quaternion();
+
+      // World rotation = parent world rotation * local rotation
+      const worldRot = parentWorldRot.clone().multiply(localRot);
+
+      positions.set(joint.id, worldPos);
+      rotations.set(joint.id, worldRot);
+
+      // Recurse into children
+      const children = childrenOf.get(joint.id);
+      if (children) {
+        for (const child of children) {
+          traverse(child, worldPos, worldRot);
         }
-        jointPositions.set(joint.id, base);
       }
+    };
 
-      if (pose?.joints) {
-        const orderedJoints = [...skeleton];
-        for (const joint of orderedJoints) {
-          const poseJoint = pose.joints[joint.id];
-          if (!poseJoint || !joint.parent_id) continue;
+    // Start from all root joints (parent_id === null)
+    const roots = childrenOf.get(null) || [];
+    for (const root of roots) {
+      // Root joint: position is absolute, apply its own pose rotation
+      const rootPos = new THREE.Vector3(...root.position);
+      const poseJoint = pose?.joints?.[root.id];
+      const rootRot = poseJoint
+        ? new THREE.Quaternion().setFromEuler(new THREE.Euler(poseJoint.rx, poseJoint.ry, poseJoint.rz))
+        : new THREE.Quaternion();
 
-          const pos = jointPositions.get(joint.id);
-          const parentPos = jointPositions.get(joint.parent_id);
-          if (!pos || !parentPos) continue;
+      positions.set(root.id, rootPos);
+      rotations.set(root.id, rootRot);
 
-          const offset = pos.clone().sub(parentPos);
-          const euler = new THREE.Euler(poseJoint.rx, poseJoint.ry, poseJoint.rz);
-          offset.applyEuler(euler);
-          jointPositions.set(joint.id, parentPos.clone().add(offset));
-
-          for (const child of orderedJoints) {
-            if (child.parent_id === joint.id) {
-              const childPos = jointPositions.get(child.id);
-              if (childPos) {
-                const childOffset = childPos.clone().sub(pos);
-                childOffset.applyEuler(euler);
-                jointPositions.set(child.id, jointPositions.get(joint.id)!.clone().add(childOffset));
-              }
-            }
-          }
+      const children = childrenOf.get(root.id);
+      if (children) {
+        for (const child of children) {
+          traverse(child, rootPos, rootRot);
         }
       }
+    }
 
-      return jointPositions;
-    },
-    [],
-  );
+    return { positions, rotations };
+  }, []);
 
   // Update bone line + instanced point geometry for an avatar at current morph state
   const updateAvatarGeometry = useCallback(
     (avatar: AvatarData, morphState: MorphState) => {
       const morphTargets = getEffectiveMorphTargets(avatar);
       const effectivePose = blendPoseMulti(avatar.pose, morphTargets, morphState.currentInfluences);
-      const jointPositions = resolveJointPositions(avatar.skeleton, effectivePose);
+      const { positions: jointPositions, rotations: jointRotations } = resolveJointTransforms(
+        avatar.skeleton,
+        effectivePose,
+      );
 
       // ── Update bone lines ─────────────────────────────
       const boneGeos = boneGeometriesRef.current.get(avatar.id);
@@ -478,7 +498,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         for (let i = 0; i < avatar.points.length; i++) {
           const point = avatar.points[i];
           const jointPos = jointPositions.get(point.joint_id);
-          if (!jointPos) continue;
+          const jointRot = jointRotations.get(point.joint_id);
+          if (!jointPos || !jointRot) continue;
 
           let offset = new THREE.Vector3(...point.offset);
           let sizeScale = 1.0;
@@ -496,6 +517,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
             }
           }
 
+          // Apply joint world rotation to point offset (fixes arm/leg rotation)
+          offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
           const pointSize = point.size * 0.02 * sizeScale;
 
@@ -522,7 +545,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         }
       }
     },
-    [resolveJointPositions],
+    [resolveJointTransforms],
   );
 
   // Build avatar group (structural: bones, points, markers — morph state applied via animation loop)
@@ -536,14 +559,17 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
       const morphTargets = getEffectiveMorphTargets(avatar);
       const influences = mState?.currentInfluences ?? new Float32Array(EMOTIONS.length);
       const effectivePose = blendPoseMulti(avatar.pose, morphTargets, influences);
-      const jointPositions = resolveJointPositions(avatar.skeleton, effectivePose);
+      const { positions: jointPositions, rotations: jointRotations } = resolveJointTransforms(
+        avatar.skeleton,
+        effectivePose,
+      );
 
       // ── Bones (Lines) ───────────────────────────────
       const boneMaterial = new THREE.LineBasicMaterial({
         color: BONE_COLOR,
-        linewidth: 2,
+        linewidth: 1,
         transparent: true,
-        opacity: 0.6,
+        opacity: 0.25,
       });
 
       const boneGeos: THREE.BufferGeometry[] = [];
@@ -577,7 +603,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         for (let i = 0; i < pointCount; i++) {
           const point = avatar.points[i];
           const jointPos = jointPositions.get(point.joint_id);
-          if (!jointPos) continue;
+          const jointRot = jointRotations.get(point.joint_id);
+          if (!jointPos || !jointRot) continue;
 
           let offset = new THREE.Vector3(...point.offset);
           let sizeScale = 1.0;
@@ -595,6 +622,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
             }
           }
 
+          // Apply joint world rotation to point offset (fixes arm/leg rotation)
+          offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
           const pointSize = point.size * 0.02 * sizeScale;
 
@@ -676,10 +705,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
 
       return group;
     },
-    [sharedSphereGeo, glowMaterial, resolveJointPositions],
+    [sharedSphereGeo, glowMaterial, resolveJointTransforms],
   );
 
-  // Initialize Three.js scene + cannon-es world
+  // Initialize Three.js scene
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -712,24 +741,11 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
     const ambient = new THREE.AmbientLight(0xffffff, 0.3);
     scene.add(ambient);
 
-    // Cannon-es physics world
-    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
-    worldRef.current = world;
-
-    // Ground plane
-    const groundBody = new CANNON.Body({
-      type: CANNON.Body.STATIC,
-      shape: new CANNON.Plane(),
-    });
-    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-    world.addBody(groundBody);
-
     // Animation loop
     const clock = new THREE.Clock();
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
       const delta = clock.getDelta();
-      world.step(1 / 60, delta, 3);
 
       // ── Smooth morph interpolation ────────────────────
       for (const [avatarId, mState] of morphStateRef.current) {
@@ -771,21 +787,6 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         uniforms.uTime.value = elapsed;
       }
 
-      // Sync IK chain physics body positions to joint markers
-      for (const [avatarId, chains] of ikChainsRef.current) {
-        const markers = jointMarkersRef.current.get(avatarId);
-        if (!markers) continue;
-        for (const chain of chains) {
-          for (let i = 0; i < chain.jointIds.length; i++) {
-            const body = chain.bodies[i];
-            const marker = markers.get(chain.jointIds[i]);
-            if (body && marker) {
-              marker.position.set(body.position.x, body.position.y, body.position.z);
-            }
-          }
-        }
-      }
-
       // Slow rotation for hologram effect
       scene.traverse((obj) => {
         if (obj.type === 'Group' && obj.parent === scene) {
@@ -817,12 +818,6 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         container.removeChild(renderer.domElement);
       }
       scene.clear();
-      // Cleanup IK chains
-      for (const [, chains] of ikChainsRef.current) {
-        for (const chain of chains) {
-          cleanupIKChain(chain, world);
-        }
-      }
       ikChainsRef.current.clear();
       instancedMeshRef.current.clear();
       jointMarkersRef.current.clear();
@@ -835,8 +830,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
   // Sync avatar groups when avatars prop changes
   useEffect(() => {
     const scene = sceneRef.current;
-    const world = worldRef.current;
-    if (!scene || !world) return;
+    if (!scene) return;
 
     const currentIds = new Set(avatars.map((a) => a.id));
     const groups = avatarGroupsRef.current;
@@ -851,13 +845,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         boneGeometriesRef.current.delete(id);
         morphStateRef.current.delete(id);
         auraUniformsRef.current.delete(id);
-        const chains = ikChainsRef.current.get(id);
-        if (chains) {
-          for (const chain of chains) {
-            cleanupIKChain(chain, world);
-          }
-          ikChainsRef.current.delete(id);
-        }
+        ikChainsRef.current.delete(id);
       }
     }
 
@@ -916,30 +904,41 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         scene.add(group);
         groups.set(avatar.id, group);
 
-        // Build IK chains for physics-enabled avatars
+        // Build FABRIK IK chains for physics-enabled avatars
         if (avatar.physics) {
-          const oldChains = ikChainsRef.current.get(avatar.id);
-          if (oldChains) {
-            for (const chain of oldChains) {
-              cleanupIKChain(chain, world);
-            }
-          }
-
-          const jointPositions = resolveJointPositions(avatar.skeleton, avatar.pose);
-          const chains: IKChain[] = [];
+          const { positions: jointPositions } = resolveJointTransforms(avatar.skeleton, avatar.pose);
+          const chains: FABRIKChain[] = [];
 
           const leftArmIds = ['chest', 'l_shoulder', 'l_elbow', 'l_hand'].filter((id) =>
             avatar.skeleton.some((j) => j.id === id),
           );
           if (leftArmIds.length >= 2) {
-            chains.push(buildIKChain(world, avatar.skeleton, jointPositions, leftArmIds));
+            const chain = buildFABRIKChain(jointPositions, leftArmIds);
+            if (chain) chains.push(chain);
           }
 
           const rightArmIds = ['chest', 'r_shoulder', 'r_elbow', 'r_hand'].filter((id) =>
             avatar.skeleton.some((j) => j.id === id),
           );
           if (rightArmIds.length >= 2) {
-            chains.push(buildIKChain(world, avatar.skeleton, jointPositions, rightArmIds));
+            const chain = buildFABRIKChain(jointPositions, rightArmIds);
+            if (chain) chains.push(chain);
+          }
+
+          const leftLegIds = ['root', 'l_hip', 'l_knee', 'l_foot'].filter((id) =>
+            avatar.skeleton.some((j) => j.id === id),
+          );
+          if (leftLegIds.length >= 2) {
+            const chain = buildFABRIKChain(jointPositions, leftLegIds);
+            if (chain) chains.push(chain);
+          }
+
+          const rightLegIds = ['root', 'r_hip', 'r_knee', 'r_foot'].filter((id) =>
+            avatar.skeleton.some((j) => j.id === id),
+          );
+          if (rightLegIds.length >= 2) {
+            const chain = buildFABRIKChain(jointPositions, rightLegIds);
+            if (chain) chains.push(chain);
           }
 
           ikChainsRef.current.set(avatar.id, chains);
@@ -949,7 +948,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
         mState.dirty = true;
       }
     }
-  }, [avatars, buildAvatarGroup, resolveJointPositions]);
+  }, [avatars, buildAvatarGroup, resolveJointTransforms]);
 
   if (avatars.length === 0) {
     return (
