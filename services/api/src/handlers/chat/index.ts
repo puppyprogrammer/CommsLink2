@@ -1954,6 +1954,7 @@ const buildSystemPrompt = (
     parts.push(
       `\nYou are running in autopilot mode. Consider the following:\n${autopilotLines.map((l) => `- ${l}`).join("\n")}\n\n` +
         "AUTOPILOT RULES:\n" +
+        "- CRITICAL: If there are new messages from a human user (no [OLD] prefix), you MUST respond to them FIRST. Drop whatever autonomous work you were doing. User messages are ALWAYS your highest priority — higher than hologram, terminal, Claude, or any ongoing task. Acknowledge what they said and do what they asked.\n" +
         "- Messages prefixed with [OLD] are from BEFORE your last cycle — you already handled them. Do NOT respond to [OLD] messages again.\n" +
         "- Speaking aloud costs money (TTS). The system blocks similar messages automatically. Never repeat or rephrase something you already said.\n" +
         "- IDLE CYCLES ARE YOUR TIME. When no new messages arrive, you are free to:\n" +
@@ -2568,17 +2569,24 @@ const runAgentResponse = async (
   io.to(roomName).emit("agent_typing", { agentName: agent.name });
 
   try {
-    const history = await Data.message.findByRoom(roomId, 20);
+    const history = await Data.message.findByRoom(roomId, 50);
     // Filter out ALL agent system messages (thoughts, status, etc.) — they are for
     // UI display only and must NOT re-enter the context as "user" messages, which
     // causes a feedback loop where the agent sees its own output echoed back.
     const filteredHistory = history.filter((m) => {
-      if (
-        m.type === "system" &&
-        typeof m.content === "string" &&
-        m.content.startsWith(`[${agent.name} `)
-      )
+      if (m.type !== "system" || typeof m.content !== "string") return true;
+      const c = m.content;
+      // Filter agent's own messages: [AgentName ...], [AgentName's Subconscious ...]
+      if (c.startsWith(`[${agent.name} `) || c.startsWith(`[${agent.name}'s `))
         return false;
+      // Filter SQL query results (from agent's {sql} commands)
+      if (/^SELECT |^INSERT |^UPDATE |^DELETE |^SHOW /i.test(c)) return false;
+      // Filter Claude status updates
+      if (c.startsWith("[Claude ")) return false;
+      // Filter memory system messages
+      if (c.startsWith("[Memory]")) return false;
+      // Filter Security Bot messages (agent handles security via terminal)
+      if (c.startsWith("Security Bot:")) return false;
       return true;
     });
 
