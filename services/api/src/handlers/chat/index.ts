@@ -2492,7 +2492,7 @@ const WEB_EXTRACT_REGEX = /\{web_extract\}/g;
 const WEB_WAIT_REGEX = /\{web_wait\s+(\d+)\}/g;
 const WEB_CLOSE_REGEX = /\{web_close\}/g;
 const ALL_COMMAND_REGEX =
-  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|toggle_debug|set_tokens|set_max_loops|set_pose|avatar|look|ui|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -4906,6 +4906,7 @@ const runAgentResponse = async (
         screenshotMatches.length +
         terminalMatches.length +
         claudeMatches.length +
+        lookMatches.length +
         listUsersMatches.length +
         forumListMatches.length +
         forumReadMatches.length +
