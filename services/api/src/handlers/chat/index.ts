@@ -1967,7 +1967,7 @@ const buildSystemPrompt = (
         "  * Investigate potential bugs or improvements you noticed earlier\n" +
         "- DO speak when: you discovered something important, have a new idea to propose, need to alert someone, or completed autonomous work worth reporting.\n" +
         "- DO NOT speak when: you have nothing new to say, or you are just confirming you exist.\n" +
-        "- Manage your autopilot interval: lower (10-30s) when actively working or users are chatting. Higher (120-300s) when truly idle with nothing to do.",
+        "- Manage your autopilot interval: 20s when users are chatting or you are actively working. Gradually increase (60s, 120s) as engagement drops. 120-300s when truly idle.",
     );
   }
 
