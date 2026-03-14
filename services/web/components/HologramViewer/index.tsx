@@ -21,16 +21,32 @@ const POSE_BUFFER_JOINTS = 20;
 const POSE_BUFFER_MORPHS = 4;
 const POSE_BUFFER_BYTE_SIZE = (POSE_BUFFER_JOINTS * 3 + POSE_BUFFER_MORPHS) * 4 + 5; // 261
 const POSE_JOINT_ORDER = [
-  'root', 'spine', 'chest', 'neck', 'head',
-  'l_shoulder', 'l_elbow', 'l_hand',
-  'r_shoulder', 'r_elbow', 'r_hand',
-  'l_hip', 'l_knee', 'l_foot',
-  'r_hip', 'r_knee', 'r_foot',
-  'l_toe', 'r_toe', 'pelvis',
+  'root',
+  'spine',
+  'chest',
+  'neck',
+  'head',
+  'l_shoulder',
+  'l_elbow',
+  'l_hand',
+  'r_shoulder',
+  'r_elbow',
+  'r_hand',
+  'l_hip',
+  'l_knee',
+  'l_foot',
+  'r_hip',
+  'r_knee',
+  'r_foot',
+  'l_toe',
+  'r_toe',
+  'pelvis',
 ] as const;
 
 /** Decode binary pose buffer into joint rotations + morph weights */
-const decodePoseBuffer = (data: Uint8Array): {
+const decodePoseBuffer = (
+  data: Uint8Array,
+): {
   joints: Record<string, { rx: number; ry: number; rz: number }>;
   morphWeights: [number, number, number, number];
   emotionIdx: number;
@@ -40,9 +56,12 @@ const decodePoseBuffer = (data: Uint8Array): {
   let offset = 0;
   const joints: Record<string, { rx: number; ry: number; rz: number }> = {};
   for (let i = 0; i < POSE_BUFFER_JOINTS; i++) {
-    const rx = view.getFloat32(offset, true); offset += 4;
-    const ry = view.getFloat32(offset, true); offset += 4;
-    const rz = view.getFloat32(offset, true); offset += 4;
+    const rx = view.getFloat32(offset, true);
+    offset += 4;
+    const ry = view.getFloat32(offset, true);
+    offset += 4;
+    const rz = view.getFloat32(offset, true);
+    offset += 4;
     if (rx !== 0 || ry !== 0 || rz !== 0) {
       joints[POSE_JOINT_ORDER[i]] = { rx, ry, rz };
     }
@@ -347,7 +366,17 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
   const jointMarkersRef = useRef<Map<string, Map<string, THREE.Mesh>>>(new Map());
   const boneGeometriesRef = useRef<Map<string, THREE.BufferGeometry[]>>(new Map());
   const morphStateRef = useRef<Map<string, MorphState>>(new Map());
-  const auraUniformsRef = useRef<Map<string, { uTime: { value: number }; uIntensity: { value: number }; uEmotionColor: { value: number[] }; uEmotionBlend: { value: number } }>>(new Map());
+  const auraUniformsRef = useRef<
+    Map<
+      string,
+      {
+        uTime: { value: number };
+        uIntensity: { value: number };
+        uEmotionColor: { value: number[] };
+        uEmotionBlend: { value: number };
+      }
+    >
+  >(new Map());
   const avatarsRef = useRef<AvatarData[]>(avatars);
   avatarsRef.current = avatars;
 
@@ -620,9 +649,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars }) => {
       jointMarkersRef.current.set(avatar.id, markerMap);
 
       // ── Aura glow plane (emotion-modulated) ────────────
-      const emotionIdx = avatar.activeMorph
-        ? (EMOTION_INDEX[avatar.activeMorph] ?? 3)
-        : 3;
+      const emotionIdx = avatar.activeMorph ? (EMOTION_INDEX[avatar.activeMorph] ?? 3) : 3;
       const emotionKey = EMOTIONS[emotionIdx] || 'neutral';
       const auraColor = AURA_COLORS[emotionKey as keyof typeof AURA_COLORS] || AURA_COLORS.neutral;
       const auraUniforms = {

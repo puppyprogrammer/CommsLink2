@@ -8,9 +8,9 @@
 // Emotion color palettes (RGB, normalized 0-1)
 // Index: 0=happy, 1=sad, 2=angry, 3=neutral
 export const AURA_COLORS = {
-  happy:  [1.0, 0.85, 0.2],   // warm gold
-  sad:    [0.3, 0.5, 0.9],    // cool blue
-  angry:  [0.95, 0.2, 0.15],  // red-orange
+  happy: [1.0, 0.85, 0.2], // warm gold
+  sad: [0.3, 0.5, 0.9], // cool blue
+  angry: [0.95, 0.2, 0.15], // red-orange
   neutral: [0.39, 0.77, 0.75], // hologram teal (#63c5c0)
 } as const;
 
@@ -95,4 +95,5 @@ export const createAuraUniforms = (emotionIdx = 3, intensity = 0.6) => {
   };
 };
 
-export default { auraVertexShader, auraFragmentShader, createAuraUniforms, AURA_COLORS };
+const auraShader = { auraVertexShader, auraFragmentShader, createAuraUniforms, AURA_COLORS };
+export default auraShader;
