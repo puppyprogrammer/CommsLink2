@@ -35,20 +35,33 @@ const COL = {
   lip: '#6de0da',
 };
 
-// Debug colors per joint group (Palaron scheme)
-const DEBUG = {
-  legs: '#ff69b4',     // pink — hips, knees, feet, toes
-  arms: '#4488ff',     // blue — elbows, hands/forearms
-  headNeck: '#ffdd44', // yellow — head, neck, shoulders
-  torso: '#44cc66',    // green — root, spine, chest/stomach
+// Debug colors: 10 body-part groups with distinct colors
+const DEBUG: Record<string, string> = {
+  head: '#44cc66',       // green
+  neck: '#ffdd44',       // yellow (neck + shoulders)
+  l_shoulder: '#ffdd44',
+  r_shoulder: '#ffdd44',
+  chest: '#ff9944',      // orange
+  root: '#aacc44',       // yellow-green (torso/spine)
+  spine: '#aacc44',
+  pelvis: '#aacc44',
+  l_elbow: '#4488ff',    // blue (elbows)
+  r_elbow: '#4488ff',
+  l_hand: '#44ddff',     // cyan (hands/forearms)
+  r_hand: '#44ddff',
+  l_hip: '#ff99cc',      // light pink (hips)
+  r_hip: '#ff99cc',
+  l_knee: '#ff69b4',     // pink (knees)
+  r_knee: '#ff69b4',
+  l_foot: '#cc44cc',     // magenta (feet)
+  r_foot: '#cc44cc',
+  l_toe: '#ee66ee',      // light magenta (toes)
+  r_toe: '#ee66ee',
 };
 
 /** Map joint_id → debug color */
 function debugColor(jointId: string): string {
-  if (['head', 'neck', 'l_shoulder', 'r_shoulder'].includes(jointId)) return DEBUG.headNeck;
-  if (['l_elbow', 'r_elbow', 'l_hand', 'r_hand'].includes(jointId)) return DEBUG.arms;
-  if (['l_hip', 'r_hip', 'l_knee', 'r_knee', 'l_foot', 'r_foot', 'l_toe', 'r_toe'].includes(jointId)) return DEBUG.legs;
-  return DEBUG.torso; // root, spine, chest
+  return DEBUG[jointId] || '#aacc44';
 }
 
 // ══════════════════════════════════════════════════════════════

@@ -145,6 +145,52 @@ const GRID_COLOR = 0x1a3a38;
 const MAX_POINT_INSTANCES = 80000;
 const MORPH_LERP_SPEED = 4.0; // Weight units per second for smooth transitions
 
+// Debug color map: 10 body-part groups with distinct colors
+const DEBUG_COLORS: Record<string, string> = {};
+// Head — green
+['head'].forEach((j) => (DEBUG_COLORS[j] = '#44cc66'));
+// Neck/Shoulders — yellow
+['neck', 'l_shoulder', 'r_shoulder'].forEach((j) => (DEBUG_COLORS[j] = '#ffdd44'));
+// Chest — orange
+['chest'].forEach((j) => (DEBUG_COLORS[j] = '#ff9944'));
+// Torso/Spine — yellow-green
+['root', 'spine', 'pelvis'].forEach((j) => (DEBUG_COLORS[j] = '#aacc44'));
+// Elbows — blue
+['l_elbow', 'r_elbow'].forEach((j) => (DEBUG_COLORS[j] = '#4488ff'));
+// Hands/Forearms — cyan
+['l_hand', 'r_hand'].forEach((j) => (DEBUG_COLORS[j] = '#44ddff'));
+// Hips — light pink
+['l_hip', 'r_hip'].forEach((j) => (DEBUG_COLORS[j] = '#ff99cc'));
+// Knees/Upper legs — pink
+['l_knee', 'r_knee'].forEach((j) => (DEBUG_COLORS[j] = '#ff69b4'));
+// Feet — magenta
+['l_foot', 'r_foot'].forEach((j) => (DEBUG_COLORS[j] = '#cc44cc'));
+// Toes — light magenta
+['l_toe', 'r_toe'].forEach((j) => (DEBUG_COLORS[j] = '#ee66ee'));
+
+// Global debug API: window.__hologramDebug = { enabled: true, highlight: 'legs' }
+type HologramDebugConfig = { enabled: boolean; highlight?: string };
+declare global {
+  interface Window {
+    __hologramDebug?: HologramDebugConfig;
+  }
+}
+
+// Highlight group mapping for window.__hologramDebug.highlight
+const HIGHLIGHT_GROUPS: Record<string, string[]> = {
+  head: ['head'],
+  neck: ['neck', 'l_shoulder', 'r_shoulder'],
+  chest: ['chest'],
+  torso: ['root', 'spine', 'pelvis'],
+  arms: ['l_elbow', 'r_elbow', 'l_hand', 'r_hand', 'l_shoulder', 'r_shoulder'],
+  elbows: ['l_elbow', 'r_elbow'],
+  hands: ['l_hand', 'r_hand'],
+  legs: ['l_hip', 'r_hip', 'l_knee', 'r_knee', 'l_foot', 'r_foot', 'l_toe', 'r_toe'],
+  hips: ['l_hip', 'r_hip'],
+  knees: ['l_knee', 'r_knee'],
+  feet: ['l_foot', 'r_foot', 'l_toe', 'r_toe'],
+};
+
 // ── Particle Hair System ─────────────────────────────────
 // Volumetric particle hair: scalp cap + swept-back flow + ponytail
 // Rendered as THREE.Points with shader-based sway animation
@@ -632,6 +678,87 @@ type JointTransforms = {
   rotations: Map<string, THREE.Quaternion>;
 };
 
+// ── Default/test avatar for empty-panel fallback ──────────
+
+const DEFAULT_SKELETON: JointDef[] = [
+  { id: 'root', position: [0, 0, 0], parent_id: null },
+  { id: 'spine', position: [0, 0.20, 0], parent_id: 'root' },
+  { id: 'chest', position: [0, 0.18, 0], parent_id: 'spine' },
+  { id: 'neck', position: [0, 0.10, 0], parent_id: 'chest' },
+  { id: 'head', position: [0, 0.10, 0], parent_id: 'neck' },
+  { id: 'l_shoulder', position: [-0.15, 0, 0], parent_id: 'chest' },
+  { id: 'l_elbow', position: [0, -0.16, 0], parent_id: 'l_shoulder' },
+  { id: 'l_hand', position: [0, -0.14, 0], parent_id: 'l_elbow' },
+  { id: 'r_shoulder', position: [0.15, 0, 0], parent_id: 'chest' },
+  { id: 'r_elbow', position: [0, -0.16, 0], parent_id: 'r_shoulder' },
+  { id: 'r_hand', position: [0, -0.14, 0], parent_id: 'r_elbow' },
+  { id: 'l_hip', position: [-0.1, 0, 0], parent_id: 'root' },
+  { id: 'l_knee', position: [0, -0.36, 0], parent_id: 'l_hip' },
+  { id: 'l_foot', position: [0, -0.34, 0], parent_id: 'l_knee' },
+  { id: 'r_hip', position: [0.1, 0, 0], parent_id: 'root' },
+  { id: 'r_knee', position: [0, -0.36, 0], parent_id: 'r_hip' },
+  { id: 'r_foot', position: [0, -0.34, 0], parent_id: 'r_knee' },
+];
+
+/** Generate simple ellipsoid points around each joint for a test/fallback avatar */
+const generateDefaultPoints = (): PointDef[] => {
+  const points: PointDef[] = [];
+  const col = '#4dd8d0';
+
+  const jointRadii: Record<string, [number, number, number, number]> = {
+    // [rx, ry, rz, count]
+    head: [0.05, 0.06, 0.05, 200],
+    neck: [0.02, 0.03, 0.02, 40],
+    chest: [0.08, 0.06, 0.05, 250],
+    spine: [0.06, 0.08, 0.05, 200],
+    root: [0.08, 0.04, 0.06, 150],
+    l_shoulder: [0.04, 0.03, 0.03, 60],
+    r_shoulder: [0.04, 0.03, 0.03, 60],
+    l_elbow: [0.02, 0.06, 0.02, 80],
+    r_elbow: [0.02, 0.06, 0.02, 80],
+    l_hand: [0.015, 0.02, 0.008, 40],
+    r_hand: [0.015, 0.02, 0.008, 40],
+    l_hip: [0.04, 0.14, 0.04, 150],
+    r_hip: [0.04, 0.14, 0.04, 150],
+    l_knee: [0.025, 0.14, 0.025, 120],
+    r_knee: [0.025, 0.14, 0.025, 120],
+    l_foot: [0.02, 0.015, 0.04, 40],
+    r_foot: [0.02, 0.015, 0.04, 40],
+  };
+
+  for (const [jointId, [rx, ry, rz, count]] of Object.entries(jointRadii)) {
+    for (let i = 0; i < count; i++) {
+      const lat = Math.random() * Math.PI - Math.PI / 2;
+      const lon = Math.random() * Math.PI * 2;
+      points.push({
+        joint_id: jointId,
+        offset: [
+          rx * Math.cos(lat) * Math.cos(lon),
+          ry * Math.sin(lat),
+          rz * Math.cos(lat) * Math.sin(lon),
+        ],
+        size: 0.35 + Math.random() * 0.1,
+        color: col,
+      });
+    }
+  }
+  return points;
+};
+
+let _cachedDefaultPoints: PointDef[] | null = null;
+const getDefaultAvatar = (): AvatarData => {
+  if (!_cachedDefaultPoints) _cachedDefaultPoints = generateDefaultPoints();
+  return {
+    id: '__default__',
+    userId: '__default__',
+    label: 'Test Avatar',
+    skeleton: DEFAULT_SKELETON,
+    points: _cachedDefaultPoints,
+    pose: null,
+    physics: false,
+  };
+};
+
 // ── Component ──────────────────────────────────────────
 
 // Viseme → lip Y-offset deltas for upper and lower lip particles
@@ -652,7 +779,12 @@ const isUpperLip = (offset: [number, number, number]): boolean =>
 const isLowerLip = (offset: [number, number, number]): boolean =>
   offset[1] >= 0.05 && offset[1] <= 0.065 && offset[2] >= 0.024 && offset[2] <= 0.034;
 
-const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }) => {
+const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, visemeStates }) => {
+  // Use default test avatar when no avatars provided so the 3D scene always renders
+  const avatars = useMemo(
+    () => (avatarsProp.length > 0 ? avatarsProp : [getDefaultAvatar()]),
+    [avatarsProp],
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -677,6 +809,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
   >(new Map());
   const hairSystemsRef = useRef<Map<string, HairParticleSystem>>(new Map());
   const visemeStatesRef = useRef<Map<string, VisemeState>>(new Map());
+  const debugModeRef = useRef(false);
   const avatarsRef = useRef<AvatarData[]>(avatars);
   avatarsRef.current = avatars;
 
@@ -1202,9 +1335,54 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
     const observer = new ResizeObserver(handleResize);
     observer.observe(container);
 
+    // Apply debug colors to all instanced meshes
+    const applyDebugColors = (enabled: boolean, highlightGroup?: string) => {
+      const tempColor = new THREE.Color();
+      const highlightJoints = highlightGroup ? (HIGHLIGHT_GROUPS[highlightGroup] || []) : [];
+      for (const [avatarId, instMesh] of instancedMeshRef.current) {
+        const avatar = avatarsRef.current.find((a) => a.id === avatarId);
+        if (!avatar) continue;
+        const colorAttr = instMesh.geometry.getAttribute('instanceColor') as THREE.InstancedBufferAttribute;
+        if (!colorAttr) continue;
+        for (let i = 0; i < avatar.points.length; i++) {
+          const point = avatar.points[i];
+          let hex: string;
+          if (!enabled) {
+            hex = point.color || `#${HOLOGRAM_COLOR.toString(16)}`;
+          } else if (highlightJoints.length > 0) {
+            // Highlight mode: bright color for highlighted joints, dim for others
+            hex = highlightJoints.includes(point.joint_id)
+              ? (DEBUG_COLORS[point.joint_id] || '#44cc66')
+              : '#1a3a38';
+          } else {
+            hex = DEBUG_COLORS[point.joint_id] || '#44cc66';
+          }
+          tempColor.set(hex);
+          colorAttr.setXYZ(i * 2, tempColor.r, tempColor.g, tempColor.b);
+          colorAttr.setXYZ(i * 2 + 1, tempColor.r, tempColor.g, tempColor.b);
+        }
+        colorAttr.needsUpdate = true;
+      }
+    };
+
+    // Poll window.__hologramDebug for programmatic control
+    let lastDebugEnabled: boolean | undefined;
+    let lastHighlight: string | undefined;
+    const debugPollInterval = setInterval(() => {
+      const cfg = window.__hologramDebug;
+      if (!cfg) return;
+      if (cfg.enabled !== lastDebugEnabled || cfg.highlight !== lastHighlight) {
+        lastDebugEnabled = cfg.enabled;
+        lastHighlight = cfg.highlight;
+        debugModeRef.current = cfg.enabled;
+        applyDebugColors(cfg.enabled, cfg.highlight);
+      }
+    }, 200);
+
     return () => {
       cancelAnimationFrame(frameRef.current);
       observer.disconnect();
+      clearInterval(debugPollInterval);
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
@@ -1344,17 +1522,11 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars, visemeStates }
     }
   }, [avatars, buildAvatarGroup, resolveJointTransforms]);
 
-  if (avatars.length === 0) {
-    return (
-      <div className={classes.container}>
-        <div className={classes.empty}>No hologram avatars in this room</div>
-      </div>
-    );
-  }
-
   return (
     <div className={classes.container} ref={containerRef}>
-      {avatars.length === 1 && <div className={classes.label}>{avatars[0].label}</div>}
+      {avatars.length === 1 && avatars[0].id !== '__default__' && (
+        <div className={classes.label}>{avatars[0].label}</div>
+      )}
     </div>
   );
 };

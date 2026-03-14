@@ -398,6 +398,13 @@ const ChatPage = () => {
       setHologramAvatars((prev) => prev.filter((a) => a.id !== data.avatarId));
     });
 
+    socket.on('hologram_debug', (data: { enabled?: boolean }) => {
+      const w = window as unknown as { __hologramDebug?: { enabled: boolean; highlight?: string } };
+      const prev = w.__hologramDebug?.enabled ?? false;
+      const next = data.enabled ?? !prev;
+      w.__hologramDebug = { ...w.__hologramDebug, enabled: next };
+    });
+
     socket.on(
       'hologram_morph_update',
       (data: { avatarId: string; emotion: string; weight: number; morphTargets?: unknown }) => {

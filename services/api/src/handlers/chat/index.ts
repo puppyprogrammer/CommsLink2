@@ -2133,6 +2133,7 @@ const buildSystemPrompt = (
         "{ui close hologram} - Close the hologram panel.\n" +
         "{ui open terminal|browser|forum} - Open other panels.\n" +
         "{ui close terminal|browser|forum} - Close panels.\n" +
+        "{toggle_debug} - Toggle hologram debug colors (per-joint coloring). {toggle_debug on} / {toggle_debug off} to set explicitly.\n" +
         "Use {look} after changing poses or UI to see the result and iterate.",
     );
   }
@@ -2433,6 +2434,7 @@ const AVATAR_EMOTION_REGEX =
 const LOOK_REGEX = /\{look(?:\s+([^}]*))?\}/g;
 const UI_COMMAND_REGEX =
   /\{ui\s+(open|close)\s+(hologram|terminal|browser|forum)\}/gi;
+const TOGGLE_DEBUG_REGEX = /\{toggle_debug(?:\s+(on|off))?\}/gi;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
@@ -2883,6 +2885,9 @@ const runAgentResponse = async (
       const uiCommandMatches = selfmodOn
         ? [...responseText.matchAll(UI_COMMAND_REGEX)]
         : [];
+      const toggleDebugMatches = selfmodOn
+        ? [...responseText.matchAll(TOGGLE_DEBUG_REGEX)]
+        : [];
       const setIntervalMatches = autopilotCtrlOn
         ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)]
         : [];
@@ -3094,6 +3099,7 @@ const runAgentResponse = async (
       for (const m of uiCommandMatches)
         allAgentCommands.push(`ui ${(m[1] || "").toLowerCase().trim()}`);
       for (const _m of setPoseMatches) allAgentCommands.push("set_pose");
+      for (const _m of toggleDebugMatches) allAgentCommands.push("toggle_debug");
       for (const _m of forumPostMatches) allAgentCommands.push("forum_post");
       for (const _m of forumListMatches) allAgentCommands.push("forum_list");
       for (const _m of webGoMatches) allAgentCommands.push("web_go");
@@ -3638,6 +3644,21 @@ const runAgentResponse = async (
             `[${agent.name} UI]: ${action} ${panel} panel`,
           );
           toolResults.push(`UI: ${action} ${panel} panel.`);
+        }
+
+        // Process {toggle_debug} commands — toggle hologram debug colors
+        for (const match of toggleDebugMatches) {
+          const arg = match[1]?.toLowerCase();
+          // "on" = true, "off" = false, no arg = toggle (client handles)
+          const enabled = arg === "on" ? true : arg === "off" ? false : undefined;
+          io.to(roomName).emit("hologram_debug", { enabled });
+          const label = enabled === true ? "on" : enabled === false ? "off" : "toggled";
+          emitSystemMessage(
+            io,
+            roomName,
+            `[${agent.name}]: hologram debug ${label}`,
+          );
+          toolResults.push(`Hologram debug ${label}.`);
         }
 
         // Process {look} commands — screenshot + Grok vision
