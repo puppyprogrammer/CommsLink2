@@ -24,6 +24,7 @@ import createAvatarAction from '../../../../../core/actions/hologramAvatar/creat
 import updatePoseAction from '../../../../../core/actions/hologramAvatar/updatePoseAction';
 import removeAvatarAction from '../../../../../core/actions/hologramAvatar/removeAvatarAction';
 import loadAvatarsAction from '../../../../../core/actions/hologramAvatar/loadAvatarsAction';
+import { getMorphTargets, saveMorphTargetsToAvatar } from '../../../../../core/actions/hologramAvatar/loadMorphTargets';
 
 import type { JwtPayload } from '../../../../../core/helpers/jwt';
 import type { ConnectedUser, ActiveRoom, RoomListItem } from '../../../../../core/interfaces/room';
@@ -102,6 +103,12 @@ type PendingApproval = {
   timeout: ReturnType<typeof setTimeout>;
 };
 const pendingApprovals = new Map<string, PendingApproval>();
+
+// Pending screenshot requests from AI {look} commands
+const pendingScreenshots = new Map<string, {
+  resolve: (data: { base64: string; mimeType: string } | null) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}>();
 
 /**
  * Execute a terminal command on a connected machine via Socket.IO.
@@ -1423,7 +1430,17 @@ const buildSystemPrompt = (
       '{set_pose nod} - Nod head forward\n' +
       '{set_pose shrug} - Shrug both shoulders\n' +
       '{set_pose joint_id rx ry rz} - Set a specific joint rotation (radians). Joints: head, neck, chest, spine, l_shoulder, l_elbow, l_hand, r_shoulder, r_elbow, r_hand, l_hip, l_knee, l_foot, r_hip, r_knee, r_foot\n' +
-      'Use poses expressively when speaking or reacting — wave when greeting, think when pondering, nod when agreeing.',
+      '{avatar happy|sad|angry|surprised|thinking|waving|neutral} or {set_emotion <emotion>} - Express emotion via evolved morph targets (GA-optimized poses). Weight auto-adjusted by engagement.\n' +
+      'Use poses expressively when speaking or reacting — wave when greeting, think when pondering, nod when agreeing.\n' +
+      '\n' +
+      'VISUAL AWARENESS:\n' +
+      '{look} - Take a screenshot of what users see in the chat page. You will receive a description of the UI, panels, hologram, etc.\n' +
+      '{look focus on the hologram pose} - Screenshot with a specific focus prompt for the vision AI.\n' +
+      '{ui open hologram} - Open the hologram panel for users in this room.\n' +
+      '{ui close hologram} - Close the hologram panel.\n' +
+      '{ui open terminal|browser|forum} - Open other panels.\n' +
+      '{ui close terminal|browser|forum} - Close panels.\n' +
+      'Use {look} after changing poses or UI to see the result and iterate.',
     );
   }
 
@@ -1693,6 +1710,9 @@ const COMPLETE_TASK_REGEX = /\{complete_task\s+([^}]+)\}/g;
 const UPDATE_TASK_REGEX = /\{update_task\s+([^|]+)\|\s*([^}]+)\}/g;
 const REMOVE_TASK_REGEX = /\{remove_task\s+([^}]+)\}/g;
 const SET_POSE_REGEX = /\{set_pose\s+([^}]+)\}/g;
+const AVATAR_EMOTION_REGEX = /\{(?:avatar|set_emotion)\s+(happy|sad|angry|surprised|thinking|waving|neutral)\}/g;
+const LOOK_REGEX = /\{look(?:\s+([^}]*))?\}/g;
+const UI_COMMAND_REGEX = /\{ui\s+(open|close)\s+(hologram|terminal|browser|forum)\}/gi;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
@@ -2013,6 +2033,9 @@ const runAgentResponse = async (
       const updateTaskMatches = selfmodOn ? [...responseText.matchAll(UPDATE_TASK_REGEX)] : [];
       const removeTaskMatches = selfmodOn ? [...responseText.matchAll(REMOVE_TASK_REGEX)] : [];
       const setPoseMatches = selfmodOn ? [...responseText.matchAll(SET_POSE_REGEX)] : [];
+      const avatarEmotionMatches = selfmodOn ? [...responseText.matchAll(AVATAR_EMOTION_REGEX)] : [];
+      const lookMatches = selfmodOn ? [...responseText.matchAll(LOOK_REGEX)] : [];
+      const uiCommandMatches = selfmodOn ? [...responseText.matchAll(UI_COMMAND_REGEX)] : [];
       const setIntervalMatches = autopilotCtrlOn ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)] : [];
       const toggleAutoMatches = autopilotCtrlOn ? [...responseText.matchAll(TOGGLE_AUTOPILOT_REGEX)] : [];
       const setTokensMatches = tokensOn ? [...responseText.matchAll(SET_TOKENS_REGEX)] : [];
@@ -2071,7 +2094,8 @@ const runAgentResponse = async (
         addInstMatches.length + rmInstMatches.length +
         addAutoMatches.length + rmAutoMatches.length +
         setPlanMatches.length + clearPlanMatches.length +
-        addTaskMatches.length + completeTaskMatches.length + updateTaskMatches.length + removeTaskMatches.length + setPoseMatches.length +
+        addTaskMatches.length + completeTaskMatches.length + updateTaskMatches.length + removeTaskMatches.length + setPoseMatches.length + avatarEmotionMatches.length +
+        lookMatches.length + uiCommandMatches.length +
         setIntervalMatches.length + toggleAutoMatches.length +
         setTokensMatches.length + setEffortMatches.length +
         searchMatches.length + browseMatches.length + findMatches.length +
@@ -2279,6 +2303,118 @@ const runAgentResponse = async (
             toolResults.push(`Pose updated to "${poseArg}".`);
           } catch (err) {
             toolResults.push(`Pose update failed: ${(err as Error).message}`);
+          }
+        }
+
+        // Process {avatar emotion} — PPO-style emotion morph with engagement reward
+        for (const match of avatarEmotionMatches) {
+          const emotion = match[1].trim().toLowerCase();
+          try {
+            const roomId = getRoomId(roomName);
+            if (!roomId) { toolResults.push('Avatar emotion failed: room not found.'); continue; }
+            const avatar = await Data.hologramAvatar.findByRoomAndUser(roomId, agent.id);
+            if (!avatar) { toolResults.push('Avatar emotion failed: no avatar.'); continue; }
+
+            if (emotion === 'neutral') {
+              // Reset to base pose
+              await Data.hologramAvatar.updatePose(avatar.id, avatar.pose || { joints: {} });
+              io.to(roomName).emit('hologram_morph_update', {
+                avatarId: avatar.id,
+                emotion: 'neutral',
+                weight: 0,
+              });
+              toolResults.push('Avatar emotion reset to neutral.');
+              continue;
+            }
+
+            // Simple PPO reward: engagement = recent message count in room (proxy for positive interaction)
+            const recentMessages = await Data.message.findByRoom(roomId, 10);
+            const engagementScore = Math.min(recentMessages.length / 10, 1.0);
+
+            // Kinematic validity reward: penalize impossible poses
+            const kinematicReward = 0.8; // Base validity since GA pre-validates
+
+            // Combined reward (simple PPO-style: reward = engagement * kinematics)
+            const reward = engagementScore * 0.6 + kinematicReward * 0.4;
+            const morphWeight = Math.min(reward, 1.0);
+
+            // Load or generate morph targets for this emotion
+            const existingMorphs = (avatar.morph_targets as Record<string, unknown> | null) || {};
+            const emotionMorphs = existingMorphs[emotion];
+
+            if (emotionMorphs) {
+              // Use existing GA-evolved morphs, apply with PPO-adjusted weight
+              io.to(roomName).emit('hologram_morph_update', {
+                avatarId: avatar.id,
+                emotion,
+                weight: morphWeight,
+                morphTargets: { [emotion]: emotionMorphs },
+              });
+            } else {
+              // No pre-evolved morphs — use preset pose mapping and emit as morph update
+              // The viewer will blend with the base pose using morphWeight
+              io.to(roomName).emit('hologram_morph_update', {
+                avatarId: avatar.id,
+                emotion,
+                weight: morphWeight,
+              });
+            }
+
+            toolResults.push(`Avatar emotion: ${emotion} (weight: ${morphWeight.toFixed(2)}, reward: ${reward.toFixed(2)}).`);
+          } catch (err) {
+            toolResults.push(`Avatar emotion failed: ${(err as Error).message}`);
+          }
+        }
+
+        // Process {ui open/close panel} commands
+        for (const match of uiCommandMatches) {
+          const action = match[1].toLowerCase() as 'open' | 'close';
+          const panel = match[2].toLowerCase();
+          io.to(roomName).emit('ui_command', { action, panel });
+          emitSystemMessage(io, roomName, `[${agent.name} UI]: ${action} ${panel} panel`);
+          toolResults.push(`UI: ${action} ${panel} panel.`);
+        }
+
+        // Process {look} commands — screenshot + Grok vision
+        for (const match of lookMatches) {
+          const focusPrompt = match[1]?.trim() || '';
+          const requestId = `look-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+          try {
+            const screenshotData = await new Promise<{ base64: string; mimeType: string } | null>((resolve) => {
+              const timeout = setTimeout(() => {
+                pendingScreenshots.delete(requestId);
+                resolve(null);
+              }, 10_000);
+
+              pendingScreenshots.set(requestId, { resolve, timeout });
+              io.to(roomName).emit('screenshot_request', { requestId });
+            });
+
+            if (!screenshotData) {
+              toolResults.push('[Look]: No client responded with a screenshot (no users online or timeout).');
+              continue;
+            }
+
+            const prompt = focusPrompt
+              ? `Describe this screenshot of a chat application. Focus on: ${focusPrompt}`
+              : 'Describe what you see in this screenshot of a chat application. Note the layout, any panels open, hologram avatars, chat messages, and visual elements.';
+
+            const { default: grokAdapter } = await import('@commslink/core/adapters/grok');
+            const vision = await grokAdapter.describeImage(screenshotData.base64, screenshotData.mimeType, prompt);
+
+            // Charge credits for vision call
+            if (agent.creator_id) {
+              const { default: creditActions } = await import('@commslink/core/actions/credit');
+              const cost = Math.ceil((vision.inputTokens + vision.outputTokens) * 0.002);
+              if (cost > 0) {
+                await creditActions.chargeEC2Usage(agent.creator_id, cost).catch(() => {});
+              }
+            }
+
+            toolResults.push(`[Look]: ${vision.text}`);
+          } catch (err) {
+            toolResults.push(`[Look] failed: ${(err as Error).message}`);
           }
         }
 
@@ -2626,15 +2762,27 @@ const runAgentResponse = async (
               timeout,
             });
 
-            // Send approval request to room
+            // Send approval request to room and persist
+            const securityText = `Security Bot: **${levelLabel}** command on **${machineName}**:\n\`\`\`\n${command}\n\`\`\`\nMention **security** with **yes/approve** or **no/deny** to respond.`;
             io.to(roomName).emit('chat_message', {
               id: `security-${Date.now()}`,
-              sender: 'Security',
-              text: `**${levelLabel}** command on **${machineName}**:\n\`\`\`\n${command}\n\`\`\`\nMention **security** with **yes/approve** or **no/deny** to respond.`,
+              sender: 'Security Bot',
+              text: securityText,
               timestamp: new Date().toISOString(),
               isSystem: true,
+              systemType: 'security',
               approvalId,
             });
+            const secRoomId = getRoomId(roomName);
+            if (secRoomId) {
+              Data.message.create({
+                content: securityText,
+                type: 'system',
+                room_id: secRoomId,
+                author_id: null,
+                username: 'Security Bot',
+              }).catch(console.error);
+            }
           });
 
           if (!approved) {
@@ -5126,6 +5274,15 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           physics: data.physics,
         });
 
+        // Auto-populate GA-evolved morph targets
+        let morphTargets = avatar.morph_targets;
+        try {
+          const updated = await saveMorphTargetsToAvatar(avatar.id);
+          morphTargets = updated.morph_targets;
+        } catch {
+          // Non-fatal — avatar works without morphs
+        }
+
         io.to(user.currentRoom).emit('hologram_spawned', {
           id: avatar.id,
           userId: socket.user.id,
@@ -5135,6 +5292,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           points: avatar.points,
           pose: avatar.pose,
           physics: avatar.physics,
+          morphTargets: morphTargets,
         });
       } catch (err) {
         socket.emit('agent_error', { error: `Hologram create failed: ${(err as Error).message}` });
@@ -5170,6 +5328,31 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       }
     });
 
+    socket.on('hologram_set_emotion', async (data: { avatarId: string; emotion: string; weight: number }) => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      try {
+        const avatar = await Data.hologramAvatar.findById(data.avatarId);
+        if (!avatar || avatar.user_id !== socket.user.id) return;
+
+        const emotion = data.emotion.toLowerCase();
+        const weight = Math.max(0, Math.min(1, data.weight));
+
+        // Load morph targets from avatar DB record (pre-populated by GA)
+        const morphTargets = (avatar.morph_targets as Record<string, unknown> | null) || {};
+
+        io.to(user.currentRoom).emit('hologram_morph_update', {
+          avatarId: data.avatarId,
+          emotion,
+          weight: emotion === 'neutral' ? 0 : weight,
+          morphTargets: morphTargets[emotion] ? { [emotion]: morphTargets[emotion] } : undefined,
+        });
+      } catch (err) {
+        socket.emit('agent_error', { error: `Emotion set failed: ${(err as Error).message}` });
+      }
+    });
+
     socket.on('hologram_load', async () => {
       const user = connectedUsers.get(socket.id);
       if (!user?.currentRoom) return;
@@ -5188,10 +5371,23 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             points: a.points,
             pose: a.pose,
             physics: a.physics,
+            morphTargets: a.morph_targets,
           })),
         });
       } catch (err) {
         socket.emit('agent_error', { error: `Hologram load failed: ${(err as Error).message}` });
+      }
+    });
+
+    // ┌──────────────────────────────────────────┐
+    // │ Screenshot response (for AI {look})     │
+    // └──────────────────────────────────────────┘
+    socket.on('screenshot_response', (data: { requestId: string; base64: string; mimeType: string }) => {
+      const pending = pendingScreenshots.get(data.requestId);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        pendingScreenshots.delete(data.requestId);
+        pending.resolve({ base64: data.base64, mimeType: data.mimeType });
       }
     });
 

@@ -17,6 +17,7 @@ type UpdateAvatarDTO = {
   skeleton?: unknown;
   points?: unknown;
   pose?: unknown;
+  morph_targets?: unknown;
   physics?: boolean;
 };
 

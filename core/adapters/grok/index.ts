@@ -206,6 +206,67 @@ const moderateImage = async (
   }
 };
 
+/**
+ * Describe an image using Grok vision.
+ * Returns a text description of what's in the image.
+ */
+const describeImage = async (
+  base64Data: string,
+  mimeType: string,
+  prompt: string = 'Describe what you see in this screenshot of a web application.',
+): Promise<{ text: string; inputTokens: number; outputTokens: number }> => {
+  const apiKey = getApiKey();
+
+  const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'grok-2-vision-latest',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a visual observer for an AI agent. Describe what you see concisely but thoroughly. ' +
+            'Focus on UI elements, layout, colors, content, and any visual issues. ' +
+            'If you see a 3D hologram/avatar, describe its pose, proportions, and visual quality. ' +
+            'Be specific about positions (left, right, center), colors, and text you can read.',
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${base64Data}` },
+            },
+          ],
+        },
+      ],
+      max_tokens: 400,
+      temperature: 0.3,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Grok vision API error (${response.status}): ${errText}`);
+  }
+
+  const data = (await response.json()) as {
+    choices: Array<{ message: { content: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+
+  return {
+    text: data.choices[0]?.message?.content || 'No description available.',
+    inputTokens: data.usage?.prompt_tokens || 0,
+    outputTokens: data.usage?.completion_tokens || 0,
+  };
+};
+
 export type { ChatMessage, GrokResponse, ToolCall, ToolDefinition };
 export { AVAILABLE_MODELS };
-export default { chatCompletion, moderateImage };
+export default { chatCompletion, moderateImage, describeImage };

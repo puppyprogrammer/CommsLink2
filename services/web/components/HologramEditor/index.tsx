@@ -10,6 +10,10 @@ import Slider from '@mui/material/Slider';
 import Typography from '@mui/material/Typography';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import InputLabel from '@mui/material/InputLabel';
+import FormControl from '@mui/material/FormControl';
 
 // Styles
 import classes from './HologramEditor.module.scss';
@@ -44,6 +48,8 @@ type HologramEditorProps = {
     physics: boolean;
   }) => void;
   onCancel: () => void;
+  onEmotionChange?: (emotion: string, weight: number) => void;
+  showEmotionControls?: boolean;
 };
 
 // ── Presets ────────────────────────────────────────────
@@ -103,12 +109,16 @@ const ORB_POINTS: PointDef[] = [
 
 // ── Component ──────────────────────────────────────────
 
-const HologramEditor: React.FC<HologramEditorProps> = ({ onSave, onCancel }) => {
+const EMOTIONS = ['neutral', 'happy', 'sad', 'angry'] as const;
+
+const HologramEditor: React.FC<HologramEditorProps> = ({ onSave, onCancel, onEmotionChange, showEmotionControls }) => {
   const [label, setLabel] = useState('My Avatar');
   const [skeleton, setSkeleton] = useState<JointDef[]>(HUMANOID_SKELETON);
   const [points, setPoints] = useState<PointDef[]>(HUMANOID_POINTS);
   const [physics, setPhysics] = useState(true);
   const [pose, setPose] = useState<Record<string, PoseJoint>>({});
+  const [selectedEmotion, setSelectedEmotion] = useState<string>('neutral');
+  const [emotionWeight, setEmotionWeight] = useState<number>(0);
 
   const loadPreset = useCallback((preset: 'humanoid' | 'orb') => {
     if (preset === 'humanoid') {
@@ -203,6 +213,56 @@ const HologramEditor: React.FC<HologramEditorProps> = ({ onSave, onCancel }) => 
           </div>
         ))}
       </div>
+
+      {showEmotionControls && (
+        <>
+          <Typography variant="caption" sx={{ color: '#888', mt: 1 }}>
+            Emotion Morph
+          </Typography>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ color: '#888' }}>Emotion</InputLabel>
+            <Select
+              value={selectedEmotion}
+              label="Emotion"
+              onChange={(e) => {
+                const emotion = e.target.value;
+                setSelectedEmotion(emotion);
+                const weight = emotion === 'neutral' ? 0 : emotionWeight;
+                onEmotionChange?.(emotion, weight);
+              }}
+              sx={{ color: '#ddd', '.MuiOutlinedInput-notchedOutline': { borderColor: '#555' } }}
+            >
+              {EMOTIONS.map((e) => (
+                <MenuItem key={e} value={e}>
+                  {e.charAt(0).toUpperCase() + e.slice(1)}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <div className={classes.sliderGroup} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Typography variant="caption" sx={{ color: '#888', minWidth: 50 }}>
+              Blend
+            </Typography>
+            <Slider
+              size="small"
+              min={0}
+              max={1}
+              step={0.05}
+              value={emotionWeight}
+              onChange={(_, v) => {
+                const w = v as number;
+                setEmotionWeight(w);
+                onEmotionChange?.(selectedEmotion, w);
+              }}
+              disabled={selectedEmotion === 'neutral'}
+              sx={{ color: '#63c5c0', flex: 1 }}
+            />
+            <Typography variant="caption" sx={{ color: '#aaa', minWidth: 30 }}>
+              {emotionWeight.toFixed(2)}
+            </Typography>
+          </div>
+        </>
+      )}
 
       <div className={classes.actions}>
         <Button size="small" variant="text" onClick={onCancel} sx={{ color: '#888' }}>

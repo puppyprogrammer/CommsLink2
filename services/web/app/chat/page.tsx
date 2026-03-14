@@ -57,10 +57,12 @@ import StopCircleIcon from '@mui/icons-material/StopCircle';
 import ScreenShareIcon from '@mui/icons-material/ScreenShare';
 import LanguageIcon from '@mui/icons-material/Language';
 
+import html2canvas from 'html2canvas';
 import WebBrowserPanel from '@/components/WebBrowserPanel';
 import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
 import HologramViewer from '@/components/HologramViewer';
+import HologramEditor from '@/components/HologramEditor';
 import ResizeHandle from '@/components/ResizeHandle';
 import ForumPanel from '@/components/ForumPanel';
 import TerminalIcon from '@mui/icons-material/Terminal';
@@ -116,9 +118,13 @@ const ChatPage = () => {
       points: unknown[];
       pose: unknown;
       physics: boolean;
+      morphTargets?: unknown;
+      activeMorph?: string;
+      morphWeight?: number;
     }[]
   >([]);
   const [hologramWidth, setHologramWidth] = useState(400);
+  const [hologramEditorOpen, setHologramEditorOpen] = useState(false);
   const [forumPanelOpen, setForumPanelOpen] = useState(false);
   const [forumPanelWidth, setForumPanelWidth] = useState(400);
   const [panelMachines, setPanelMachines] = useState<{ id: string; name: string; status: string; os?: string }[]>([]);
@@ -357,6 +363,7 @@ const ChatPage = () => {
         points: unknown[];
         pose: unknown;
         physics: boolean;
+        morphTargets?: unknown;
       }) => {
         setHologramAvatars((prev) => {
           const filtered = prev.filter((a) => a.id !== data.id && a.userId !== data.userId);
@@ -374,6 +381,24 @@ const ChatPage = () => {
     });
 
     socket.on(
+      'hologram_morph_update',
+      (data: { avatarId: string; emotion: string; weight: number; morphTargets?: unknown }) => {
+        setHologramAvatars((prev) =>
+          prev.map((a) =>
+            a.id === data.avatarId
+              ? {
+                  ...a,
+                  activeMorph: data.emotion,
+                  morphWeight: data.weight,
+                  morphTargets: data.morphTargets ?? a.morphTargets,
+                }
+              : a,
+          ),
+        );
+      },
+    );
+
+    socket.on(
       'hologram_list',
       (data: {
         avatars: {
@@ -384,11 +409,51 @@ const ChatPage = () => {
           points: unknown[];
           pose: unknown;
           physics: boolean;
+          morphTargets?: unknown;
         }[];
       }) => {
         setHologramAvatars(data.avatars);
       },
     );
+
+    // AI {look} command — screenshot the page and send back
+    socket.on('screenshot_request', async (data: { requestId: string }) => {
+      try {
+        const canvas = await html2canvas(document.body, {
+          backgroundColor: '#121212',
+          scale: 0.75, // Lower res for speed + smaller payload
+          logging: false,
+          useCORS: true,
+        });
+        const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+        socket.emit('screenshot_response', {
+          requestId: data.requestId,
+          base64,
+          mimeType: 'image/jpeg',
+        });
+      } catch (err) {
+        console.error('Screenshot capture failed:', err);
+      }
+    });
+
+    // AI {ui open/close panel} commands
+    socket.on('ui_command', (data: { action: 'open' | 'close'; panel: string }) => {
+      const isOpen = data.action === 'open';
+      switch (data.panel) {
+        case 'hologram':
+          setHologramPanelOpen(isOpen);
+          break;
+        case 'terminal':
+          setTerminalPanelOpen(isOpen);
+          break;
+        case 'browser':
+          setWebPanelOpen(isOpen);
+          break;
+        case 'forum':
+          setForumPanelOpen(isOpen);
+          break;
+      }
+    });
 
     // Connect after all listeners are registered so we don't miss initial events
     if (!socket.connected) {
@@ -836,7 +901,9 @@ const ChatPage = () => {
                       ? 'claude-response'
                       : /^\[.+terminal\s*→|^\[Terminal\b/i.test(displayText)
                         ? 'terminal'
-                        : undefined
+                        : /^Security Bot:/i.test(displayText)
+                          ? 'security'
+                          : undefined
                   : undefined);
 
               // Hide panel-routed system messages from chat (they show in TerminalPanel instead)
@@ -930,27 +997,32 @@ const ChatPage = () => {
                   <Box key={msg.id || i} sx={{ textAlign: 'center', py: 0.25 }}>
                     <Typography
                       sx={{
-                        fontSize: '0.875rem',
+                        fontSize: sysType === 'security' ? '0.95rem' : '0.875rem',
                         fontStyle: 'italic',
+                        fontWeight: sysType === 'security' ? 700 : undefined,
                         color:
-                          sysType === 'claude-prompt'
-                            ? '#3fb950'
-                            : sysType === 'claude-response'
-                              ? '#f0883e'
-                              : sysType === 'terminal'
-                                ? '#bc8cff'
-                                : '#858585',
+                          sysType === 'security'
+                            ? '#ff4444'
+                            : sysType === 'claude-prompt'
+                              ? '#3fb950'
+                              : sysType === 'claude-response'
+                                ? '#f0883e'
+                                : sysType === 'terminal'
+                                  ? '#bc8cff'
+                                  : '#858585',
                         textShadow:
-                          sysType === 'claude-prompt'
-                            ? '0 0 6px rgba(63, 185, 80, 0.4)'
-                            : sysType === 'claude-response'
-                              ? '0 0 6px rgba(240, 136, 62, 0.4)'
-                              : sysType === 'terminal'
-                                ? '0 0 6px rgba(188, 140, 255, 0.4)'
-                                : 'none',
+                          sysType === 'security'
+                            ? '0 0 8px rgba(255, 68, 68, 0.5)'
+                            : sysType === 'claude-prompt'
+                              ? '0 0 6px rgba(63, 185, 80, 0.4)'
+                              : sysType === 'claude-response'
+                                ? '0 0 6px rgba(240, 136, 62, 0.4)'
+                                : sysType === 'terminal'
+                                  ? '0 0 6px rgba(188, 140, 255, 0.4)'
+                                  : 'none',
                       }}
                     >
-                      {displayText}
+                      <MessageContent text={displayText} />
                     </Typography>
                   </Box>
                 );
@@ -1157,12 +1229,72 @@ const ChatPage = () => {
                 <Typography variant="subtitle2" sx={{ color: '#63c5c0', fontFamily: "'Orbitron', monospace" }}>
                   Holograms
                 </Typography>
-                <IconButton size="small" onClick={() => setHologramPanelOpen(false)} title="Close">
-                  <Typography variant="caption" sx={{ color: '#888' }}>
-                    ✕
-                  </Typography>
-                </IconButton>
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  {!hologramEditorOpen && (
+                    <IconButton
+                      size="small"
+                      onClick={() => setHologramEditorOpen(true)}
+                      title="Create Avatar"
+                      sx={{ color: '#63c5c0' }}
+                    >
+                      <AddIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  )}
+                  {hologramAvatars.some((a) => a.userId === session?.user?.id) && (
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        const myAvatar = hologramAvatars.find((a) => a.userId === session?.user?.id);
+                        if (myAvatar) socketInstanceRef.current?.emit('hologram_remove', { avatarId: myAvatar.id });
+                      }}
+                      title="Remove My Avatar"
+                      sx={{ color: '#c55' }}
+                    >
+                      <Typography variant="caption" sx={{ fontSize: 12, fontWeight: 700 }}>
+                        ✕
+                      </Typography>
+                    </IconButton>
+                  )}
+                  <IconButton size="small" onClick={() => setHologramPanelOpen(false)} title="Close">
+                    <Typography variant="caption" sx={{ color: '#888' }}>
+                      ✕
+                    </Typography>
+                  </IconButton>
+                </Box>
               </Box>
+              {hologramEditorOpen && (
+                <HologramEditor
+                  onSave={(data) => {
+                    socketInstanceRef.current?.emit('hologram_create', data);
+                    setHologramEditorOpen(false);
+                  }}
+                  onCancel={() => setHologramEditorOpen(false)}
+                />
+              )}
+              {!hologramEditorOpen && hologramAvatars.some((a) => a.userId === session?.user?.id) && (
+                <Box sx={{ px: 1, pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="caption" sx={{ color: '#888', minWidth: 50 }}>Emotion</Typography>
+                  <select
+                    style={{ background: '#222', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '2px 4px', fontSize: 12 }}
+                    onChange={(e) => {
+                      const myAvatar = hologramAvatars.find((a) => a.userId === session?.user?.id);
+                      if (myAvatar) {
+                        socketInstanceRef.current?.emit('hologram_set_emotion', {
+                          avatarId: myAvatar.id,
+                          emotion: e.target.value,
+                          weight: e.target.value === 'neutral' ? 0 : 0.8,
+                        });
+                      }
+                    }}
+                    defaultValue="neutral"
+                  >
+                    <option value="neutral">Neutral</option>
+                    <option value="happy">Happy</option>
+                    <option value="sad">Sad</option>
+                    <option value="angry">Angry</option>
+                  </select>
+                </Box>
+              )}
               <div style={{ flex: 1, minHeight: 250 }}>
                 <HologramViewer avatars={hologramAvatars as Parameters<typeof HologramViewer>[0]['avatars']} />
               </div>
