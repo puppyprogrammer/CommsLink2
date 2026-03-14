@@ -1163,7 +1163,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       });
       const auraGeo = new THREE.PlaneGeometry(1.5, 2.0);
       const auraMesh = new THREE.Mesh(auraGeo, auraMaterial);
-      auraMesh.position.set(0, 0.1, -0.3); // behind avatar center
+      auraMesh.position.set(0, 0.0, -0.3); // behind avatar center
       auraMesh.name = 'aura';
       group.add(auraMesh);
 
@@ -1221,8 +1221,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
 
     // Camera
     const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
-    camera.position.set(0, 0.15, 2.5);
-    camera.lookAt(0, 0.1, 0);
+    camera.position.set(0, 0.1, 3.0);
+    camera.lookAt(0, 0.0, 0);
     cameraRef.current = camera;
 
     // Renderer
@@ -1233,9 +1233,9 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Ground grid (hologram aesthetic) — at foot level Y=-0.7
+    // Ground grid (hologram aesthetic) — at foot level Y=-1.0
     const gridHelper = new THREE.GridHelper(4, 20, GRID_COLOR, GRID_COLOR);
-    gridHelper.position.y = -0.7;
+    gridHelper.position.y = -1.0;
     (gridHelper.material as THREE.Material).transparent = true;
     (gridHelper.material as THREE.Material).opacity = 0.3;
     scene.add(gridHelper);
