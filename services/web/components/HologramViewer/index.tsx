@@ -1221,8 +1221,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
 
     // Camera
     const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
-    camera.position.set(0, 0.1, 3.0);
-    camera.lookAt(0, 0.0, 0);
+    camera.position.set(0, -0.05, 2.5);
+    camera.lookAt(0, -0.1, 0);
     cameraRef.current = camera;
 
     // Renderer
