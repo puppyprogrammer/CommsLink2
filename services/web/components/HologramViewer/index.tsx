@@ -1167,8 +1167,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       auraMesh.name = 'aura';
       group.add(auraMesh);
 
-      // ── Particle Hair System ─────────────────────────────
-      const headJointExists = avatar.skeleton.some((j) => j.id === 'head');
+      // ── Particle Hair System (DISABLED — causes visible internal glow) ──
+      const headJointExists = false;
       if (headJointExists) {
         const hairData = buildHairParticles();
         const hairGeo = new THREE.BufferGeometry();
