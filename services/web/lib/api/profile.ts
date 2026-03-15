@@ -6,7 +6,6 @@ type UpdateProfilePayload = {
   password?: string;
   voice_id?: string;
   volume?: number;
-  use_premium_voice?: boolean;
   hear_own_voice?: boolean;
 };
 

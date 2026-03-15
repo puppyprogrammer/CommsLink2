@@ -44,12 +44,6 @@ const AdminPage = () => {
     mutate();
   };
 
-  const handleTogglePremium = async (userId: string) => {
-    if (!session?.token) return;
-    await adminApi.togglePremium(session.token, userId);
-    mutate();
-  };
-
   if (!stats)
     return (
       <DashboardLayout>
@@ -68,7 +62,6 @@ const AdminPage = () => {
           { label: 'Total Users', value: stats.totalUsers },
           { label: 'Total Messages', value: stats.totalMessages },
           { label: 'Total Rooms', value: stats.totalRooms },
-          { label: 'Premium Users', value: stats.premiumUsers },
         ].map((stat) => (
           <Grid key={stat.label} size={{ xs: 6, md: 3 }}>
             <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.paper' }}>
@@ -100,16 +93,12 @@ const AdminPage = () => {
               <TableRow key={user.id}>
                 <TableCell>{user.username}</TableCell>
                 <TableCell>
-                  {user.is_premium && <Chip label="Premium" color="success" size="small" sx={{ mr: 0.5 }} />}
                   {user.is_banned && <Chip label="Banned" color="error" size="small" />}
                 </TableCell>
                 <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
                 <TableCell>
-                  <Button size="small" onClick={() => handleToggleBan(user.id)} sx={{ mr: 1 }}>
+                  <Button size="small" onClick={() => handleToggleBan(user.id)}>
                     {user.is_banned ? 'Unban' : 'Ban'}
-                  </Button>
-                  <Button size="small" onClick={() => handleTogglePremium(user.id)}>
-                    {user.is_premium ? 'Remove Premium' : 'Give Premium'}
                   </Button>
                 </TableCell>
               </TableRow>

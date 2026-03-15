@@ -18,7 +18,6 @@ type AuthResponse = {
     username: string;
     email: string | null;
     is_admin: boolean;
-    is_premium: boolean;
   };
 };
 

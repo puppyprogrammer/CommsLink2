@@ -187,7 +187,7 @@ const ChatPage = () => {
       // Skip TTS for own messages unless "hear own voice" is enabled
       if (isOwnMessage && !prefs.hear_own_voice) return;
 
-      // If message has base64 audio (premium TTS from server), play that
+      // If message has base64 audio (ElevenLabs TTS from server), play that
       if (msg.audio) {
         const sender = msg.sender || msg.username || '';
         if (msg.visemes && (msg.visemes as VisemeEntry[]).length > 0) {
@@ -548,12 +548,12 @@ const ChatPage = () => {
       ]);
       if (!text) setInput('');
 
-      // Generate premium audio if using a premium ElevenLabs voice
+      // Generate ElevenLabs audio if using an ElevenLabs voice
       let audio: string | null = null;
       const voiceId = preferences.voice_id || 'male';
-      const isPremiumVoice = !['male', 'female', 'robot'].includes(voiceId);
+      const isElevenLabsVoice = !['male', 'female', 'robot'].includes(voiceId);
 
-      if (isPremiumVoice && preferences.use_premium_voice && session.user.is_premium) {
+      if (isElevenLabsVoice) {
         try {
           const result = await voiceApi.generate(session.token, {
             text: msgText,
@@ -561,8 +561,8 @@ const ChatPage = () => {
           });
           audio = result.audioBase64 || null;
         } catch (err) {
-          console.error('Premium voice generation failed, sending without audio:', err);
-          toast('Premium voice generation failed, sending as text', 'warning');
+          console.error('ElevenLabs voice generation failed, sending without audio:', err);
+          toast('ElevenLabs voice generation failed, sending as text', 'warning');
         }
       }
 
@@ -574,7 +574,7 @@ const ChatPage = () => {
         nonce,
       });
     },
-    [input, session?.token, session?.user.is_premium, preferences.voice_id, preferences.use_premium_voice],
+    [input, session?.token, preferences.voice_id],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -672,8 +672,9 @@ const ChatPage = () => {
       return;
     }
 
-    // If user has a premium voice selected, use voice streaming (chunked TTS)
-    if (preferences.use_premium_voice && preferences.voice_id && session?.token) {
+    // If user has an ElevenLabs voice selected, use voice streaming (chunked TTS)
+    const isElevenLabsVoice = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
+    if (isElevenLabsVoice && session?.token) {
       const socket = getSocket(session.token);
       const sid = voiceStream.start(socket, preferences.voice_id, {
         onStart: () => setIsListening(true),

@@ -2,7 +2,6 @@ export type DashboardStats = {
   totalUsers: number;
   totalMessages: number;
   totalRooms: number;
-  premiumUsers: number;
   recentStats: Array<{
     date: string;
     visits: number;
@@ -12,7 +11,6 @@ export type DashboardStats = {
   users: Array<{
     id: string;
     username: string;
-    is_premium: boolean;
     is_banned: boolean;
     created_at: string;
   }>;

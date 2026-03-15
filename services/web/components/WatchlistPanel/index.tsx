@@ -174,7 +174,7 @@ const WatchlistPanel: React.FC<Props> = ({ onClose, onCommand }) => {
                       )}
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="AI Summary (premium)">
+                  <Tooltip title="AI Summary (costs credits)">
                     <IconButton size="small" onClick={() => handleSummarize(item.video_id)}>
                       <AutoAwesomeIcon sx={{ fontSize: 16 }} />
                     </IconButton>
@@ -191,7 +191,7 @@ const WatchlistPanel: React.FC<Props> = ({ onClose, onCommand }) => {
         )}
 
         <div className={styles.premiumSection}>
-          <div className={styles.premiumLabel}>PREMIUM AI COMMANDS</div>
+          <div className={styles.premiumLabel}>AI COMMANDS</div>
           <Button
             size="small"
             variant="outlined"

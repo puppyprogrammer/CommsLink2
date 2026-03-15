@@ -8,7 +8,6 @@ import profileApi from '@/lib/api/profile';
 export type Preferences = {
   voice_id: string | null;
   volume: number;
-  use_premium_voice: boolean;
   hear_own_voice: boolean;
 };
 
@@ -21,7 +20,6 @@ type PreferencesContextValue = {
 const defaultPreferences: Preferences = {
   voice_id: null,
   volume: 1.0,
-  use_premium_voice: false,
   hear_own_voice: false,
 };
 
@@ -45,7 +43,6 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setPreferences({
         voice_id: session.user.voice_id,
         volume: session.user.volume ?? 1.0,
-        use_premium_voice: session.user.use_premium_voice ?? false,
         hear_own_voice: session.user.hear_own_voice ?? false,
       });
     }
@@ -62,7 +59,6 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
           await profileApi.update(session.token, {
             voice_id: updated.voice_id ?? undefined,
             volume: updated.volume,
-            use_premium_voice: updated.use_premium_voice,
             hear_own_voice: updated.hear_own_voice,
           });
 

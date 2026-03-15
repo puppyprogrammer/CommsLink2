@@ -20,10 +20,6 @@ const listVoicesAction = async (userId: string): Promise<{ voices: ElevenLabsVoi
       throw Boom.notFound('User not found');
     }
 
-    if (!user.is_premium) {
-      throw Boom.forbidden('Premium subscription required');
-    }
-
     const voices = await elevenlabsAdapter.listVoices();
     return { voices };
   });

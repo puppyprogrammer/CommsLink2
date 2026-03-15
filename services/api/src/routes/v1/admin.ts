@@ -3,7 +3,6 @@ import Boom from '@hapi/boom';
 import tracer from '../../../../../core/lib/tracer';
 
 import getDashboardAction from '../../../../../core/actions/admin/getDashboardAction';
-import togglePremiumAction from '../../../../../core/actions/admin/togglePremiumAction';
 import toggleBanAction from '../../../../../core/actions/admin/toggleBanAction';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
@@ -25,25 +24,6 @@ const adminRoutes: ServerRoute[] = [
       tracer.trace('CONTROLLER.ADMIN.GET_DASHBOARD', async () => {
         requireAdmin(request);
         return getDashboardAction();
-      }),
-  },
-  {
-    method: 'POST',
-    path: '/api/v1/admin/toggle-premium',
-    options: {
-      auth: 'jwt',
-      validate: {
-        payload: Joi.object({
-          userId: Joi.string().uuid().required(),
-          isPremium: Joi.boolean().required(),
-        }),
-      },
-    },
-    handler: async (request: Request, h: ResponseToolkit) =>
-      tracer.trace('CONTROLLER.ADMIN.TOGGLE_PREMIUM', async () => {
-        requireAdmin(request);
-        const { userId, isPremium } = request.payload as { userId: string; isPremium: boolean };
-        return togglePremiumAction(userId, isPremium);
       }),
   },
   {

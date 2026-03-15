@@ -18,7 +18,6 @@ const profileRoutes: ServerRoute[] = [
           password: Joi.string().min(6).max(128).optional(),
           voice_id: Joi.string().optional(),
           volume: Joi.number().min(0).max(1).optional(),
-          use_premium_voice: Joi.boolean().optional(),
           hear_own_voice: Joi.boolean().optional(),
         }),
       },

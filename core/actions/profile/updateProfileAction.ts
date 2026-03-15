@@ -13,7 +13,6 @@ type UpdateProfileInput = {
   password?: string;
   voice_id?: string;
   volume?: number;
-  use_premium_voice?: boolean;
   hear_own_voice?: boolean;
 };
 
@@ -51,7 +50,6 @@ const updateProfileAction = async (input: UpdateProfileInput): Promise<{ success
     }
 
     if (input.volume !== undefined) updates.volume = input.volume;
-    if (input.use_premium_voice !== undefined) updates.use_premium_voice = input.use_premium_voice;
     if (input.hear_own_voice !== undefined) updates.hear_own_voice = input.hear_own_voice;
 
     if (Object.keys(updates).length === 0) {

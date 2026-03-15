@@ -42,11 +42,9 @@ const registerAction = async (username: string, password: string): Promise<Regis
         id: user.id,
         username: user.username,
         email: user.email,
-        is_premium: user.is_premium,
         is_admin: user.is_admin,
         voice_id: user.voice_id,
         volume: user.volume,
-        use_premium_voice: user.use_premium_voice,
         hear_own_voice: user.hear_own_voice,
       },
     };

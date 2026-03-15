@@ -27,10 +27,6 @@ const generatePremiumAudioAction = async (
       throw Boom.notFound('User not found');
     }
 
-    if (!user.is_premium) {
-      throw Boom.forbidden('Premium subscription required');
-    }
-
     // Check credits before generating
     const hasCredits = await creditActions.hasCredits(userId);
     if (!hasCredits) {

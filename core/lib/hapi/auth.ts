@@ -10,7 +10,6 @@ type AuthCredentials = {
   username: string;
   email: string | null;
   is_admin: boolean;
-  is_premium: boolean;
 };
 
 /**
@@ -44,7 +43,6 @@ const registerAuthStrategy = async (server: Server): Promise<void> => {
         username: user.username,
         email: user.email,
         is_admin: user.is_admin,
-        is_premium: user.is_premium,
       };
 
       return { isValid: true, credentials };

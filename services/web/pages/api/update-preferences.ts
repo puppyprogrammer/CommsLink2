@@ -14,14 +14,13 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     return res.status(401).json({ message: 'Not authenticated' });
   }
 
-  const { voice_id, volume, use_premium_voice, hear_own_voice } = req.body;
+  const { voice_id, volume, hear_own_voice } = req.body;
 
   // Patch the session user with updated preferences
   req.session.auth.user = {
     ...req.session.auth.user,
     ...(voice_id !== undefined && { voice_id }),
     ...(volume !== undefined && { volume }),
-    ...(use_premium_voice !== undefined && { use_premium_voice }),
     ...(hear_own_voice !== undefined && { hear_own_voice }),
   };
 

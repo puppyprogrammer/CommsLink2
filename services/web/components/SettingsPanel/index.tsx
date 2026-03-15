@@ -14,7 +14,6 @@ import {
   Button,
   Divider,
   CircularProgress,
-  Chip,
 } from '@mui/material';
 
 import useSession from '@/lib/session/useSession';
@@ -29,35 +28,30 @@ const BROWSER_VOICES = [
   { value: 'robot', label: 'Robot' },
 ];
 
-type PremiumVoice = { voice_id: string; name: string };
+type ElevenLabsVoice = { voice_id: string; name: string };
 
 const SettingsPanel: React.FC = () => {
   const { session } = useSession();
   const { preferences, updatePreference, isSaving } = usePreferences();
-  const [premiumVoices, setPremiumVoices] = useState<PremiumVoice[]>([]);
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(false);
 
-  // Fetch premium voices when user has premium + use_premium_voice enabled
+  // Fetch ElevenLabs voices for authenticated users
   useEffect(() => {
-    if (!session?.token || !session.user.is_premium || !preferences.use_premium_voice) {
-      setPremiumVoices([]);
+    if (!session?.token) {
+      setElevenLabsVoices([]);
       return;
     }
 
     setLoadingVoices(true);
     voiceApi
       .listVoices(session.token)
-      .then((data) => setPremiumVoices(data.voices || []))
-      .catch(() => setPremiumVoices([]))
+      .then((data) => setElevenLabsVoices(data.voices || []))
+      .catch(() => setElevenLabsVoices([]))
       .finally(() => setLoadingVoices(false));
-  }, [session?.token, session?.user.is_premium, preferences.use_premium_voice]);
+  }, [session?.token]);
 
-  const isPremiumVoiceSelected = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
-
-  const handlePremiumToggle = (checked: boolean) => {
-    if (!session?.user.is_premium) return;
-    updatePreference('use_premium_voice', checked);
-  };
+  const isElevenLabsVoiceSelected = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
 
   const handleTestVoice = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -120,31 +114,27 @@ const SettingsPanel: React.FC = () => {
               {v.label}
             </MenuItem>
           ))}
-          {preferences.use_premium_voice && session?.user.is_premium && (
-            <ListSubheader>Premium Voices (ElevenLabs)</ListSubheader>
-          )}
-          {preferences.use_premium_voice &&
-            session?.user.is_premium &&
-            (loadingVoices ? (
-              <MenuItem disabled>
-                <CircularProgress size={14} sx={{ mr: 1 }} /> Loading...
+          {elevenLabsVoices.length > 0 && <ListSubheader>ElevenLabs Voices</ListSubheader>}
+          {loadingVoices ? (
+            <MenuItem disabled>
+              <CircularProgress size={14} sx={{ mr: 1 }} /> Loading...
+            </MenuItem>
+          ) : (
+            elevenLabsVoices.map((v) => (
+              <MenuItem key={v.voice_id} value={v.voice_id}>
+                {v.name}
               </MenuItem>
-            ) : (
-              premiumVoices.map((v) => (
-                <MenuItem key={v.voice_id} value={v.voice_id}>
-                  {v.name}
-                </MenuItem>
-              ))
-            ))}
+            ))
+          )}
         </Select>
         <Button
           size="small"
           variant="outlined"
           onClick={handleTestVoice}
           sx={{ mt: 1 }}
-          disabled={!!isPremiumVoiceSelected}
+          disabled={!!isElevenLabsVoiceSelected}
         >
-          {isPremiumVoiceSelected ? 'Premium (no browser test)' : 'Test Voice'}
+          {isElevenLabsVoiceSelected ? 'ElevenLabs (no browser test)' : 'Test Voice'}
         </Button>
       </Box>
 
@@ -167,31 +157,7 @@ const SettingsPanel: React.FC = () => {
       <Divider />
 
       <Box className={classes.section}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <Typography variant="detailText">Voice Options</Typography>
-          <Chip
-            label={session?.user.is_premium ? 'PREMIUM' : 'FREE'}
-            size="small"
-            color={session?.user.is_premium ? 'success' : 'default'}
-            sx={{ fontWeight: 600, fontSize: '0.65rem', height: 20 }}
-          />
-        </Box>
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={preferences.use_premium_voice}
-              onChange={(e) => handlePremiumToggle(e.target.checked)}
-              size="small"
-              disabled={!session?.user.is_premium}
-            />
-          }
-          label={
-            <Typography variant="detailText">
-              {session?.user.is_premium ? 'Use Premium Voices' : 'Premium Voices (admin only)'}
-            </Typography>
-          }
-        />
+        <Typography variant="detailText" sx={{ mb: 0.5 }}>Voice Options</Typography>
 
         <FormControlLabel
           control={

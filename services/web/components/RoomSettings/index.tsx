@@ -72,7 +72,7 @@ type GrokModel = {
   cost: string;
 };
 
-type PremiumVoice = {
+type ElevenLabsVoice = {
   voice_id: string;
   name: string;
 };
@@ -144,7 +144,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [inviteLink, setInviteLink] = useState('');
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [models, setModels] = useState<GrokModel[]>([]);
-  const [premiumVoices, setPremiumVoices] = useState<PremiumVoice[]>([]);
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [cmdRecall, setCmdRecall] = useState(true);
   const [cmdSql, setCmdSql] = useState(true);
@@ -240,7 +240,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   // Memory tree collapsed state
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 
-  // Fetch models and premium voices
+  // Fetch models and ElevenLabs voices
   useEffect(() => {
     if (!open) return;
     apiClient
@@ -253,10 +253,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       .then((res) => setTemplates(res.data.templates))
       .catch(() => {});
 
-    if (session?.token && session?.user?.is_premium) {
+    if (session?.token) {
       voiceApi
         .listVoices(session.token)
-        .then((res) => setPremiumVoices(res.voices || []))
+        .then((res) => setElevenLabsVoices(res.voices || []))
         .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -463,8 +463,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const getVoiceLabel = (voiceId: string): string => {
     const browser = BROWSER_VOICES.find((v) => v.value === voiceId);
     if (browser) return browser.label;
-    const premium = premiumVoices.find((v) => v.voice_id === voiceId);
-    if (premium) return premium.name;
+    const elVoice = elevenLabsVoices.find((v) => v.voice_id === voiceId);
+    if (elVoice) return elVoice.name;
     return voiceId;
   };
 
@@ -603,8 +603,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           {v.label}
         </MenuItem>
       ))}
-      {premiumVoices.length > 0 && <ListSubheader>Premium Voices (ElevenLabs)</ListSubheader>}
-      {premiumVoices.map((v) => (
+      {elevenLabsVoices.length > 0 && <ListSubheader>ElevenLabs Voices</ListSubheader>}
+      {elevenLabsVoices.map((v) => (
         <MenuItem key={v.voice_id} value={v.voice_id}>
           {v.name}
         </MenuItem>

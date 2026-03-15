@@ -17,10 +17,6 @@ const admin = {
     return data;
   },
 
-  togglePremium: async (bearerToken: string, userId: string) => {
-    const { data } = await client.post('/admin/toggle-premium', { userId }, { headers: authHeaders(bearerToken) });
-    return data;
-  },
 };
 
 export default admin;
