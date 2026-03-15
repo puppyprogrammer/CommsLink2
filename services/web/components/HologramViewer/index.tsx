@@ -1140,7 +1140,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       const auraMesh = new THREE.Mesh(auraGeo, auraMaterial);
       auraMesh.position.set(0, 0.0, -0.3); // behind avatar center
       auraMesh.name = 'aura';
-      group.add(auraMesh);
+      // Aura disabled — was creating visible glow behind avatar
+      // group.add(auraMesh);
 
       // ── Particle Hair System (DISABLED — causes visible internal glow) ──
       const headJointExists = false;
