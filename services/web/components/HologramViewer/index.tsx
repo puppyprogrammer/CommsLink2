@@ -2656,7 +2656,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
                 head: { rx: 0, ry: 0.2, rz: 0.1 },
               }},
             ].map(({ name, pose }) => (
-              <button key={name} onClick={() => setPoseAngles(pose)}
+              <button key={name} onClick={() => setPoseAngles(pose as Record<string, { rx: number; ry: number; rz: number }>)}
                 style={{
                   padding: '3px 6px', background: 'rgba(64,192,224,0.15)',
                   border: '1px solid rgba(64,192,224,0.3)', borderRadius: 3,
