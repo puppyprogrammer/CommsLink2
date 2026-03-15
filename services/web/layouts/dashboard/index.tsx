@@ -76,8 +76,14 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
       <AppBar position="fixed" className={classes.appBar}>
         <Toolbar variant="dense" sx={{ minHeight: 36, px: 1 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="" width={20} height={20} style={{ marginRight: '0.5rem' }} />
-          <Typography variant="body2" sx={{ fontFamily: "'Orbitron', monospace", fontWeight: 400, color: '#4A148C' }}>
+          <img src="/logo.svg" alt="" width={20} height={20} style={{
+            marginRight: '0.5rem',
+            filter: 'drop-shadow(0 0 6px rgba(77, 216, 208, 0.5))',
+          }} />
+          <Typography variant="body2" sx={{
+            fontFamily: "'Orbitron', monospace", fontWeight: 400, color: '#4dd8d0',
+            textShadow: '0 0 8px rgba(77, 216, 208, 0.4)',
+          }}>
             CommsLink
           </Typography>
           <SpendingBar />

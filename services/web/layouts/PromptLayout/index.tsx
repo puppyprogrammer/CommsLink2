@@ -20,8 +20,21 @@ const PromptLayout: React.FC<PromptLayoutProps> = ({ children, title }) => {
       <Container maxWidth="sm">
         <Box className={classes.logoContainer}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="CommsLink" width={80} height={80} style={{ marginBottom: '0.5rem' }} />
-          <Typography variant="h3" sx={{ fontFamily: "'Orbitron', monospace", color: '#4A148C', fontWeight: 400 }}>
+          <img src="/logo.svg" alt="CommsLink" width={80} height={80} style={{
+            marginBottom: '0.5rem',
+            filter: 'drop-shadow(0 0 12px rgba(77, 216, 208, 0.6)) drop-shadow(0 0 30px rgba(77, 216, 208, 0.3))',
+            animation: 'logoGlow 3s ease-in-out infinite alternate',
+          }} />
+          <style>{`
+            @keyframes logoGlow {
+              from { filter: drop-shadow(0 0 12px rgba(77, 216, 208, 0.4)) drop-shadow(0 0 25px rgba(77, 216, 208, 0.2)); }
+              to { filter: drop-shadow(0 0 18px rgba(77, 216, 208, 0.8)) drop-shadow(0 0 40px rgba(77, 216, 208, 0.4)); }
+            }
+          `}</style>
+          <Typography variant="h3" sx={{
+            fontFamily: "'Orbitron', monospace", color: '#4dd8d0', fontWeight: 400,
+            textShadow: '0 0 15px rgba(77, 216, 208, 0.5), 0 0 30px rgba(77, 216, 208, 0.3)',
+          }}>
             CommsLink
           </Typography>
           <Typography variant="detailText">Voice & Text Communication</Typography>
