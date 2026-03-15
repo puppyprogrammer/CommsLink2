@@ -850,7 +850,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     headOffsetZ: 0, neckOffsetZ: 0, shoulderOffsetZ: 0, torsoOffsetZ: 0,
     // Part densities (size multiplier — bigger = denser looking)
     headDensity: 1.0, faceDensity: 1.0, eyeDensity: 1.0, noseDensity: 1.0,
-    mouthDensity: 1.0, browDensity: 1.0, earDensity: 1.0,
+    mouthDensity: 1.0, browDensity: 1.0,
+    earDensity: 1.0, earOffsetX: 0, earOffsetY: 0, earOffsetZ: 0, earSize: 1.0, earSpacing: 1.0,
     neckDensity: 1.0, shoulderDensity: 1.0, torsoDensity: 1.0,
     armDensity: 1.0, handDensity: 1.0,
     thighDensity: 1.0, calfDensity: 1.0, footDensity: 1.0,
@@ -957,6 +958,14 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'lipProjection', label: 'Lip Projection', min: 0.1, max: 5.0, step: 0.1, info: 'Lip forward protrusion (Z)' },
       { key: 'smileAmount', label: 'Smile', min: -2.0, max: 2.0, step: 0.05, info: 'Positive=smile, negative=frown' },
       { key: 'lipBrightness', label: 'Lip Brightness', min: 0.1, max: 5.0, step: M, info: 'Lip highlight intensity' },
+    ]},
+    { id: 'ears', title: 'Ears', color: '#a060e0', sliders: [
+      { key: 'earSpacing', label: 'Ear Spacing', min: 0.1, max: 5.0, step: M, info: 'Ears closer/further from head' },
+      { key: 'earSize', label: 'Ear Size', min: 0.1, max: 5.0, step: M, info: 'Scale ear dimensions' },
+      { key: 'earOffsetX', label: 'Ear X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift ears left/right' },
+      { key: 'earOffsetY', label: 'Ear Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift ears up/down' },
+      { key: 'earOffsetZ', label: 'Ear Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift ears forward/back' },
+      { key: 'earDensity', label: 'Ear Density', min: 0, max: 5.0, step: 0.1, info: 'Ear particle visibility' },
     ]},
     { id: 'neckShoulders', title: 'Neck & Shoulders', color: '#e0a040', sliders: [
       { key: 'neckLength', label: 'Neck Length', min: 0.1, max: 5.0, step: M, info: 'Vertical neck distance' },
@@ -1263,6 +1272,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
             pos.x *= c.chinWidth;
             const belowJaw = 0.63 - pos.y;
             pos.y = 0.63 - belowJaw * c.chinLength;
+          }
+
+          // Ear adjustments (particles with high |offset X|)
+          if (Math.abs(offset[0]) > 0.06) {
+            const earSide = offset[0] > 0 ? 1 : -1;
+            pos.x *= c.earSpacing * c.earSize;
+            pos.x += c.earOffsetX * earSide;
+            pos.y += c.earOffsetY;
+            pos.z += c.earOffsetZ;
           }
 
           // Eye adjustments (particles near eye Y)
