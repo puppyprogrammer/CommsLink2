@@ -131,7 +131,7 @@ const AboutPage = () => {
               <Stack direction="row" spacing={2} justifyContent="center">
                 <Button
                   component={Link}
-                  href="/register"
+                  href="/register?redirect=/chat"
                   variant="contained"
                   size="large"
                   startIcon={<AddCircleOutlineIcon />}
@@ -139,7 +139,7 @@ const AboutPage = () => {
                 >
                   Create Account
                 </Button>
-                <Button component={Link} href="/login" variant="outlined" size="large" sx={{ px: 4 }}>
+                <Button component={Link} href="/login?returnUrl=/chat" variant="outlined" size="large" sx={{ px: 4 }}>
                   Sign In
                 </Button>
               </Stack>
