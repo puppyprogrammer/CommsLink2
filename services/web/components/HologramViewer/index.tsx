@@ -816,7 +816,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     // Legs
     legLength: 1.0, upperLegLength: 1.0, lowerLegLength: 1.0, legSpacing: 1.0,
     kneeWidth: 1.0, ankleWidth: 1.0, footSize: 1.0,
-    legOffsetX: 0, legOffsetY: 0, footOffsetX: 0, footOffsetY: 0,
+    legOffsetX: 0, legOffsetY: 0, calfOffsetY: 0, footOffsetX: 0, footOffsetY: 0,
     // Arms
     armLength: 1.0, upperArmLength: 1.0, forearmLength: 1.0, armSpread: 1.0,
     elbowWidth: 1.0, wristWidth: 1.0, handSize: 1.0, fingerLength: 1.0,
@@ -952,6 +952,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'footSize', label: 'Foot Size', min: 0.3, max: 2.0, step: 0.05, info: 'All foot dimensions' },
       { key: 'legOffsetX', label: 'Leg X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift legs left/right' },
       { key: 'legOffsetY', label: 'Leg Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift legs up/down' },
+      { key: 'calfOffsetY', label: 'Calf Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift calves up/down' },
       { key: 'footOffsetX', label: 'Foot X Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift feet left/right' },
       { key: 'footOffsetY', label: 'Foot Y Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift feet up/down' },
     ]},
@@ -1335,7 +1336,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           const kneeY = -0.48;
           pos.y = kneeY + (pos.y - kneeY) * c.legLength * c.lowerLegLength;
           pos.x += c.legOffsetX * side;
-          pos.y += c.legOffsetY;
+          pos.y += c.legOffsetY + c.calfOffsetY;
 
         } else if (jointId === 'l_foot' || jointId === 'r_foot') {
           // ─── FEET ───
