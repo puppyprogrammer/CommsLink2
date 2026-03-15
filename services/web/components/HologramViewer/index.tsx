@@ -766,12 +766,13 @@ const VISEME_LIP_OFFSETS: Record<string, { upperY: number; lowerY: number }> = {
 };
 
 /** Check if a head-joint point is an upper lip particle by its offset coordinates */
+// Lip detection: head joint at Y=0.62, upper lip at Y≈0.652 (offset≈0.032), lower at Y≈0.645 (offset≈0.025)
 const isUpperLip = (offset: [number, number, number]): boolean =>
-  offset[1] >= 0.06 && offset[1] <= 0.075 && offset[2] >= 0.025 && offset[2] <= 0.035;
+  offset[1] >= 0.025 && offset[1] <= 0.045 && offset[2] >= 0.04 && offset[2] <= 0.06;
 
 /** Check if a head-joint point is a lower lip particle */
 const isLowerLip = (offset: [number, number, number]): boolean =>
-  offset[1] >= 0.05 && offset[1] <= 0.065 && offset[2] >= 0.024 && offset[2] <= 0.034;
+  offset[1] >= 0.015 && offset[1] <= 0.035 && offset[2] >= 0.04 && offset[2] <= 0.06;
 
 const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, visemeStates }) => {
   // Use default test avatar when no avatars provided so the 3D scene always renders
