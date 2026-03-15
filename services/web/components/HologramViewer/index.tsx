@@ -781,45 +781,190 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const defaultSettings = {
-    brightness: 1.8, alpha: 0.75, coreBoost: 0.9,
-    gradientPower: 0.4, sizeScale: 1.0, gridOpacity: 0.3, driftSpeed: 1.0,
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['rendering']));
+
+  // ── All hologram settings in one object ──
+  const allDefaults = {
+    // Rendering
+    brightness: 1.8, alpha: 0.75, coreBoost: 0.9, gradientPower: 0.4,
+    sizeScale: 1.0, gridOpacity: 0.3, driftSpeed: 1.0,
+    // Body proportions
+    headScale: 1.0, headY: 0, neckWidth: 1.0, shoulderWidth: 1.0, bustSize: 1.0,
+    torsoWidth: 1.0, waistWidth: 1.0, hipWidth: 1.0, armThickness: 1.0,
+    thighWidth: 1.0, calfWidth: 1.0,
+    // Face
+    faceWidth: 1.0, faceHeight: 1.0, faceDepth: 1.0, foreheadHeight: 1.0,
+    jawWidth: 1.0, chinWidth: 1.0, chinLength: 1.0, cheekboneWidth: 1.0,
+    // Eyes
+    eyeSpacing: 1.0, eyeHeight: 0, eyeSize: 1.0, eyeBrightness: 1.0,
+    eyeSocketDepth: 1.0, pupilSize: 1.0, eyelidThickness: 1.0,
+    // Eyebrows
+    browHeight: 0, browArch: 1.0, browThickness: 1.0, browLength: 1.0, browSpacing: 1.0,
+    // Nose
+    noseLength: 1.0, noseWidth: 1.0, noseProjection: 1.0, noseBridgeWidth: 1.0,
+    noseTipSize: 1.0, noseHeight: 0,
+    // Mouth
+    mouthWidth: 1.0, mouthHeight: 0, upperLipFullness: 1.0, lowerLipFullness: 1.0,
+    lipProjection: 1.0, smileAmount: 0.2, lipBrightness: 1.0,
+    // Neck & Shoulders
+    neckLength: 1.0, neckThickness: 1.0, shoulderSlope: 1.0, shoulderRoundness: 1.0,
+    // Torso shape
+    bustProjection: 1.0, bustSpacing: 1.0, bustHeight: 0, ribcageWidth: 1.0,
+    bellyDepth: 1.0, gluteSize: 1.0, torsoLength: 1.0,
+    // Legs
+    legLength: 1.0, upperLegLength: 1.0, lowerLegLength: 1.0, legSpacing: 1.0,
+    kneeWidth: 1.0, ankleWidth: 1.0, footSize: 1.0,
+    // Arms
+    armLength: 1.0, upperArmLength: 1.0, forearmLength: 1.0, armSpread: 1.0,
+    elbowWidth: 1.0, wristWidth: 1.0, handSize: 1.0, fingerLength: 1.0,
+    // Debug
+    showSilhouette: 0, showSkeleton: 0, showGrid: 1, wireframeMode: 0,
   };
-  const [holoSettings, setHoloSettings] = useState(() => {
+  type HoloSettings = typeof allDefaults;
+
+  const [cfg, setCfg] = useState<HoloSettings>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('holoSettings');
-        if (saved) return { ...defaultSettings, ...JSON.parse(saved) };
+        const saved = localStorage.getItem('holoCfg');
+        if (saved) return { ...allDefaults, ...JSON.parse(saved) };
       } catch { /* ignore */ }
     }
-    return defaultSettings;
+    return { ...allDefaults };
   });
-  const defaultProportions = {
-    headScale: 1.0, headY: 0, neckWidth: 1.0,
-    shoulderWidth: 1.0, bustSize: 1.0, torsoWidth: 1.0,
-    waistWidth: 1.0, hipWidth: 1.0,
-    armThickness: 1.0, armLength: 1.0,
-    thighWidth: 1.0, calfWidth: 1.0, legLength: 1.0,
-  };
-  const [bodyProportions, setBodyProportions] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('holoProportions');
-        if (saved) return { ...defaultProportions, ...JSON.parse(saved) };
-      } catch { /* ignore */ }
-    }
-    return defaultProportions;
-  });
-  const bodyProportionsRef = useRef(bodyProportions);
+  const cfgRef = useRef(cfg);
+
+  // Aliases for backward compat with existing code
+  const holoSettings = cfg;
+  const bodyProportions = cfg;
+  const bodyProportionsRef = cfgRef;
+
   useEffect(() => {
-    bodyProportionsRef.current = bodyProportions;
-    // Mark all morph states dirty so updateAvatarGeometry runs next frame with new proportions
+    cfgRef.current = cfg;
     if (morphStateRef.current.size > 0) {
       for (const [, mState] of morphStateRef.current) {
         mState.dirty = true;
       }
     }
-  }, [bodyProportions]);
+  }, [cfg]);
+
+  // Section definitions
+  type SliderDef = { key: string; label: string; min: number; max: number; step: number; info: string };
+  type SectionDef = { id: string; title: string; color: string; sliders: SliderDef[] };
+
+  const sections: SectionDef[] = [
+    { id: 'rendering', title: 'Rendering', color: '#4dd8d0', sliders: [
+      { key: 'brightness', label: 'Brightness', min: 0.1, max: 5.0, step: 0.1, info: 'Color intensity multiplier' },
+      { key: 'alpha', label: 'Opacity', min: 0.05, max: 1.0, step: 0.05, info: 'Particle transparency' },
+      { key: 'coreBoost', label: 'Core Glow', min: 0, max: 3.0, step: 0.1, info: 'Center brightness boost' },
+      { key: 'gradientPower', label: 'Edge Falloff', min: 0.1, max: 2.0, step: 0.1, info: 'Edge fade speed' },
+      { key: 'sizeScale', label: 'Particle Size', min: 0.2, max: 3.0, step: 0.1, info: 'Size multiplier' },
+      { key: 'gridOpacity', label: 'Grid Opacity', min: 0, max: 1.0, step: 0.05, info: 'Floor grid visibility' },
+      { key: 'driftSpeed', label: 'Drift Speed', min: 0, max: 3.0, step: 0.1, info: 'Particle animation speed' },
+    ]},
+    { id: 'body', title: 'Body Proportions', color: '#e0a040', sliders: [
+      { key: 'headScale', label: 'Head Size', min: 0.5, max: 2.0, step: 0.05, info: 'Scale head width/depth' },
+      { key: 'headY', label: 'Head Y Offset', min: -1.0, max: 1.0, step: 0.05, info: 'Move head up/down' },
+      { key: 'neckWidth', label: 'Neck Width', min: 0.3, max: 2.0, step: 0.05, info: 'Neck thickness' },
+      { key: 'shoulderWidth', label: 'Shoulder Width', min: 0.5, max: 2.0, step: 0.05, info: 'Shoulder spread' },
+      { key: 'bustSize', label: 'Bust Size', min: 0.5, max: 2.0, step: 0.05, info: 'Bust/chest depth' },
+      { key: 'torsoWidth', label: 'Upper Torso', min: 0.5, max: 2.0, step: 0.05, info: 'Ribcage/chest width' },
+      { key: 'waistWidth', label: 'Waist Width', min: 0.3, max: 2.0, step: 0.05, info: 'Waist/belly width' },
+      { key: 'hipWidth', label: 'Hip Width', min: 0.5, max: 2.0, step: 0.05, info: 'Hip/lower abdomen' },
+      { key: 'armThickness', label: 'Arm Thickness', min: 0.3, max: 2.0, step: 0.05, info: 'Arm cross-section' },
+      { key: 'thighWidth', label: 'Thigh Width', min: 0.3, max: 2.5, step: 0.05, info: 'Upper leg thickness' },
+      { key: 'calfWidth', label: 'Calf Width', min: 0.3, max: 2.5, step: 0.05, info: 'Lower leg thickness' },
+    ]},
+    { id: 'face', title: 'Face Shape', color: '#40e080', sliders: [
+      { key: 'faceWidth', label: 'Face Width', min: 0.3, max: 2.0, step: 0.05, info: 'Scale all head widths' },
+      { key: 'faceHeight', label: 'Face Height', min: 0.5, max: 2.0, step: 0.05, info: 'Taller/shorter head' },
+      { key: 'faceDepth', label: 'Face Depth', min: 0.3, max: 2.0, step: 0.05, info: 'Front-to-back depth' },
+      { key: 'foreheadHeight', label: 'Forehead Height', min: 0.5, max: 2.0, step: 0.05, info: 'Brow to crown distance' },
+      { key: 'jawWidth', label: 'Jaw Width', min: 0.3, max: 2.0, step: 0.05, info: 'Width below cheekbones' },
+      { key: 'chinWidth', label: 'Chin Width', min: 0.3, max: 2.0, step: 0.05, info: 'Width below jaw' },
+      { key: 'chinLength', label: 'Chin Length', min: 0.5, max: 2.0, step: 0.05, info: 'Chin extension below mouth' },
+      { key: 'cheekboneWidth', label: 'Cheekbone Width', min: 0.5, max: 2.0, step: 0.05, info: 'Width at cheekbone level' },
+    ]},
+    { id: 'eyes', title: 'Eyes', color: '#a060e0', sliders: [
+      { key: 'eyeSpacing', label: 'Eye Spacing', min: 0.3, max: 2.0, step: 0.05, info: 'Eyes apart/together' },
+      { key: 'eyeHeight', label: 'Eye Height', min: -0.02, max: 0.02, step: 0.001, info: 'Move eyes up/down' },
+      { key: 'eyeSize', label: 'Eye Size', min: 0.3, max: 3.0, step: 0.1, info: 'Eyeball particle size' },
+      { key: 'eyeBrightness', label: 'Eye Brightness', min: 0.1, max: 3.0, step: 0.1, info: 'Eye color brightness' },
+      { key: 'eyeSocketDepth', label: 'Socket Depth', min: 0, max: 3.0, step: 0.1, info: 'Socket exclusion strength' },
+      { key: 'pupilSize', label: 'Pupil Size', min: 0.3, max: 3.0, step: 0.1, info: 'Iris particle size' },
+      { key: 'eyelidThickness', label: 'Eyelid Thickness', min: 0, max: 3.0, step: 0.1, info: 'Eyelid particle count' },
+    ]},
+    { id: 'brows', title: 'Eyebrows', color: '#a060e0', sliders: [
+      { key: 'browHeight', label: 'Brow Height', min: -0.02, max: 0.02, step: 0.001, info: 'Move brows up/down' },
+      { key: 'browArch', label: 'Brow Arch', min: 0, max: 3.0, step: 0.1, info: 'Arch curve height' },
+      { key: 'browThickness', label: 'Brow Thickness', min: 0.3, max: 3.0, step: 0.1, info: 'Brow particle density' },
+      { key: 'browLength', label: 'Brow Length', min: 0.5, max: 2.0, step: 0.05, info: 'Brow X extent' },
+      { key: 'browSpacing', label: 'Brow Spacing', min: 0.5, max: 2.0, step: 0.05, info: 'Distance from center' },
+    ]},
+    { id: 'nose', title: 'Nose', color: '#a060e0', sliders: [
+      { key: 'noseLength', label: 'Nose Length', min: 0.3, max: 2.0, step: 0.05, info: 'Nose Y extent' },
+      { key: 'noseWidth', label: 'Nose Width', min: 0.3, max: 3.0, step: 0.1, info: 'Nostril spacing and body width' },
+      { key: 'noseProjection', label: 'Nose Projection', min: 0.3, max: 3.0, step: 0.1, info: 'How far nose sticks out (Z)' },
+      { key: 'noseBridgeWidth', label: 'Bridge Width', min: 0.3, max: 3.0, step: 0.1, info: 'Bridge X spread' },
+      { key: 'noseTipSize', label: 'Tip Size', min: 0.3, max: 3.0, step: 0.1, info: 'Tip particle spread' },
+      { key: 'noseHeight', label: 'Nose Height', min: -0.02, max: 0.02, step: 0.001, info: 'Move nose up/down' },
+    ]},
+    { id: 'mouth', title: 'Mouth', color: '#a060e0', sliders: [
+      { key: 'mouthWidth', label: 'Mouth Width', min: 0.3, max: 2.0, step: 0.05, info: 'Lip X extent' },
+      { key: 'mouthHeight', label: 'Mouth Height', min: -0.02, max: 0.02, step: 0.001, info: 'Move mouth up/down' },
+      { key: 'upperLipFullness', label: 'Upper Lip', min: 0.3, max: 3.0, step: 0.1, info: 'Upper lip thickness' },
+      { key: 'lowerLipFullness', label: 'Lower Lip', min: 0.3, max: 3.0, step: 0.1, info: 'Lower lip thickness' },
+      { key: 'lipProjection', label: 'Lip Projection', min: 0.3, max: 3.0, step: 0.1, info: 'Lip forward protrusion (Z)' },
+      { key: 'smileAmount', label: 'Smile', min: -1.0, max: 1.0, step: 0.05, info: 'Positive=smile, negative=frown' },
+      { key: 'lipBrightness', label: 'Lip Brightness', min: 0.5, max: 2.0, step: 0.05, info: 'Lip highlight intensity' },
+    ]},
+    { id: 'neckShoulders', title: 'Neck & Shoulders', color: '#e0a040', sliders: [
+      { key: 'neckLength', label: 'Neck Length', min: 0.3, max: 2.0, step: 0.05, info: 'Vertical neck distance' },
+      { key: 'neckThickness', label: 'Neck Thickness', min: 0.3, max: 2.0, step: 0.05, info: 'Neck cross-section' },
+      { key: 'shoulderSlope', label: 'Shoulder Slope', min: 0, max: 2.0, step: 0.05, info: 'Shoulder drop steepness' },
+      { key: 'shoulderRoundness', label: 'Shoulder Roundness', min: 0, max: 2.0, step: 0.05, info: 'Arm tube shoulder radius' },
+    ]},
+    { id: 'torsoShape', title: 'Torso Shape', color: '#e0a040', sliders: [
+      { key: 'bustProjection', label: 'Bust Projection', min: 0, max: 3.0, step: 0.1, info: 'Bust forward protrusion' },
+      { key: 'bustSpacing', label: 'Bust Spacing', min: 0.5, max: 2.0, step: 0.05, info: 'Bust volumes apart/together' },
+      { key: 'bustHeight', label: 'Bust Height', min: -0.05, max: 0.05, step: 0.005, info: 'Move bust up/down' },
+      { key: 'ribcageWidth', label: 'Ribcage Width', min: 0.5, max: 2.0, step: 0.05, info: 'Ribcage cross-sections' },
+      { key: 'bellyDepth', label: 'Belly Depth', min: 0.5, max: 2.0, step: 0.05, info: 'Front-to-back at navel' },
+      { key: 'gluteSize', label: 'Glute Size', min: 0, max: 3.0, step: 0.1, info: 'Glute volume projection' },
+      { key: 'torsoLength', label: 'Torso Length', min: 0.5, max: 2.0, step: 0.05, info: 'Shoulder to hip distance' },
+    ]},
+    { id: 'legs', title: 'Legs', color: '#e06080', sliders: [
+      { key: 'legLength', label: 'Leg Length', min: 0.5, max: 2.0, step: 0.05, info: 'Total leg length' },
+      { key: 'upperLegLength', label: 'Upper Leg', min: 0.5, max: 2.0, step: 0.05, info: 'Thigh length' },
+      { key: 'lowerLegLength', label: 'Lower Leg', min: 0.5, max: 2.0, step: 0.05, info: 'Calf length' },
+      { key: 'legSpacing', label: 'Leg Spacing', min: 0.3, max: 2.0, step: 0.05, info: 'Legs apart/together' },
+      { key: 'kneeWidth', label: 'Knee Width', min: 0.3, max: 2.5, step: 0.05, info: 'Knee cross-section' },
+      { key: 'ankleWidth', label: 'Ankle Width', min: 0.3, max: 2.5, step: 0.05, info: 'Ankle cross-section' },
+      { key: 'footSize', label: 'Foot Size', min: 0.3, max: 2.0, step: 0.05, info: 'All foot dimensions' },
+    ]},
+    { id: 'arms', title: 'Arms & Hands', color: '#4090e0', sliders: [
+      { key: 'armLength', label: 'Arm Length', min: 0.5, max: 2.0, step: 0.05, info: 'Total arm curve length' },
+      { key: 'upperArmLength', label: 'Upper Arm', min: 0.5, max: 2.0, step: 0.05, info: 'Shoulder to elbow' },
+      { key: 'forearmLength', label: 'Forearm', min: 0.5, max: 2.0, step: 0.05, info: 'Elbow to wrist' },
+      { key: 'armSpread', label: 'Arm Spread', min: 0.5, max: 2.0, step: 0.05, info: 'Distance from torso' },
+      { key: 'elbowWidth', label: 'Elbow Width', min: 0.3, max: 2.0, step: 0.05, info: 'Elbow cross-section' },
+      { key: 'wristWidth', label: 'Wrist Width', min: 0.3, max: 2.0, step: 0.05, info: 'Wrist cross-section' },
+      { key: 'handSize', label: 'Hand Size', min: 0.3, max: 2.0, step: 0.05, info: 'All hand dimensions' },
+      { key: 'fingerLength', label: 'Finger Length', min: 0.3, max: 2.0, step: 0.05, info: 'Finger tube length' },
+    ]},
+    { id: 'debug', title: 'Debug', color: '#e04040', sliders: [
+      { key: 'showSilhouette', label: 'Silhouette', min: 0, max: 1, step: 1, info: 'Show outline (O key)' },
+      { key: 'showSkeleton', label: 'Skeleton', min: 0, max: 1, step: 1, info: 'Show bone wireframe' },
+      { key: 'showGrid', label: 'Grid', min: 0, max: 1, step: 1, info: 'Floor grid' },
+    ]},
+  ];
+
+  const toggleSection = (id: string) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -1776,15 +1921,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     }
   }, [holoSettings, holoUniforms]);
 
-  const settingsDef = [
-    { key: 'brightness', label: 'Brightness', min: 0.1, max: 5.0, step: 0.1, info: 'Color intensity multiplier for all particles' },
-    { key: 'alpha', label: 'Opacity', min: 0.05, max: 1.0, step: 0.05, info: 'Base transparency of each particle' },
-    { key: 'coreBoost', label: 'Core Glow', min: 0, max: 3.0, step: 0.1, info: 'Extra brightness at center of each particle sphere' },
-    { key: 'gradientPower', label: 'Edge Falloff', min: 0.1, max: 2.0, step: 0.1, info: 'How quickly particles fade at edges (lower = softer glow)' },
-    { key: 'sizeScale', label: 'Particle Size', min: 0.2, max: 3.0, step: 0.1, info: 'Multiplier for all particle sizes' },
-    { key: 'gridOpacity', label: 'Grid Opacity', min: 0, max: 1.0, step: 0.05, info: 'Transparency of the floor grid' },
-    { key: 'driftSpeed', label: 'Drift Speed', min: 0, max: 3.0, step: 0.1, info: 'Speed of particle micro-drift animation' },
-  ] as const;
+  // settingsDef removed — now in sections array above
 
   return (
     <div className={classes.container} ref={containerRef} style={{ position: 'relative' }}>
@@ -1799,124 +1936,68 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           fontSize: 16, color: '#4dd8d0', border: '1px solid rgba(77,216,208,0.3)',
         }}
         title="Hologram Settings"
-      >
-        &#9881;
-      </div>
+      >&#9881;</div>
 
       {/* Settings panel */}
       {settingsOpen && (
         <div style={{
           position: 'absolute', top: 42, left: 8, zIndex: 10,
-          background: 'rgba(10,20,25,0.92)', border: '1px solid rgba(77,216,208,0.3)',
-          borderRadius: 6, padding: '12px 14px', width: 240,
-          fontFamily: 'monospace', fontSize: 11, color: '#b0e0dc',
-          maxHeight: '80%', overflowY: 'auto',
+          background: 'rgba(10,20,25,0.94)', border: '1px solid rgba(77,216,208,0.3)',
+          borderRadius: 6, padding: '10px 12px', width: 230,
+          fontFamily: 'monospace', fontSize: 10, color: '#b0e0dc',
+          maxHeight: '85vh', overflowY: 'auto',
         }}>
-          <div style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 8, color: '#4dd8d0' }}>
-            Hologram Settings
+          {/* Global buttons */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+            <button onClick={() => { localStorage.setItem('holoCfg', JSON.stringify(cfg)); }}
+              style={{ flex: 1, padding: '4px 0', background: 'rgba(77,216,208,0.2)', border: '1px solid rgba(77,216,208,0.4)', borderRadius: 3, color: '#4dd8d0', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
+              Save All</button>
+            <button onClick={() => { setCfg({ ...allDefaults }); localStorage.removeItem('holoCfg'); }}
+              style={{ flex: 1, padding: '4px 0', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: 3, color: '#ff8888', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
+              Reset All</button>
           </div>
-          {settingsDef.map(({ key, label, min, max, step, info }) => (
-            <div key={key} style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                <span>{label}</span>
-                <span
-                  title={info}
-                  style={{
-                    cursor: 'help', fontSize: 9, color: '#6ab8b4',
-                    border: '1px solid #3a8a86', borderRadius: '50%',
-                    width: 13, height: 13, display: 'inline-flex',
-                    alignItems: 'center', justifyContent: 'center',
-                  }}
-                >?</span>
-                <span style={{ marginLeft: 'auto', color: '#4dd8d0' }}>
-                  {holoSettings[key as keyof typeof holoSettings].toFixed(2)}
+          {/* ─── All Sections ─── */}
+          {sections.map((sec) => (
+            <div key={sec.id} style={{ marginBottom: 4 }}>
+              <div onClick={() => toggleSection(sec.id)} style={{
+                cursor: 'pointer', padding: '4px 6px', borderRadius: 3, marginBottom: 2,
+                background: openSections.has(sec.id) ? `${sec.color}18` : 'transparent',
+                border: `1px solid ${sec.color}40`, display: 'flex', alignItems: 'center',
+              }}>
+                <span style={{ color: sec.color, fontWeight: 'bold', fontSize: 11 }}>{sec.title}</span>
+                <span style={{ marginLeft: 'auto', color: sec.color, fontSize: 9 }}>
+                  {openSections.has(sec.id) ? '▼' : '▶'}
                 </span>
               </div>
-              <input
-                type="range"
-                min={min} max={max} step={step}
-                value={holoSettings[key as keyof typeof holoSettings]}
-                onChange={(e) => setHoloSettings((s: typeof holoSettings) => ({ ...s, [key]: parseFloat(e.target.value) }))}
-                style={{ width: '100%', accentColor: '#4dd8d0', height: 4 }}
-              />
+              {openSections.has(sec.id) && (
+                <div style={{ padding: '4px 2px' }}>
+                  {sec.sliders.map(({ key, label, min, max, step, info }) => (
+                    <div key={key} style={{ marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 1 }}>
+                        <span style={{ fontSize: 10 }}>{label}</span>
+                        <span title={info} style={{
+                          cursor: 'help', fontSize: 8, color: `${sec.color}aa`,
+                          border: `1px solid ${sec.color}66`, borderRadius: '50%',
+                          width: 11, height: 11, display: 'inline-flex',
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>?</span>
+                        <span style={{ marginLeft: 'auto', color: sec.color, fontSize: 10 }}>
+                          {(cfg[key as keyof HoloSettings] as number).toFixed(step < 0.01 ? 3 : 2)}
+                        </span>
+                      </div>
+                      <input type="range" min={min} max={max} step={step}
+                        value={cfg[key as keyof HoloSettings] as number}
+                        onChange={(e) => setCfg((s: HoloSettings) => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                        style={{ width: '100%', accentColor: sec.color, height: 3 }} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
-          <button
-            onClick={() => {
-              localStorage.setItem('holoSettings', JSON.stringify(holoSettings));
-            }}
-            style={{
-              marginTop: 6, width: '100%', padding: '5px 0',
-              background: 'rgba(77,216,208,0.2)', border: '1px solid rgba(77,216,208,0.4)',
-              borderRadius: 4, color: '#4dd8d0', cursor: 'pointer', fontSize: 11,
-              fontFamily: 'monospace',
-            }}
-          >
-            Save Settings
-          </button>
+          {/* old settings removed — now using sections above */}
 
-          {/* ─── Body Proportions Section ─── */}
-          <div style={{ borderTop: '1px solid rgba(77,216,208,0.2)', marginTop: 10, paddingTop: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 8, color: '#4dd8d0' }}>
-              Body Proportions
-            </div>
-            {([
-              { key: 'headScale', label: 'Head Size', min: 0.5, max: 2.0, step: 0.05, info: 'Scale head width and depth' },
-              { key: 'headY', label: 'Head Y Offset', min: -1.0, max: 1.0, step: 0.05, info: 'Move head up or down' },
-              { key: 'neckWidth', label: 'Neck Width', min: 0.3, max: 2.0, step: 0.05, info: 'Scale neck thickness' },
-              { key: 'shoulderWidth', label: 'Shoulder Width', min: 0.5, max: 2.0, step: 0.05, info: 'Scale shoulder spread' },
-              { key: 'bustSize', label: 'Bust Size', min: 0.5, max: 2.0, step: 0.05, info: 'Scale bust/chest depth' },
-              { key: 'torsoWidth', label: 'Upper Torso Width', min: 0.5, max: 2.0, step: 0.05, info: 'Scale ribcage and chest width' },
-              { key: 'waistWidth', label: 'Waist Width', min: 0.3, max: 2.0, step: 0.05, info: 'Scale waist/belly width' },
-              { key: 'hipWidth', label: 'Hip Width', min: 0.5, max: 2.0, step: 0.05, info: 'Scale hip and lower abdomen width' },
-              { key: 'armThickness', label: 'Arm Thickness', min: 0.3, max: 2.0, step: 0.05, info: 'Scale arm cross-section' },
-              { key: 'thighWidth', label: 'Thigh Width', min: 0.3, max: 2.5, step: 0.05, info: 'Scale upper leg thickness' },
-              { key: 'calfWidth', label: 'Calf Width', min: 0.3, max: 2.5, step: 0.05, info: 'Scale lower leg thickness' },
-            ] as const).map(({ key, label, min, max, step, info }) => (
-              <div key={key} style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                  <span>{label}</span>
-                  <span title={info} style={{
-                    cursor: 'help', fontSize: 9, color: '#6ab8b4',
-                    border: '1px solid #3a8a86', borderRadius: '50%',
-                    width: 13, height: 13, display: 'inline-flex',
-                    alignItems: 'center', justifyContent: 'center',
-                  }}>?</span>
-                  <span style={{ marginLeft: 'auto', color: '#4dd8d0' }}>
-                    {bodyProportions[key as keyof typeof bodyProportions].toFixed(2)}
-                  </span>
-                </div>
-                <input
-                  type="range" min={min} max={max} step={step}
-                  value={bodyProportions[key as keyof typeof bodyProportions]}
-                  onChange={(e) => setBodyProportions((s: typeof bodyProportions) => ({ ...s, [key]: parseFloat(e.target.value) }))}
-                  style={{ width: '100%', accentColor: '#e0a040', height: 4 }}
-                />
-              </div>
-            ))}
-            <button
-              onClick={() => localStorage.setItem('holoProportions', JSON.stringify(bodyProportions))}
-              style={{
-                marginTop: 6, width: '100%', padding: '5px 0',
-                background: 'rgba(224,160,64,0.2)', border: '1px solid rgba(224,160,64,0.4)',
-                borderRadius: 4, color: '#e0a040', cursor: 'pointer', fontSize: 11,
-                fontFamily: 'monospace',
-              }}
-            >
-              Save Proportions
-            </button>
-            <button
-              onClick={() => { setBodyProportions(defaultProportions); localStorage.removeItem('holoProportions'); }}
-              style={{
-                marginTop: 4, width: '100%', padding: '5px 0',
-                background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)',
-                borderRadius: 4, color: '#ff8888', cursor: 'pointer', fontSize: 11,
-                fontFamily: 'monospace',
-              }}
-            >
-              Reset to Default
-            </button>
-          </div>
+          {/* old body proportions section removed — now in sections above */}
         </div>
       )}
       {avatars.length === 1 && avatars[0].id !== '__default__' && (
