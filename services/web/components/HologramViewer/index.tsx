@@ -1117,136 +1117,70 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       jointMarkersRef.current.set(avatar.id, markerMap);
 
       // ── Debug silhouette outline (toggle with 'o' key) ──────────
-      // Traces body outline by joint group. Separate traces for:
-      // torso, each arm, each leg — then stitched into one closed loop.
+      // Smoothed convex hull per Y-slice. One closed outer contour.
       {
-        // Group particles by joint with world positions
-        const jointPts: Record<string, { x: number; y: number }[]> = {};
+        const worldPts: { x: number; y: number }[] = [];
         for (const pt of avatar.points) {
           const jPos = jointPositions.get(pt.joint_id);
           if (!jPos) continue;
-          const wx = jPos.x + pt.offset[0];
-          const wy = jPos.y + pt.offset[1];
-          if (!jointPts[pt.joint_id]) jointPts[pt.joint_id] = [];
-          jointPts[pt.joint_id].push({ x: wx, y: wy });
+          worldPts.push({ x: jPos.x + pt.offset[0], y: jPos.y + pt.offset[1] });
         }
 
-        // Merge joints into body regions
-        const torsoJoints = ['root', 'spine', 'chest', 'neck', 'head'];
-        const rArmJoints = ['r_shoulder', 'r_elbow', 'r_hand'];
-        const lArmJoints = ['l_shoulder', 'l_elbow', 'l_hand'];
-        const rLegJoints = ['r_hip', 'r_knee', 'r_foot'];
-        const lLegJoints = ['l_hip', 'l_knee', 'l_foot'];
+        const step = 0.005;
+        const yMin = Math.min(...worldPts.map((p) => p.y));
+        const yMax = Math.max(...worldPts.map((p) => p.y));
 
-        const merge = (joints: string[]) => {
-          const pts: { x: number; y: number }[] = [];
-          for (const j of joints) if (jointPts[j]) pts.push(...jointPts[j]);
-          return pts;
-        };
+        // Collect raw left/right edges
+        const rawLeft: number[] = [];
+        const rawRight: number[] = [];
+        const yLevels: number[] = [];
 
-        const torsoPts = merge(torsoJoints);
-        const rArmPts = merge(rArmJoints);
-        const lArmPts = merge(lArmJoints);
-        const rLegPts = merge(rLegJoints);
-        const lLegPts = merge(lLegJoints);
-
-        // For a region, get left/right edge at each Y step
-        const getEdges = (pts: { x: number; y: number }[], step = 0.01) => {
-          if (pts.length === 0) return { left: [] as THREE.Vector3[], right: [] as THREE.Vector3[] };
-          const yMin = Math.min(...pts.map((p) => p.y));
-          const yMax = Math.max(...pts.map((p) => p.y));
-          const left: THREE.Vector3[] = [];
-          const right: THREE.Vector3[] = [];
-          for (let y = yMin; y <= yMax; y += step) {
-            const band = pts.filter((p) => Math.abs(p.y - y) < step * 0.6);
-            if (band.length < 2) continue;
-            let minX = Infinity, maxX = -Infinity;
-            for (const p of band) {
-              if (p.x < minX) minX = p.x;
-              if (p.x > maxX) maxX = p.x;
-            }
-            left.push(new THREE.Vector3(minX, y, 0));
-            right.push(new THREE.Vector3(maxX, y, 0));
+        for (let y = yMin; y <= yMax; y += step) {
+          const band = worldPts.filter((p) => Math.abs(p.y - y) < step);
+          if (band.length < 2) {
+            rawLeft.push(0);
+            rawRight.push(0);
+            yLevels.push(y);
+            continue;
           }
-          left.sort((a, b) => a.y - b.y);
-          right.sort((a, b) => a.y - b.y);
-          return { left, right };
+          let minX = Infinity, maxX = -Infinity;
+          for (const p of band) {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+          }
+          rawLeft.push(minX);
+          rawRight.push(maxX);
+          yLevels.push(y);
+        }
+
+        // Smooth with moving average (window 5)
+        const smooth = (arr: number[]) => {
+          const out = [...arr];
+          for (let i = 2; i < arr.length - 2; i++) {
+            out[i] = (arr[i - 2] + arr[i - 1] + arr[i] + arr[i + 1] + arr[i + 2]) / 5;
+          }
+          return out;
         };
 
-        const torso = getEdges(torsoPts);
-        const rArm = getEdges(rArmPts);
-        const lArm = getEdges(lArmPts);
-        const rLeg = getEdges(rLegPts);
-        const lLeg = getEdges(lLegPts);
+        const sLeft = smooth(rawLeft);
+        const sRight = smooth(rawRight);
 
-        // Build closed contour — clockwise from top of head:
-        // 1. Right side of head/torso DOWN to shoulder
-        // 2. Right arm outer DOWN to hand
-        // 3. Right arm inner UP to shoulder
-        // 4. Right torso DOWN from armpit to hip
-        // 5. Right leg outer DOWN to foot
-        // 6. Right leg inner UP to crotch
-        // 7. Left leg inner DOWN to foot
-        // 8. Left leg outer UP to hip
-        // 9. Left torso UP from hip to armpit
-        // 10. Left arm inner DOWN to hand
-        // 11. Left arm outer UP to shoulder
-        // 12. Left side of head/torso UP to top
-
+        // Build closed loop: right edge top→bottom, left edge bottom→top
         const contour: THREE.Vector3[] = [];
 
-        // Find where arms start/end in Y
-        const armTopY = rArm.right.length > 0 ? Math.max(...rArm.right.map((p) => p.y)) : 0.48;
-        const armBotY = rArm.right.length > 0 ? Math.min(...rArm.right.map((p) => p.y)) : 0.07;
+        // Right edge: top to bottom
+        for (let i = yLevels.length - 1; i >= 0; i--) {
+          if (sRight[i] !== 0 || rawRight[i] !== 0) {
+            contour.push(new THREE.Vector3(sRight[i], yLevels[i], 0));
+          }
+        }
 
-        // 1. Right torso from top down to arm level
-        const torsoAboveArm = torso.right.filter((p) => p.y >= armTopY).sort((a, b) => b.y - a.y);
-        contour.push(...torsoAboveArm);
-
-        // 2. Right arm outer down
-        const rArmOuterDown = [...rArm.right].sort((a, b) => b.y - a.y);
-        contour.push(...rArmOuterDown);
-
-        // 3. Right arm inner up
-        const rArmInnerUp = [...rArm.left].sort((a, b) => a.y - b.y);
-        contour.push(...rArmInnerUp);
-
-        // 4. Right torso from armpit down to leg
-        const legTopY = rLeg.right.length > 0 ? Math.max(...rLeg.right.map((p) => p.y)) : -0.10;
-        const torsoBelowArm = torso.right.filter((p) => p.y < armTopY && p.y >= legTopY).sort((a, b) => b.y - a.y);
-        contour.push(...torsoBelowArm);
-
-        // 5. Right leg outer down
-        const rLegOuterDown = [...rLeg.right].sort((a, b) => b.y - a.y);
-        contour.push(...rLegOuterDown);
-
-        // 6. Right leg inner up
-        const rLegInnerUp = [...rLeg.left].sort((a, b) => a.y - b.y);
-        contour.push(...rLegInnerUp);
-
-        // 7. Left leg inner down
-        const lLegInnerDown = [...lLeg.right].sort((a, b) => b.y - a.y);
-        contour.push(...lLegInnerDown);
-
-        // 8. Left leg outer up
-        const lLegOuterUp = [...lLeg.left].sort((a, b) => a.y - b.y);
-        contour.push(...lLegOuterUp);
-
-        // 9. Left torso from hip up to armpit
-        const torsoBelowArmL = torso.left.filter((p) => p.y < armTopY && p.y >= legTopY).sort((a, b) => a.y - b.y);
-        contour.push(...torsoBelowArmL);
-
-        // 10. Left arm inner down
-        const lArmInnerDown = [...lArm.right].sort((a, b) => b.y - a.y);
-        contour.push(...lArmInnerDown);
-
-        // 11. Left arm outer up
-        const lArmOuterUp = [...lArm.left].sort((a, b) => a.y - b.y);
-        contour.push(...lArmOuterUp);
-
-        // 12. Left torso from shoulder up to top
-        const torsoAboveArmL = torso.left.filter((p) => p.y >= armTopY).sort((a, b) => a.y - b.y);
-        contour.push(...torsoAboveArmL);
+        // Left edge: bottom to top
+        for (let i = 0; i < yLevels.length; i++) {
+          if (sLeft[i] !== 0 || rawLeft[i] !== 0) {
+            contour.push(new THREE.Vector3(sLeft[i], yLevels[i], 0));
+          }
+        }
 
         // Close
         if (contour.length > 3) contour.push(contour[0].clone());
@@ -1255,7 +1189,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         silhouetteGroup.name = 'silhouette';
         silhouetteGroup.visible = false;
 
-        const magentaMat = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 1 });
+        const magentaMat = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 2 });
         if (contour.length > 4) {
           silhouetteGroup.add(new THREE.Line(
             new THREE.BufferGeometry().setFromPoints(contour), magentaMat));
