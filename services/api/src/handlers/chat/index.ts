@@ -6545,6 +6545,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       const agents = await Data.llmAgent.findByRoom(roomId);
       const textLower = data.text.toLowerCase();
 
+      let agentMentioned = false;
       for (const agent of agents) {
         const names = [agent.name.toLowerCase()];
         if (agent.nicknames) {
@@ -6557,7 +6558,27 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         }
         if (names.some((n) => textLower.includes(n))) {
           await runAgentResponse(io, agent, user.currentRoom);
+          agentMentioned = true;
           break; // Only trigger one agent per message
+        }
+      }
+
+      // "Alone in room" logic: if the user didn't mention any agent by name,
+      // but they're the only human in the room with exactly one AI agent,
+      // assume the message is for that agent and prompt it.
+      if (!agentMentioned && agents.length === 1) {
+        const roomEntry = activeRooms.get(user.currentRoom);
+        if (roomEntry) {
+          // Count human users in the room (exclude the agent's creator socket if it's just them)
+          const humanUsers = new Set<string>();
+          for (const sid of roomEntry.users) {
+            const u = connectedUsers.get(sid);
+            if (u) humanUsers.add(u.userId);
+          }
+          if (humanUsers.size <= 1) {
+            // Only one human (the sender) + one AI — trigger the AI
+            await runAgentResponse(io, agents[0], user.currentRoom);
+          }
         }
       }
 
