@@ -27,6 +27,17 @@ const COL = {
   eyeGlow: '#80ffff',
   bright: '#a0f0ec',
   lip: '#6de0da',
+  // Organ/part colors (used in debug mode, rendered as body color normally)
+  breast: '#ff69b4',     // pink
+  heart: '#ff2020',      // red
+  lung: '#ff8888',       // light red
+  stomach: '#e8b030',    // yellow-orange
+  intestine: '#c89040',  // tan
+  womb: '#ff40a0',       // hot pink
+  ovary: '#ff80c0',      // light pink
+  fallopian: '#ff60b0',  // medium pink
+  vagina: '#ff50a0',     // deep pink
+  cervix: '#ff3090',     // magenta-pink
 };
 
 const DEBUG: Record<string, string> = {
@@ -617,6 +628,74 @@ for (const [side, shJoint, elJoint, haJoint] of [
     }
     addPoint(hx + f.dx * side, hy - 0.05 - f.len, 0, haJoint, 0.13, COL.bright);
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// INTERNAL ORGANS — approximate anatomical placement
+// Each organ uses a distinct color tag for debug mode identification.
+// In normal rendering, the renderer treats all colors the same.
+// ══════════════════════════════════════════════════════════════
+
+// Breasts (distinct from general bust surface — tagged pink)
+for (const side of [-1, 1]) {
+  const bx = side * 0.045;
+  for (let i = 0; i < 20; i++) {
+    addPoint(bx + rand(-0.03, 0.03), rand(0.34, 0.42), rand(0.06, 0.10), 'chest', 0.12, COL.breast);
+  }
+}
+
+// Heart (left-center chest)
+for (let i = 0; i < 15; i++) {
+  addPoint(rand(-0.03, 0.01), rand(0.36, 0.42), rand(-0.02, 0.03), 'chest', 0.10, COL.heart);
+}
+
+// Lungs (bilateral, inside chest)
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 20; i++) {
+    addPoint(side * rand(0.02, 0.06), rand(0.32, 0.44), rand(-0.03, 0.02), 'chest', 0.10, COL.lung);
+  }
+}
+
+// Stomach (upper abdomen, slightly left)
+for (let i = 0; i < 15; i++) {
+  addPoint(rand(-0.03, 0.02), rand(0.20, 0.28), rand(-0.02, 0.03), 'spine', 0.10, COL.stomach);
+}
+
+// Intestines (mid-lower abdomen)
+for (let i = 0; i < 25; i++) {
+  addPoint(rand(-0.05, 0.05), rand(0.08, 0.20), rand(-0.03, 0.03), 'spine', 0.08, COL.intestine);
+}
+
+// Womb/Uterus (center pelvis)
+for (let i = 0; i < 15; i++) {
+  addPoint(rand(-0.02, 0.02), rand(0.02, 0.08), rand(-0.02, 0.02), 'root', 0.10, COL.womb);
+}
+
+// Ovaries (bilateral, above womb)
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 8; i++) {
+    addPoint(side * rand(0.03, 0.05), rand(0.06, 0.09), rand(-0.01, 0.01), 'root', 0.08, COL.ovary);
+  }
+}
+
+// Fallopian tubes (connecting ovaries to uterus)
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 10; i++) {
+    const t = rand(0, 1);
+    const fx = side * lerp(0.02, 0.04, t);
+    const fy = lerp(0.06, 0.08, t);
+    addPoint(fx, fy, rand(-0.01, 0.01), 'root', 0.06, COL.fallopian);
+  }
+}
+
+// Cervix (below uterus)
+for (let i = 0; i < 8; i++) {
+  addPoint(rand(-0.01, 0.01), rand(0.00, 0.03), rand(-0.01, 0.01), 'root', 0.08, COL.cervix);
+}
+
+// Vagina (below cervix)
+for (let i = 0; i < 10; i++) {
+  addPoint(rand(-0.008, 0.008), rand(-0.04, 0.01), rand(0.01, 0.04), 'root', 0.06, COL.vagina);
 }
 
 // ══════════════════════════════════════════════════════════════

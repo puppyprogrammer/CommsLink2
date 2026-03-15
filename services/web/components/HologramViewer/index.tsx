@@ -140,6 +140,15 @@ type HologramViewerProps = {
 // ── Constants ──────────────────────────────────────────
 
 const HOLOGRAM_COLOR = 0x63c5c0;
+
+// Organ color tags for debug mode identification
+const ORGAN_COLORS: Record<string, string> = {
+  '#ff69b4': 'breastDensity', '#ff2020': 'heartDensity',
+  '#ff8888': 'lungDensity', '#e8b030': 'stomachDensity',
+  '#c89040': 'intestineDensity', '#ff40a0': 'wombDensity',
+  '#ff80c0': 'ovaryDensity', '#ff60b0': 'fallopianDensity',
+  '#ff50a0': 'vaginaDensity', '#ff3090': 'cervixDensity',
+};
 const BONE_COLOR = 0x2a7a76;
 const GRID_COLOR = 0x1a3a38;
 const MAX_POINT_INSTANCES = 80000;
@@ -859,6 +868,12 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     neckDensity: 1.0, shoulderDensity: 1.0, torsoDensity: 1.0,
     armDensity: 1.0, handDensity: 1.0,
     thighDensity: 1.0, calfDensity: 1.0, footDensity: 1.0,
+    // Organs
+    breastDensity: 1.0, heartDensity: 1.0, lungDensity: 1.0, stomachDensity: 1.0,
+    intestineDensity: 1.0, wombDensity: 1.0, ovaryDensity: 1.0,
+    fallopianDensity: 1.0, cervixDensity: 1.0, vaginaDensity: 1.0,
+    // Debug colors (hex as numeric — 1.0 = show organ debug colors, 0 = normal)
+    debugOrgans: 0,
     // Debug
     showSilhouette: 0, showSkeleton: 0, showGrid: 1, wireframeMode: 0,
   };
@@ -1049,6 +1064,19 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'handOffsetX', label: 'Hand X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hands left/right' },
       { key: 'handOffsetY', label: 'Hand Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hands up/down' },
       { key: 'handOffsetZ', label: 'Hand Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hands forward/back' },
+    ]},
+    { id: 'organs', title: 'Organs & Anatomy', color: '#ff69b4', sliders: [
+      { key: 'breastDensity', label: 'Breast', min: 0, max: 5.0, step: 0.1, info: 'Breast particle visibility' },
+      { key: 'heartDensity', label: 'Heart', min: 0, max: 5.0, step: 0.1, info: 'Heart particle visibility' },
+      { key: 'lungDensity', label: 'Lungs', min: 0, max: 5.0, step: 0.1, info: 'Lung particle visibility' },
+      { key: 'stomachDensity', label: 'Stomach', min: 0, max: 5.0, step: 0.1, info: 'Stomach particle visibility' },
+      { key: 'intestineDensity', label: 'Intestines', min: 0, max: 5.0, step: 0.1, info: 'Intestine particle visibility' },
+      { key: 'wombDensity', label: 'Womb', min: 0, max: 5.0, step: 0.1, info: 'Uterus particle visibility' },
+      { key: 'ovaryDensity', label: 'Ovaries', min: 0, max: 5.0, step: 0.1, info: 'Ovary particle visibility' },
+      { key: 'fallopianDensity', label: 'Fallopian Tubes', min: 0, max: 5.0, step: 0.1, info: 'Fallopian tube visibility' },
+      { key: 'cervixDensity', label: 'Cervix', min: 0, max: 5.0, step: 0.1, info: 'Cervix particle visibility' },
+      { key: 'vaginaDensity', label: 'Vagina', min: 0, max: 5.0, step: 0.1, info: 'Vaginal canal visibility' },
+      { key: 'debugOrgans', label: 'Show Organ Colors', min: 0, max: 1, step: 1, info: 'Color-code organs in debug mode' },
     ]},
     { id: 'density', title: 'Part Densities', color: '#c0c0c0', sliders: [
       { key: 'headDensity', label: 'Head', min: 0, max: 5.0, step: 0.1, info: 'Head particle visibility' },
@@ -1605,6 +1633,21 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
             densityMul = c.footDensity;
           }
 
+          // Organ detection by color tag
+          const organKey = ORGAN_COLORS[point.color];
+          if (organKey) {
+            const organDensity = (cfgRef.current as Record<string, number>)[organKey] ?? 1.0;
+            if (organDensity === 0) {
+              // Skip this particle entirely
+              dummy.makeTranslation(0, -100, 0);
+              instMesh.setMatrixAt(i * 2, dummy);
+              instMesh.setMatrixAt(i * 2 + 1, dummy);
+              scaleAttr.setX(i * 2, 0);
+              scaleAttr.setX(i * 2 + 1, 0);
+              continue;
+            }
+          }
+
           // Hide deleted particles
           if (deletedRef.current.has(i)) {
             dummy.makeTranslation(0, -100, 0); // move off-screen
@@ -1716,7 +1759,13 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
           instancedMesh.setMatrixAt(i * 2, dummy);
           scaleAttr[i * 2] = pointSize / 0.008;
-          tempColor.set(point.color || `#${HOLOGRAM_COLOR.toString(16)}`);
+          // Use organ debug colors if enabled, otherwise body color for organs
+          const isOrgan = ORGAN_COLORS[point.color];
+          const showDebugOrgan = cfgRef.current.debugOrgans > 0.5;
+          const displayColor = (isOrgan && !showDebugOrgan)
+            ? `#${HOLOGRAM_COLOR.toString(16)}`
+            : (point.color || `#${HOLOGRAM_COLOR.toString(16)}`);
+          tempColor.set(displayColor);
           colorAttr[i * 2 * 3] = tempColor.r;
           colorAttr[i * 2 * 3 + 1] = tempColor.g;
           colorAttr[i * 2 * 3 + 2] = tempColor.b;
