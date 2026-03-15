@@ -808,15 +808,19 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     lipProjection: 1.0, smileAmount: 0.2, lipBrightness: 1.0,
     // Neck & Shoulders
     neckLength: 1.0, neckThickness: 1.0, shoulderSlope: 1.0, shoulderRoundness: 1.0,
+    neckOffsetX: 0, neckOffsetY: 0, shoulderOffsetX: 0, shoulderOffsetY: 0,
     // Torso shape
     bustProjection: 1.0, bustSpacing: 1.0, bustHeight: 0, ribcageWidth: 1.0,
     bellyDepth: 1.0, gluteSize: 1.0, torsoLength: 1.0,
+    torsoOffsetX: 0, torsoOffsetY: 0,
     // Legs
     legLength: 1.0, upperLegLength: 1.0, lowerLegLength: 1.0, legSpacing: 1.0,
     kneeWidth: 1.0, ankleWidth: 1.0, footSize: 1.0,
+    legOffsetX: 0, legOffsetY: 0, footOffsetX: 0, footOffsetY: 0,
     // Arms
     armLength: 1.0, upperArmLength: 1.0, forearmLength: 1.0, armSpread: 1.0,
     elbowWidth: 1.0, wristWidth: 1.0, handSize: 1.0, fingerLength: 1.0,
+    armOffsetX: 0, armOffsetY: 0, handOffsetX: 0, handOffsetY: 0,
     // Debug
     showSilhouette: 0, showSkeleton: 0, showGrid: 1, wireframeMode: 0,
   };
@@ -922,6 +926,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'neckThickness', label: 'Neck Thickness', min: 0.3, max: 2.0, step: 0.05, info: 'Neck cross-section' },
       { key: 'shoulderSlope', label: 'Shoulder Slope', min: 0, max: 2.0, step: 0.05, info: 'Shoulder drop steepness' },
       { key: 'shoulderRoundness', label: 'Shoulder Roundness', min: 0, max: 2.0, step: 0.05, info: 'Arm tube shoulder radius' },
+      { key: 'neckOffsetX', label: 'Neck X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift neck left/right' },
+      { key: 'neckOffsetY', label: 'Neck Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift neck up/down' },
+      { key: 'shoulderOffsetX', label: 'Shoulder X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift shoulders left/right' },
+      { key: 'shoulderOffsetY', label: 'Shoulder Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift shoulders up/down' },
     ]},
     { id: 'torsoShape', title: 'Torso Shape', color: '#e0a040', sliders: [
       { key: 'bustProjection', label: 'Bust Projection', min: 0, max: 3.0, step: 0.1, info: 'Bust forward protrusion' },
@@ -931,6 +939,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'bellyDepth', label: 'Belly Depth', min: 0.5, max: 2.0, step: 0.05, info: 'Front-to-back at navel' },
       { key: 'gluteSize', label: 'Glute Size', min: 0, max: 3.0, step: 0.1, info: 'Glute volume projection' },
       { key: 'torsoLength', label: 'Torso Length', min: 0.5, max: 2.0, step: 0.05, info: 'Shoulder to hip distance' },
+      { key: 'torsoOffsetX', label: 'Torso X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift torso left/right' },
+      { key: 'torsoOffsetY', label: 'Torso Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift torso up/down' },
     ]},
     { id: 'legs', title: 'Legs', color: '#e06080', sliders: [
       { key: 'legLength', label: 'Leg Length', min: 0.5, max: 2.0, step: 0.05, info: 'Total leg length' },
@@ -940,6 +950,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'kneeWidth', label: 'Knee Width', min: 0.3, max: 2.5, step: 0.05, info: 'Knee cross-section' },
       { key: 'ankleWidth', label: 'Ankle Width', min: 0.3, max: 2.5, step: 0.05, info: 'Ankle cross-section' },
       { key: 'footSize', label: 'Foot Size', min: 0.3, max: 2.0, step: 0.05, info: 'All foot dimensions' },
+      { key: 'legOffsetX', label: 'Leg X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift legs left/right' },
+      { key: 'legOffsetY', label: 'Leg Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift legs up/down' },
+      { key: 'footOffsetX', label: 'Foot X Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift feet left/right' },
+      { key: 'footOffsetY', label: 'Foot Y Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift feet up/down' },
     ]},
     { id: 'arms', title: 'Arms & Hands', color: '#4090e0', sliders: [
       { key: 'armLength', label: 'Arm Length', min: 0.5, max: 2.0, step: 0.05, info: 'Total arm curve length' },
@@ -950,6 +964,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'wristWidth', label: 'Wrist Width', min: 0.3, max: 2.0, step: 0.05, info: 'Wrist cross-section' },
       { key: 'handSize', label: 'Hand Size', min: 0.3, max: 2.0, step: 0.05, info: 'All hand dimensions' },
       { key: 'fingerLength', label: 'Finger Length', min: 0.3, max: 2.0, step: 0.05, info: 'Finger tube length' },
+      { key: 'armOffsetX', label: 'Arm X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift arms left/right' },
+      { key: 'armOffsetY', label: 'Arm Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift arms up/down' },
+      { key: 'handOffsetX', label: 'Hand X Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift hands left/right' },
+      { key: 'handOffsetY', label: 'Hand Y Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift hands up/down' },
     ]},
     { id: 'debug', title: 'Debug', color: '#e04040', sliders: [
       { key: 'showSilhouette', label: 'Silhouette', min: 0, max: 1, step: 1, info: 'Show outline (O key)' },
@@ -1218,6 +1236,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // ─── NECK ───
           pos.x *= c.neckWidth * c.neckThickness;
           pos.z *= c.neckWidth * c.neckThickness;
+          pos.x += c.neckOffsetX;
+          pos.y += c.neckOffsetY;
           // Neck length: scale Y between shoulder and head
           const neckBaseY = 0.53;
           const neckTopY = 0.59;
@@ -1251,7 +1271,14 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           if (jointId.includes('hand')) {
             pos.x = shoulderX + (pos.x - shoulderX) * c.wristWidth * c.handSize;
             pos.z *= c.wristWidth * c.handSize;
+            pos.x += c.handOffsetX * side;
+            pos.y += c.handOffsetY;
           }
+          // Arm offsets
+          pos.x += c.armOffsetX * side;
+          pos.y += c.armOffsetY;
+          pos.x += c.shoulderOffsetX * side;
+          pos.y += c.shoulderOffsetY;
 
         } else if (jointId === 'chest' || jointId === 'spine' || jointId === 'root') {
           // ─── TORSO ───
@@ -1276,6 +1303,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // Torso length: scale Y from center
           const torsoCenter = 0.20;
           pos.y = torsoCenter + (pos.y - torsoCenter) * c.torsoLength;
+          pos.x += c.torsoOffsetX;
+          pos.y += c.torsoOffsetY;
 
         } else if (jointId === 'l_hip' || jointId === 'r_hip') {
           // ─── THIGHS ───
@@ -1286,6 +1315,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // Leg length
           const hipY = -0.10;
           pos.y = hipY + (pos.y - hipY) * c.legLength * c.upperLegLength;
+          pos.x += c.legOffsetX * side;
+          pos.y += c.legOffsetY;
 
         } else if (jointId === 'l_knee' || jointId === 'r_knee') {
           // ─── CALVES ───
@@ -1303,6 +1334,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // Lower leg length
           const kneeY = -0.48;
           pos.y = kneeY + (pos.y - kneeY) * c.legLength * c.lowerLegLength;
+          pos.x += c.legOffsetX * side;
+          pos.y += c.legOffsetY;
 
         } else if (jointId === 'l_foot' || jointId === 'r_foot') {
           // ─── FEET ───
@@ -1310,6 +1343,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           pos.z *= c.footSize;
           const legSign = side;
           pos.x += legSign * hipBaseX * (c.legSpacing - 1.0);
+          pos.x += c.footOffsetX * side;
+          pos.y += c.footOffsetY;
+          pos.x += c.legOffsetX * side;
+          pos.y += c.legOffsetY;
         }
       };
 
