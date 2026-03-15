@@ -809,6 +809,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   const deletedRef = useRef(deletedParticles);
   useEffect(() => { deletedRef.current = deletedParticles; }, [deletedParticles]);
   const editSphereRef = useRef<THREE.Mesh | null>(null);
+  const applyDebugColorsRef = useRef<((enabled: boolean) => void) | null>(null);
   const jointPositionsRef = useRef<Map<string, THREE.Vector3> | null>(null);
 
   // ── All hologram settings in one object ──
@@ -875,7 +876,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     // Debug colors (hex as numeric — 1.0 = show organ debug colors, 0 = normal)
     debugOrgans: 0,
     // Debug
-    showSilhouette: 0, showSkeleton: 0, showGrid: 1, wireframeMode: 0,
+    showSilhouette: 0, showSkeleton: 0, showJoints: 0, showDebugColors: 0, showGrid: 1,
   };
   type HoloSettings = typeof allDefaults;
 
@@ -1096,8 +1097,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'footDensity', label: 'Feet', min: 0, max: 5.0, step: 0.1, info: 'Foot particle visibility' },
     ]},
     { id: 'debug', title: 'Debug', color: '#e04040', sliders: [
-      { key: 'showSilhouette', label: 'Silhouette', min: 0, max: 1, step: 1, info: 'Show outline (O key)' },
-      { key: 'showSkeleton', label: 'Skeleton', min: 0, max: 1, step: 1, info: 'Show bone wireframe' },
+      { key: 'showSilhouette', label: 'Silhouette', min: 0, max: 1, step: 1, info: 'Show body outline' },
+      { key: 'showSkeleton', label: 'Bones', min: 0, max: 1, step: 1, info: 'Show skeleton bone lines' },
+      { key: 'showJoints', label: 'Joints', min: 0, max: 1, step: 1, info: 'Show joint connection points' },
+      { key: 'showDebugColors', label: 'Debug Colors', min: 0, max: 1, step: 1, info: 'Color-code particles by body part' },
       { key: 'showGrid', label: 'Grid', min: 0, max: 1, step: 1, info: 'Floor grid' },
     ]},
   ];
@@ -1701,7 +1704,13 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         effectivePose,
       );
 
-      // ── Bones (Lines) — hidden, geometry kept for FK updates ──
+      // ── Bones (Lines) — toggled via debug settings ──
+      const boneMaterial = new THREE.LineBasicMaterial({
+        color: 0x2a7a76, linewidth: 1, transparent: true, opacity: 0.5,
+      });
+      const boneGroup = new THREE.Group();
+      boneGroup.name = 'bones';
+      boneGroup.visible = false; // hidden by default
       const boneGeos: THREE.BufferGeometry[] = [];
       for (const joint of avatar.skeleton) {
         if (!joint.parent_id) continue;
@@ -1709,9 +1718,26 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         const end = jointPositions.get(joint.id);
         if (!start || !end) continue;
         const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+        boneGroup.add(new THREE.Line(geometry, boneMaterial));
         boneGeos.push(geometry);
       }
+      group.add(boneGroup);
       boneGeometriesRef.current.set(avatar.id, boneGeos);
+
+      // ── Joint markers — toggled via debug settings ──
+      const jointGroup = new THREE.Group();
+      jointGroup.name = 'jointMarkers';
+      jointGroup.visible = false;
+      const jointMarkerMat = new THREE.MeshBasicMaterial({
+        color: 0xff8800, transparent: true, opacity: 0.7,
+      });
+      for (const [jointId, pos] of jointPositions) {
+        const jGeo = new THREE.SphereGeometry(0.008, 6, 4);
+        const jMesh = new THREE.Mesh(jGeo, jointMarkerMat);
+        jMesh.position.copy(pos);
+        jointGroup.add(jMesh);
+      }
+      group.add(jointGroup);
 
       // ── Points (Instanced Mesh with GPU glow shader) ─
       const pointCount = avatar.points.length;
@@ -2233,6 +2259,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     // Poll window.__hologramDebug for programmatic control
     let lastDebugEnabled: boolean | undefined;
     let lastHighlight: string | undefined;
+    applyDebugColorsRef.current = applyDebugColors;
     const debugPollInterval = setInterval(() => {
       const cfg = window.__hologramDebug;
       if (!cfg) return;
@@ -2415,14 +2442,23 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       (gridRef.current.material as THREE.Material).opacity = holoSettings.gridOpacity;
       gridRef.current.visible = holoSettings.showGrid > 0.5;
     }
-    // Toggle silhouette
+    // Toggle debug elements
     if (sceneRef.current) {
       sceneRef.current.traverse((obj) => {
         if (obj.name === 'silhouette') obj.visible = holoSettings.showSilhouette > 0.5;
+        if (obj.name === 'bones') obj.visible = holoSettings.showSkeleton > 0.5;
+        if (obj.name === 'jointMarkers') obj.visible = holoSettings.showJoints > 0.5;
       });
     }
-    // Toggle skeleton bones — re-add or hide bone lines
-    // Mark dirty to refresh organ debug colors
+    // Debug colors
+    const wantDebug = holoSettings.showDebugColors > 0.5;
+    if (wantDebug !== debugModeRef.current) {
+      debugModeRef.current = wantDebug;
+      if (applyDebugColorsRef.current) {
+        applyDebugColorsRef.current(wantDebug);
+      }
+    }
+    // Mark dirty to refresh colors (debug/organ)
     for (const [, ms] of morphStateRef.current) ms.dirty = true;
   }, [holoSettings, holoUniforms]);
 
