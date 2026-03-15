@@ -1,7 +1,7 @@
 'use client';
 
 // React modules
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 
 // Node modules
 import * as THREE from 'three';
@@ -465,6 +465,7 @@ type MorphState = {
 
 const hologramGlowVertexShader = `
   uniform float uTime;
+  uniform float uSizeScale;
 
   attribute float instanceScale;
   attribute vec3 instanceColor;
@@ -495,7 +496,7 @@ const hologramGlowVertexShader = `
       sin(uTime * 0.6 + phaseZ) * 0.003
     );
 
-    vec3 scaledPos = position * instanceScale;
+    vec3 scaledPos = position * instanceScale * uSizeScale;
     vec4 worldPos = instanceMatrix * vec4(scaledPos, 1.0);
     worldPos.xyz += drift;
 
@@ -508,6 +509,12 @@ const hologramGlowVertexShader = `
 `;
 
 const hologramGlowFragmentShader = `
+  uniform float uBrightness;
+  uniform float uAlpha;
+  uniform float uCoreBoost;
+  uniform float uGradientPower;
+  uniform float uSizeScale;
+
   varying vec3 vColor;
   varying float vGlow;
   varying float vOpacity;
@@ -516,19 +523,15 @@ const hologramGlowFragmentShader = `
   varying float vDepth;
 
   void main() {
-    // Radial gradient: bright core fading to transparent edge
     vec3 viewDir = normalize(vViewPosition);
     float facing = max(dot(viewDir, normalize(vNormal)), 0.0);
 
-    // Glow gradient: center = bright, edge = fades out
-    float gradient = pow(facing, 0.4);
-    float coreBoost = pow(facing, 2.0); // extra brightness at dead center
+    float gradient = pow(facing, uGradientPower);
+    float coreBoost = pow(facing, 2.0);
 
-    // No depth-based dimming — constant brightness at all distances
-    vec3 finalColor = vColor * (1.8 + coreBoost * 0.9);
+    vec3 finalColor = vColor * (uBrightness + coreBoost * uCoreBoost);
 
-    // Alpha: gradient from solid center to transparent edge
-    float alpha = gradient * 0.75 * vOpacity;
+    float alpha = gradient * uAlpha * vOpacity;
 
     gl_FragColor = vec4(finalColor, alpha);
   }
@@ -777,6 +780,21 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     [avatarsProp],
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const defaultSettings = {
+    brightness: 1.8, alpha: 0.75, coreBoost: 0.9,
+    gradientPower: 0.4, sizeScale: 1.0, gridOpacity: 0.3, driftSpeed: 1.0,
+  };
+  const [holoSettings, setHoloSettings] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('holoSettings');
+        if (saved) return { ...defaultSettings, ...JSON.parse(saved) };
+      } catch { /* ignore */ }
+    }
+    return defaultSettings;
+  });
+  const gridRef = useRef<THREE.GridHelper | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -813,13 +831,21 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.008, 5, 4), []);
 
   // Custom shader material for holographic glow with per-particle drift
-  const bodyTimeUniform = useMemo(() => ({ uTime: { value: 0 } }), []);
+  const holoUniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uBrightness: { value: 1.8 },
+    uAlpha: { value: 0.75 },
+    uCoreBoost: { value: 0.9 },
+    uGradientPower: { value: 0.4 },
+    uSizeScale: { value: 1.0 },
+  }), []);
+  const bodyTimeUniform = holoUniforms; // alias for existing references
   const glowMaterial = useMemo(
     () =>
       new THREE.ShaderMaterial({
         vertexShader: hologramGlowVertexShader,
         fragmentShader: hologramGlowFragmentShader,
-        uniforms: bodyTimeUniform,
+        uniforms: holoUniforms,
         transparent: true,
         depthWrite: false,
         depthTest: true,
@@ -1297,6 +1323,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     (gridHelper.material as THREE.Material).transparent = true;
     (gridHelper.material as THREE.Material).opacity = 0.3;
     scene.add(gridHelper);
+    gridRef.current = gridHelper;
 
     // Ambient light
     const ambient = new THREE.AmbientLight(0xffffff, 0.3);
@@ -1665,8 +1692,98 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     }
   }, [avatars, buildAvatarGroup, resolveJointTransforms]);
 
+  // Sync settings to shader uniforms in real-time
+  useEffect(() => {
+    holoUniforms.uBrightness.value = holoSettings.brightness;
+    holoUniforms.uAlpha.value = holoSettings.alpha;
+    holoUniforms.uCoreBoost.value = holoSettings.coreBoost;
+    holoUniforms.uGradientPower.value = holoSettings.gradientPower;
+    holoUniforms.uSizeScale.value = holoSettings.sizeScale;
+    if (gridRef.current) {
+      (gridRef.current.material as THREE.Material).opacity = holoSettings.gridOpacity;
+    }
+  }, [holoSettings, holoUniforms]);
+
+  const settingsDef = [
+    { key: 'brightness', label: 'Brightness', min: 0.1, max: 5.0, step: 0.1, info: 'Color intensity multiplier for all particles' },
+    { key: 'alpha', label: 'Opacity', min: 0.05, max: 1.0, step: 0.05, info: 'Base transparency of each particle' },
+    { key: 'coreBoost', label: 'Core Glow', min: 0, max: 3.0, step: 0.1, info: 'Extra brightness at center of each particle sphere' },
+    { key: 'gradientPower', label: 'Edge Falloff', min: 0.1, max: 2.0, step: 0.1, info: 'How quickly particles fade at edges (lower = softer glow)' },
+    { key: 'sizeScale', label: 'Particle Size', min: 0.2, max: 3.0, step: 0.1, info: 'Multiplier for all particle sizes' },
+    { key: 'gridOpacity', label: 'Grid Opacity', min: 0, max: 1.0, step: 0.05, info: 'Transparency of the floor grid' },
+    { key: 'driftSpeed', label: 'Drift Speed', min: 0, max: 3.0, step: 0.1, info: 'Speed of particle micro-drift animation' },
+  ] as const;
+
   return (
-    <div className={classes.container} ref={containerRef}>
+    <div className={classes.container} ref={containerRef} style={{ position: 'relative' }}>
+      {/* Settings gear icon */}
+      <div
+        onClick={() => setSettingsOpen(!settingsOpen)}
+        style={{
+          position: 'absolute', top: 8, left: 8, zIndex: 10, cursor: 'pointer',
+          width: 28, height: 28, borderRadius: 4,
+          background: settingsOpen ? 'rgba(77,216,208,0.3)' : 'rgba(255,255,255,0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 16, color: '#4dd8d0', border: '1px solid rgba(77,216,208,0.3)',
+        }}
+        title="Hologram Settings"
+      >
+        &#9881;
+      </div>
+
+      {/* Settings panel */}
+      {settingsOpen && (
+        <div style={{
+          position: 'absolute', top: 42, left: 8, zIndex: 10,
+          background: 'rgba(10,20,25,0.92)', border: '1px solid rgba(77,216,208,0.3)',
+          borderRadius: 6, padding: '12px 14px', width: 240,
+          fontFamily: 'monospace', fontSize: 11, color: '#b0e0dc',
+          maxHeight: '80%', overflowY: 'auto',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 8, color: '#4dd8d0' }}>
+            Hologram Settings
+          </div>
+          {settingsDef.map(({ key, label, min, max, step, info }) => (
+            <div key={key} style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                <span>{label}</span>
+                <span
+                  title={info}
+                  style={{
+                    cursor: 'help', fontSize: 9, color: '#6ab8b4',
+                    border: '1px solid #3a8a86', borderRadius: '50%',
+                    width: 13, height: 13, display: 'inline-flex',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}
+                >?</span>
+                <span style={{ marginLeft: 'auto', color: '#4dd8d0' }}>
+                  {holoSettings[key as keyof typeof holoSettings].toFixed(2)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={min} max={max} step={step}
+                value={holoSettings[key as keyof typeof holoSettings]}
+                onChange={(e) => setHoloSettings((s) => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                style={{ width: '100%', accentColor: '#4dd8d0', height: 4 }}
+              />
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              localStorage.setItem('holoSettings', JSON.stringify(holoSettings));
+            }}
+            style={{
+              marginTop: 6, width: '100%', padding: '5px 0',
+              background: 'rgba(77,216,208,0.2)', border: '1px solid rgba(77,216,208,0.4)',
+              borderRadius: 4, color: '#4dd8d0', cursor: 'pointer', fontSize: 11,
+              fontFamily: 'monospace',
+            }}
+          >
+            Save Settings
+          </button>
+        </div>
+      )}
       {avatars.length === 1 && avatars[0].id !== '__default__' && (
         <div className={classes.label}>{avatars[0].label}</div>
       )}
