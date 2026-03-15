@@ -2382,6 +2382,34 @@ const executeSafeQuery = async (
   if (rawQuery.includes(";"))
     return "Error: Multiple statements are not allowed.";
 
+  // Block UNION to prevent reading from other tables
+  if (upper.includes("UNION")) return "Error: UNION queries are not allowed.";
+
+  // Block information_schema access
+  if (upper.includes("INFORMATION_SCHEMA"))
+    return "Error: information_schema access is not allowed.";
+
+  // Block file output
+  if (upper.includes("INTO OUTFILE") || upper.includes("INTO DUMPFILE"))
+    return "Error: File output is not allowed.";
+
+  // Block references to sensitive tables
+  const sensitiveTables = [
+    "user",
+    "password",
+    "stripe",
+    "credit_transaction",
+    "machine",
+  ];
+  for (const table of sensitiveTables) {
+    const tablePattern = new RegExp(
+      `\\bFROM\\s+${table}\\b|\\bJOIN\\s+${table}\\b`,
+      "i",
+    );
+    if (tablePattern.test(rawQuery))
+      return `Error: Access to ${table} table is not allowed.`;
+  }
+
   // Must reference the message table
   if (!upper.includes("MESSAGE"))
     return "Error: Query must reference the message table.";
@@ -6191,7 +6219,8 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     if (!user) return next(new Error("Authentication error"));
     if (user.is_banned) return next(new Error("Account banned"));
 
-    (socket as AuthenticatedSocket).user = decoded;
+    // Use fresh is_admin from DB, not cached JWT value
+    (socket as AuthenticatedSocket).user = { ...decoded, is_admin: user.is_admin };
     next();
   });
 
@@ -6845,6 +6874,15 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         if (membership?.role === "banned") {
           socket.emit("room_join_error", {
             error: "You are banned from this room",
+          });
+          return;
+        }
+
+        // User must already be a member or be the room creator to join
+        const isCreator = room.createdBy === socket.user.id;
+        if (!membership && !isCreator) {
+          socket.emit("room_join_error", {
+            error: "This room requires an invite to join",
           });
           return;
         }

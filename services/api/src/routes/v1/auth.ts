@@ -1,10 +1,20 @@
 import Joi from 'joi';
+import Boom from '@hapi/boom';
 import tracer from '../../../../../core/lib/tracer';
 
 import loginAction from '../../../../../core/actions/auth/loginAction';
 import registerAction from '../../../../../core/actions/auth/registerAction';
+import { checkRateLimit } from '../../../../../core/helpers/rateLimiter';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
+
+function getClientIp(request: Request): string {
+  const forwarded = request.headers['x-forwarded-for'];
+  if (forwarded) {
+    return (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(',')[0].trim();
+  }
+  return request.info.remoteAddress;
+}
 
 const authRoutes: ServerRoute[] = [
   {
@@ -21,6 +31,14 @@ const authRoutes: ServerRoute[] = [
     },
     handler: async (request: Request, h: ResponseToolkit) =>
       tracer.trace('CONTROLLER.AUTH.REGISTER', async () => {
+        const ip = getClientIp(request);
+        const { allowed, retryAfterMs } = checkRateLimit(`register:${ip}`, 3, 60_000);
+        if (!allowed) {
+          throw Boom.tooManyRequests(
+            `Too many registration attempts. Try again in ${Math.ceil(retryAfterMs / 1000)}s.`,
+          );
+        }
+
         const { username, password } = request.payload as { username: string; password: string };
         return registerAction(username, password);
       }),
@@ -39,6 +57,14 @@ const authRoutes: ServerRoute[] = [
     },
     handler: async (request: Request, h: ResponseToolkit) =>
       tracer.trace('CONTROLLER.AUTH.LOGIN', async () => {
+        const ip = getClientIp(request);
+        const { allowed, retryAfterMs } = checkRateLimit(`login:${ip}`, 5, 60_000);
+        if (!allowed) {
+          throw Boom.tooManyRequests(
+            `Too many login attempts. Try again in ${Math.ceil(retryAfterMs / 1000)}s.`,
+          );
+        }
+
         const { username, password } = request.payload as { username: string; password: string };
         return loginAction(username, password);
       }),
