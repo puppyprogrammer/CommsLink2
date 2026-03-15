@@ -102,16 +102,16 @@ const AboutPage = () => {
 
         <Box sx={{ textAlign: 'center' }}>
           {isLoggedIn ? (
-            <Button
-              component={Link}
-              href="/chat"
-              variant="contained"
-              size="large"
-              startIcon={<AddCircleOutlineIcon />}
-              sx={{ px: 4, fontSize: '1.1rem' }}
-            >
-              Create a Room
-            </Button>
+            <Link href="/chat" style={{ textDecoration: 'none' }}>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<AddCircleOutlineIcon />}
+                sx={{ px: 4, fontSize: '1.1rem' }}
+              >
+                Create a Room
+              </Button>
+            </Link>
           ) : (
             <Stack spacing={2} alignItems="center">
               <Typography variant="body1" sx={{ color: '#ccc' }}>
