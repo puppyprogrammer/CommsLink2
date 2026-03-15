@@ -283,6 +283,12 @@ const ChatPage = () => {
       setCreateRoomOpen(true);
     });
 
+    socket.on('room_deleted', (data: { roomName: string; message: string }) => {
+      toast(data.message, 'info');
+      // Reload to switch to fallback room
+      window.location.reload();
+    });
+
     socket.on('room_join_error', (data: { error: string }) => {
       if (data.error === 'Password required for this room') {
         // Open password dialog — pendingRoom is already set by handleSwitchRoom

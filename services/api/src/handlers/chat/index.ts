@@ -8154,6 +8154,12 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
         return;
       }
 
+      // Notify all users in the room that it's being deleted
+      io.to(normalizedName).emit("room_deleted", {
+        roomName: normalizedName,
+        message: `Room "${room.displayName || normalizedName}" has been deleted.`,
+      });
+
       // Move all users in that room to their fallback room
       const usersToMove = Array.from(room.users);
       for (const sid of usersToMove) {
