@@ -676,7 +676,7 @@ const ChatPage = () => {
     const isElevenLabsVoice = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
     if (isElevenLabsVoice && session?.token) {
       const socket = getSocket(session.token);
-      const sid = voiceStream.start(socket, preferences.voice_id, {
+      const sid = voiceStream.start(socket, preferences.voice_id!, {
         onStart: () => setIsListening(true),
         onEnd: () => setIsListening(false),
         onChunkSent: (idx, text) => {
