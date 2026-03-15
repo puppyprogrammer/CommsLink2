@@ -25,6 +25,7 @@ import createAiThreadAction from "../../../../../core/actions/forum/createAiThre
 import postAiResponseAction from "../../../../../core/actions/forum/postAiResponseAction";
 import listRoomThreadsAction from "../../../../../core/actions/forum/listRoomThreadsAction";
 import createAvatarAction from "../../../../../core/actions/hologramAvatar/createAvatarAction";
+import createDefaultAvatar from "../../../../../core/actions/hologramAvatar/createDefaultAvatarAction";
 import updatePoseAction from "../../../../../core/actions/hologramAvatar/updatePoseAction";
 import removeAvatarAction from "../../../../../core/actions/hologramAvatar/removeAvatarAction";
 import loadAvatarsAction from "../../../../../core/actions/hologramAvatar/loadAvatarsAction";
@@ -6927,6 +6928,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             nicknames: JSON.stringify(["helper", "Helper", "helper bot", "Helper Bot", "bot"]),
             max_tokens: 1500,
           });
+
+          // Create default hologram avatar for the bot
+          await createDefaultAvatar(dbRoom.id, socket.user.id, "Helper Bot");
 
           // Send welcome message from the bot
           emitSystemMessage(

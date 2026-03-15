@@ -31,6 +31,9 @@ const findById = async (id: string): Promise<hologram_avatar | null> =>
 const findByRoom = async (roomId: string): Promise<hologram_avatar[]> =>
   prisma.hologram_avatar.findMany({ where: { room_id: roomId } });
 
+const findAll = async (): Promise<hologram_avatar[]> =>
+  prisma.hologram_avatar.findMany({ take: 1 });
+
 const findByRoomAndUser = async (roomId: string, userId: string): Promise<hologram_avatar | null> =>
   prisma.hologram_avatar.findUnique({ where: { room_id_user_id: { room_id: roomId, user_id: userId } } });
 
@@ -57,4 +60,4 @@ const remove = async (id: string): Promise<hologram_avatar> => prisma.hologram_a
 const removeByRoomAndUser = async (roomId: string, userId: string): Promise<hologram_avatar> =>
   prisma.hologram_avatar.delete({ where: { room_id_user_id: { room_id: roomId, user_id: userId } } });
 
-export default { create, findById, findByRoom, findByRoomAndUser, update, updatePose, updatePpoWeights, remove, removeByRoomAndUser };
+export default { create, findById, findAll, findByRoom, findByRoomAndUser, update, updatePose, updatePpoWeights, remove, removeByRoomAndUser };
