@@ -794,6 +794,24 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     }
     return defaultSettings;
   });
+  const defaultProportions = {
+    headScale: 1.0, headY: 0, neckWidth: 1.0,
+    shoulderWidth: 1.0, bustSize: 1.0, torsoWidth: 1.0,
+    waistWidth: 1.0, hipWidth: 1.0,
+    armThickness: 1.0, armLength: 1.0,
+    thighWidth: 1.0, calfWidth: 1.0, legLength: 1.0,
+  };
+  const [bodyProportions, setBodyProportions] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('holoProportions');
+        if (saved) return { ...defaultProportions, ...JSON.parse(saved) };
+      } catch { /* ignore */ }
+    }
+    return defaultProportions;
+  });
+  const bodyProportionsRef = useRef(bodyProportions);
+  useEffect(() => { bodyProportionsRef.current = bodyProportions; }, [bodyProportions]);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -951,6 +969,51 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         }
       }
 
+      // ── Proportion scaling helper ─────────────────────
+      const bp = bodyProportionsRef.current;
+      const headJoints = new Set(['head']);
+      const neckJoints = new Set(['neck']);
+      const shoulderJoints = new Set(['l_shoulder', 'r_shoulder']);
+      const armJoints = new Set(['l_shoulder', 'r_shoulder', 'l_elbow', 'r_elbow', 'l_hand', 'r_hand']);
+      const torsoJoints = new Set(['chest', 'spine', 'root']);
+      const legJoints = new Set(['l_hip', 'r_hip', 'l_knee', 'r_knee', 'l_foot', 'r_foot']);
+
+      const applyProportion = (pos: THREE.Vector3, jointId: string): void => {
+        if (headJoints.has(jointId)) {
+          pos.x *= bp.headScale;
+          pos.z *= bp.headScale;
+          pos.y += bp.headY * 0.1;
+        } else if (neckJoints.has(jointId)) {
+          pos.x *= bp.neckWidth;
+          pos.z *= bp.neckWidth;
+        } else if (armJoints.has(jointId)) {
+          // Scale arm thickness (X/Z) and length (Y stretch from shoulder)
+          const armSign = jointId.startsWith('l_') ? -1 : 1;
+          const shoulderX = armSign * 0.125 * bp.shoulderWidth;
+          pos.x = shoulderX + (pos.x - armSign * 0.125) * bp.armThickness;
+          pos.z *= bp.armThickness;
+        } else if (torsoJoints.has(jointId)) {
+          // Different width scaling per Y zone
+          if (pos.y > 0.33) {
+            pos.x *= bp.torsoWidth;
+            pos.z *= bp.bustSize;
+          } else if (pos.y > 0.15) {
+            pos.x *= bp.waistWidth;
+            pos.z *= bp.waistWidth;
+          } else {
+            pos.x *= bp.hipWidth;
+            pos.z *= bp.hipWidth;
+          }
+        } else if (legJoints.has(jointId)) {
+          const isThigh = pos.y > -0.48;
+          const widthMul = isThigh ? bp.thighWidth : bp.calfWidth;
+          const legSign = jointId.startsWith('l_') ? -1 : 1;
+          const legCenterX = legSign * 0.04;
+          pos.x = legCenterX + (pos.x - legCenterX) * widthMul;
+          pos.z *= widthMul;
+        }
+      };
+
       // ── Update instanced point mesh ───────────────────
       const instMesh = instancedMeshRef.current.get(avatar.id);
       if (instMesh && avatar.points.length > 0) {
@@ -995,6 +1058,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // Apply joint world rotation to point offset (fixes arm/leg rotation)
           offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
+          applyProportion(worldPos, point.joint_id);
           const pointSize = point.size * 0.008 * sizeScale;
 
           // Core point
@@ -1782,6 +1846,69 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           >
             Save Settings
           </button>
+
+          {/* ─── Body Proportions Section ─── */}
+          <div style={{ borderTop: '1px solid rgba(77,216,208,0.2)', marginTop: 10, paddingTop: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 8, color: '#4dd8d0' }}>
+              Body Proportions
+            </div>
+            {([
+              { key: 'headScale', label: 'Head Size', min: 0.5, max: 2.0, step: 0.05, info: 'Scale head width and depth' },
+              { key: 'headY', label: 'Head Y Offset', min: -1.0, max: 1.0, step: 0.05, info: 'Move head up or down' },
+              { key: 'neckWidth', label: 'Neck Width', min: 0.3, max: 2.0, step: 0.05, info: 'Scale neck thickness' },
+              { key: 'shoulderWidth', label: 'Shoulder Width', min: 0.5, max: 2.0, step: 0.05, info: 'Scale shoulder spread' },
+              { key: 'bustSize', label: 'Bust Size', min: 0.5, max: 2.0, step: 0.05, info: 'Scale bust/chest depth' },
+              { key: 'torsoWidth', label: 'Upper Torso Width', min: 0.5, max: 2.0, step: 0.05, info: 'Scale ribcage and chest width' },
+              { key: 'waistWidth', label: 'Waist Width', min: 0.3, max: 2.0, step: 0.05, info: 'Scale waist/belly width' },
+              { key: 'hipWidth', label: 'Hip Width', min: 0.5, max: 2.0, step: 0.05, info: 'Scale hip and lower abdomen width' },
+              { key: 'armThickness', label: 'Arm Thickness', min: 0.3, max: 2.0, step: 0.05, info: 'Scale arm cross-section' },
+              { key: 'thighWidth', label: 'Thigh Width', min: 0.3, max: 2.5, step: 0.05, info: 'Scale upper leg thickness' },
+              { key: 'calfWidth', label: 'Calf Width', min: 0.3, max: 2.5, step: 0.05, info: 'Scale lower leg thickness' },
+            ] as const).map(({ key, label, min, max, step, info }) => (
+              <div key={key} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                  <span>{label}</span>
+                  <span title={info} style={{
+                    cursor: 'help', fontSize: 9, color: '#6ab8b4',
+                    border: '1px solid #3a8a86', borderRadius: '50%',
+                    width: 13, height: 13, display: 'inline-flex',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>?</span>
+                  <span style={{ marginLeft: 'auto', color: '#4dd8d0' }}>
+                    {bodyProportions[key as keyof typeof bodyProportions].toFixed(2)}
+                  </span>
+                </div>
+                <input
+                  type="range" min={min} max={max} step={step}
+                  value={bodyProportions[key as keyof typeof bodyProportions]}
+                  onChange={(e) => setBodyProportions((s: typeof bodyProportions) => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                  style={{ width: '100%', accentColor: '#e0a040', height: 4 }}
+                />
+              </div>
+            ))}
+            <button
+              onClick={() => localStorage.setItem('holoProportions', JSON.stringify(bodyProportions))}
+              style={{
+                marginTop: 6, width: '100%', padding: '5px 0',
+                background: 'rgba(224,160,64,0.2)', border: '1px solid rgba(224,160,64,0.4)',
+                borderRadius: 4, color: '#e0a040', cursor: 'pointer', fontSize: 11,
+                fontFamily: 'monospace',
+              }}
+            >
+              Save Proportions
+            </button>
+            <button
+              onClick={() => { setBodyProportions(defaultProportions); localStorage.removeItem('holoProportions'); }}
+              style={{
+                marginTop: 4, width: '100%', padding: '5px 0',
+                background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)',
+                borderRadius: 4, color: '#ff8888', cursor: 'pointer', fontSize: 11,
+                fontFamily: 'monospace',
+              }}
+            >
+              Reset to Default
+            </button>
+          </div>
         </div>
       )}
       {avatars.length === 1 && avatars[0].id !== '__default__' && (
