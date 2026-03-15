@@ -281,7 +281,7 @@ for (let i = 0; i < 5000; i++) {
   if (y > 0.33 && y <= 0.50 && Math.random() < 0.65) continue;  // chest: keep 35%
   if (y > 0.15 && y <= 0.33 && Math.random() < 0.50) continue;  // waist/belly: keep 50%
 
-  addPoint(x, y, z, profile.joint, 0.18, COL.body);
+  addPoint(x, y, z, profile.joint, 0.12, COL.body);
 }
 
 // Extra bust surface density
@@ -296,7 +296,7 @@ for (let i = 0; i < 195; i++) {
   const r = rand(0.015, 0.05);
   const x = bx + r * Math.sin(angle);
   const z = profile.d + profile.bust * rand(0.3, 1.0) * Math.cos(angle);
-  addPoint(x, y, z, 'chest', 0.18, COL.body);
+  addPoint(x, y, z, 'chest', 0.12, COL.body);
 }
 
 // Glute volume — fuller rear
@@ -348,7 +348,7 @@ for (let i = 0; i < 250; i++) {
   const x = lerp(legX, torsoX, blend);
   const z = lerp(legZ, torsoZ, blend);
 
-  addPoint(x, y, z, joint, 0.18, COL.body);
+  addPoint(x, y, z, joint, 0.12, COL.body);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -395,7 +395,7 @@ function sampleEllipticalLimb(secs: EllipseSection[], count: number, jointId: st
     );
 
     const angle = rand(0, Math.PI * 2);
-    addPoint(cx + rw * Math.cos(angle), y, zs + rd * Math.sin(angle), jointId, 0.18, COL.body);
+    addPoint(cx + rw * Math.cos(angle), y, zs + rd * Math.sin(angle), jointId, 0.12, COL.body);
   }
 }
 
@@ -441,9 +441,9 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
   // Feet
   const fx = side * 0.065;
   const fy = ankleY;
-  ellipsoid(fx, fy, 0, 0.017, 0.012, 0.017, 50, footJoint, 0.18, COL.body);
-  ellipsoid(fx, fy - 0.015, 0.021, 0.017, 0.009, 0.033, 80, footJoint, 0.18, COL.body);
-  ellipsoid(fx, fy - 0.009, -0.012, 0.012, 0.009, 0.012, 50, footJoint, 0.18, COL.dim);
+  ellipsoid(fx, fy, 0, 0.017, 0.012, 0.017, 50, footJoint, 0.12, COL.body);
+  ellipsoid(fx, fy - 0.015, 0.021, 0.017, 0.009, 0.033, 80, footJoint, 0.12, COL.body);
+  ellipsoid(fx, fy - 0.009, -0.012, 0.012, 0.009, 0.012, 50, footJoint, 0.12, COL.dim);
   for (let t = 0; t < 5; t++) {
     const tx = fx - 0.008 + t * 0.004;
     const toeSize = t === 0 ? 0.005 : 0.004;
@@ -646,7 +646,7 @@ for (let ni = 0; ni < 50; ni++) {
   const nx = nrw * Math.cos(na);
   const nz = nrd * Math.sin(na);
   if (ny > 0.615 && nz > 0.01) continue; // above jaw: back only
-  addPoint(nx, ny, nz, 'head', 0.18, COL.body);
+  addPoint(nx, ny, nz, 'head', 0.12, COL.body);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -729,7 +729,7 @@ for (const side of [-1, 1]) {
   for (let i = 0; i < 20; i++) {
     const ea = rand(0, Math.PI * 2);
     addPoint(ecx + 0.028 * Math.cos(ea) * rand(0.7, 1), ecy + 0.016 * Math.sin(ea) * rand(0.7, 1),
-      ecz - 0.003, 'head', 0.18, COL.body);
+      ecz - 0.003, 'head', 0.12, COL.body);
   }
   // Eyeball — subtle
   for (let i = 0; i < 6; i++) {
@@ -745,13 +745,13 @@ for (const side of [-1, 1]) {
   for (let i = 0; i < 12; i++) {
     const et = rand(-1, 1);
     addPoint(ecx + et * 0.022, ecy + 0.007 + (1 - et * et) * 0.003, ecz - 0.001,
-      'head', 0.18, COL.body);
+      'head', 0.12, COL.body);
   }
   // Lower eyelid
   for (let i = 0; i < 10; i++) {
     const et = rand(-1, 1);
     addPoint(ecx + et * 0.020, ecy - 0.006 - (1 - et * et) * 0.002, ecz - 0.001,
-      'head', 0.18, COL.body);
+      'head', 0.12, COL.body);
   }
 }
 
@@ -761,19 +761,19 @@ for (const side of [-1, 1]) {
   for (let i = 0; i < 10; i++) {
     const bt = rand(0, 1);
     addPoint(side * lerp(0.017, 0.028, bt) + rand(-0.003, 0.003),
-      lerp(0.717, 0.719, bt) + rand(-0.002, 0.002), 0.106, 'head', 0.18, COL.body);
+      lerp(0.717, 0.719, bt) + rand(-0.002, 0.002), 0.106, 'head', 0.12, COL.body);
   }
   // Brow peak
   for (let i = 0; i < 12; i++) {
     const bt = rand(0, 1);
     addPoint(side * lerp(0.028, 0.039, bt) + rand(-0.004, 0.004),
-      lerp(0.719, 0.721, bt) + rand(-0.002, 0.002), 0.106, 'head', 0.18, COL.body);
+      lerp(0.719, 0.721, bt) + rand(-0.002, 0.002), 0.106, 'head', 0.12, COL.body);
   }
   // Brow tail
   for (let i = 0; i < 8; i++) {
     const bt = rand(0, 1);
     addPoint(side * lerp(0.039, 0.050, bt) + rand(-0.002, 0.002),
-      lerp(0.721, 0.715, bt) + rand(-0.002, 0.002), 0.106, 'head', 0.18, COL.body);
+      lerp(0.721, 0.715, bt) + rand(-0.002, 0.002), 0.106, 'head', 0.12, COL.body);
   }
 }
 
@@ -781,31 +781,31 @@ for (const side of [-1, 1]) {
 // Nose bridge — defined
 for (let i = 0; i < 18; i++) {
   const nt = rand(0, 1);
-  addPoint(rand(-0.002, 0.002), lerp(0.707, 0.685, nt), 0.112 + nt * 0.004, 'head', 0.18, COL.body);
+  addPoint(rand(-0.002, 0.002), lerp(0.707, 0.685, nt), 0.112 + nt * 0.004, 'head', 0.12, COL.body);
 }
 // Nose body — defined
 for (let i = 0; i < 20; i++) {
   const nt = rand(0, 1);
   const nw = lerp(0.003, 0.005, nt);
-  addPoint(rand(-nw, nw), lerp(0.685, 0.672, nt), lerp(0.116, 0.120, nt), 'head', 0.18, COL.body);
+  addPoint(rand(-nw, nw), lerp(0.685, 0.672, nt), lerp(0.116, 0.120, nt), 'head', 0.12, COL.body);
 }
 // Nose tip — prominent
 for (let i = 0; i < 12; i++) {
   const na = rand(0, Math.PI * 2);
   addPoint(0.006 * Math.cos(na), 0.670 + 0.006 * Math.sin(na), 0.128 + rand(-0.002, 0.002),
-    'head', 0.18, COL.body);
+    'head', 0.12, COL.body);
 }
 // Nostrils — defined
 for (const side of [-1, 1]) {
   for (let i = 0; i < 10; i++) {
     addPoint(side * 0.007 + rand(-0.003, 0.003), 0.672 + rand(-0.003, 0.003),
-      0.112 + rand(-0.002, 0.002), 'head', 0.18, COL.body);
+      0.112 + rand(-0.002, 0.002), 'head', 0.12, COL.body);
   }
 }
 // Philtrum
 for (let i = 0; i < 8; i++) {
   const pt = rand(0, 1);
-  addPoint(rand(-0.003, 0.003), lerp(0.670, 0.654, pt), 0.112, 'head', 0.18, COL.body);
+  addPoint(rand(-0.003, 0.003), lerp(0.670, 0.654, pt), 0.112, 'head', 0.12, COL.body);
 }
 
 // ════════ MOUTH ZONES ════════
@@ -814,20 +814,20 @@ for (let i = 0; i < 40; i++) {
   const lt = rand(-1, 1);
   const bowDip = (1 - lt * lt) * 0.002;
   addPoint(lt * 0.022, 0.652 + 0.002 - bowDip + rand(-0.002, 0.002), 0.118 + rand(-0.001, 0.001),
-    'head', 0.18, COL.highlight);
+    'head', 0.12, COL.highlight);
 }
 // Lower lip — prominent, pushed forward
 for (let i = 0; i < 40; i++) {
   const lt = rand(-1, 1);
   const fullness = (1 - lt * lt) * 0.003;
   addPoint(lt * 0.021, 0.645 - fullness + rand(-0.002, 0.002), 0.117 + rand(-0.001, 0.001),
-    'head', 0.18, COL.highlight);
+    'head', 0.12, COL.highlight);
 }
 // Mouth corners
 for (const side of [-1, 1]) {
   for (let i = 0; i < 6; i++) {
     addPoint(side * 0.022 + rand(-0.003, 0.003), 0.650 + rand(-0.003, 0.003),
-      0.102 + rand(-0.002, 0.002), 'head', 0.18, COL.body);
+      0.102 + rand(-0.002, 0.002), 'head', 0.12, COL.body);
   }
 }
 
@@ -841,7 +841,7 @@ for (const side of [-1, 1]) {
     const jy = lerp(0.675, 0.617, jt);
     const jp = headProfileAt(jy);
     addPoint(jx + rand(-0.005, 0.005), jy, jp.hd * 0.55 * (1 - jt * 0.3),
-      'head', 0.18, COL.body);
+      'head', 0.12, COL.body);
   }
 }
 // Jaw underside
@@ -851,7 +851,7 @@ headZone(0.617, 0.640, 40, 0.18, COL.body, 'front');
 // Chin front
 for (let i = 0; i < 50; i++) {
   addPoint(rand(-0.022, 0.022), 0.617 + rand(-0.006, 0.006), rand(0.055, 0.075),
-    'head', 0.18, COL.body);
+    'head', 0.12, COL.body);
 }
 // Chin bottom
 headZone(0.602, 0.617, 30, 0.18, COL.body, 'front');
@@ -863,12 +863,12 @@ for (const side of [-1, 1]) {
   // Upper ear
   for (let i = 0; i < 8; i++) {
     addPoint(side * 0.083 + rand(-0.005, 0.005), 0.715 + rand(-0.012, 0.012),
-      rand(-0.004, 0.004), 'head', 0.18, COL.body);
+      rand(-0.004, 0.004), 'head', 0.12, COL.body);
   }
   // Ear lobe
   for (let i = 0; i < 6; i++) {
     addPoint(side * 0.081 + rand(-0.004, 0.004), 0.697 + rand(-0.008, 0.008),
-      rand(-0.003, 0.003), 'head', 0.18, COL.body);
+      rand(-0.003, 0.003), 'head', 0.12, COL.body);
   }
 }
 
