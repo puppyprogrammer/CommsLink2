@@ -826,15 +826,42 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   };
   type HoloSettings = typeof allDefaults;
 
-  const [cfg, setCfg] = useState<HoloSettings>(() => {
+  // Base values: accumulated from previous saves. Sliders always show relative to this.
+  const [cfgBase, setCfgBase] = useState<HoloSettings>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('holoCfg');
+        const saved = localStorage.getItem('holoCfgBase');
         if (saved) return { ...allDefaults, ...JSON.parse(saved) };
       } catch { /* ignore */ }
     }
     return { ...allDefaults };
   });
+
+  // Current slider adjustments (always start at defaults — 1.0 for multipliers, 0.0 for offsets)
+  const [cfgAdj, setCfgAdj] = useState<HoloSettings>({ ...allDefaults });
+
+  // Which keys are offsets (additive) vs multipliers
+  const offsetKeys = new Set([
+    'headY', 'eyeHeight', 'browHeight', 'noseHeight', 'mouthHeight', 'bustHeight',
+    'neckOffsetX', 'neckOffsetY', 'shoulderOffsetX', 'shoulderOffsetY',
+    'torsoOffsetX', 'torsoOffsetY', 'legOffsetX', 'legOffsetY', 'calfOffsetY',
+    'footOffsetX', 'footOffsetY', 'armOffsetX', 'armOffsetY',
+    'handOffsetX', 'handOffsetY', 'smileAmount',
+  ]);
+
+  // Compute effective config: base * adjustment (multipliers) or base + adjustment (offsets)
+  const cfg = useMemo(() => {
+    const result = { ...allDefaults } as HoloSettings;
+    for (const key of Object.keys(allDefaults) as (keyof HoloSettings)[]) {
+      if (offsetKeys.has(key)) {
+        (result as Record<string, number>)[key] = (cfgBase[key] as number) + (cfgAdj[key] as number);
+      } else {
+        (result as Record<string, number>)[key] = (cfgBase[key] as number) * (cfgAdj[key] as number);
+      }
+    }
+    return result;
+  }, [cfgBase, cfgAdj]);
+
   const cfgRef = useRef(cfg);
 
   // Aliases for backward compat with existing code
@@ -2133,10 +2160,19 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         }}>
           {/* Global buttons */}
           <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-            <button onClick={() => { localStorage.setItem('holoCfg', JSON.stringify(cfg)); }}
+            <button onClick={() => {
+              // Bake current effective values into base, reset sliders to center
+              setCfgBase({ ...cfg });
+              setCfgAdj({ ...allDefaults });
+              localStorage.setItem('holoCfgBase', JSON.stringify(cfg));
+            }}
               style={{ flex: 1, padding: '4px 0', background: 'rgba(77,216,208,0.2)', border: '1px solid rgba(77,216,208,0.4)', borderRadius: 3, color: '#4dd8d0', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
               Save All</button>
-            <button onClick={() => { setCfg({ ...allDefaults }); localStorage.removeItem('holoCfg'); }}
+            <button onClick={() => {
+              setCfgBase({ ...allDefaults });
+              setCfgAdj({ ...allDefaults });
+              localStorage.removeItem('holoCfgBase');
+            }}
               style={{ flex: 1, padding: '4px 0', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: 3, color: '#ff8888', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
               Reset All</button>
           </div>
@@ -2166,12 +2202,12 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
                           alignItems: 'center', justifyContent: 'center',
                         }}>?</span>
                         <span style={{ marginLeft: 'auto', color: sec.color, fontSize: 10 }}>
-                          {(cfg[key as keyof HoloSettings] as number).toFixed(step < 0.01 ? 3 : 2)}
+                          {(cfgAdj[key as keyof HoloSettings] as number).toFixed(step < 0.01 ? 3 : 2)}
                         </span>
                       </div>
                       <input type="range" min={min} max={max} step={step}
-                        value={cfg[key as keyof HoloSettings] as number}
-                        onChange={(e) => setCfg((s: HoloSettings) => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                        value={cfgAdj[key as keyof HoloSettings] as number}
+                        onChange={(e) => setCfgAdj((s: HoloSettings) => ({ ...s, [key]: parseFloat(e.target.value) }))}
                         style={{ width: '100%', accentColor: sec.color, height: 3 }} />
                     </div>
                   ))}
