@@ -2413,7 +2413,17 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     holoUniforms.uSizeScale.value = holoSettings.sizeScale;
     if (gridRef.current) {
       (gridRef.current.material as THREE.Material).opacity = holoSettings.gridOpacity;
+      gridRef.current.visible = holoSettings.showGrid > 0.5;
     }
+    // Toggle silhouette
+    if (sceneRef.current) {
+      sceneRef.current.traverse((obj) => {
+        if (obj.name === 'silhouette') obj.visible = holoSettings.showSilhouette > 0.5;
+      });
+    }
+    // Toggle skeleton bones — re-add or hide bone lines
+    // Mark dirty to refresh organ debug colors
+    for (const [, ms] of morphStateRef.current) ms.dirty = true;
   }, [holoSettings, holoUniforms]);
 
   // settingsDef removed — now in sections array above
