@@ -1,6 +1,11 @@
 #!/bin/bash
-# deploy.sh — Full deployment from local machine to EC2 production
+# deploy.sh — Full deployment from local machine to EC2
 # Handles: git commit, SCP changed files, docker rebuild, git push
+#
+# Deploys based on current branch:
+#   main → Prod EC2 (3.134.145.169)
+#   dev  → Test EC2 (3.142.247.115)
+#   other → Refused (merge to dev/main first)
 #
 # Usage: ./scripts/deploy.sh <services> <commit message>
 #   services: api, web, or "api web" (default: api)
@@ -12,21 +17,50 @@
 #   ./scripts/deploy.sh web "New terminal panel UI"
 
 PEM="H:/Development/AIMMO/PuppyCo.pem"
-EC2="ec2-user@3.134.145.169"
+PROD_EC2="ec2-user@3.134.145.169"
+TEST_EC2="ec2-user@3.142.247.115"
 REMOTE="~/CommsLink2"
 
 SERVICES="${1:-api}"
 MSG="${2:-Deploy: $SERVICES $(date '+%Y-%m-%d %H:%M')}"
 
+cd "H:/Development/CommsLink2"
+
+# ── Branch detection ──
+CURRENT_BRANCH=$(git branch --show-current)
+
+case "$CURRENT_BRANCH" in
+  main)
+    EC2="$PROD_EC2"
+    ENV_LABEL="PROD"
+    ;;
+  dev)
+    EC2="$TEST_EC2"
+    ENV_LABEL="TEST"
+    ;;
+  *)
+    echo ""
+    echo "ERROR: deploy.sh only deploys from 'main' (prod) or 'dev' (test)."
+    echo "Current branch: $CURRENT_BRANCH"
+    echo ""
+    echo "To deploy:"
+    echo "  1. Merge your branch to dev:  git checkout dev && git merge $CURRENT_BRANCH"
+    echo "  2. Deploy to test:            bash scripts/deploy.sh $SERVICES \"$MSG\""
+    echo "  3. When ready for prod:       git checkout main && git merge dev"
+    echo "  4. Deploy to prod:            bash scripts/deploy.sh $SERVICES \"$MSG\""
+    exit 1
+    ;;
+esac
+
 echo ""
 echo "========================================="
-echo "  CommsLink Deploy"
+echo "  CommsLink Deploy [$ENV_LABEL]"
+echo "  Branch:   $CURRENT_BRANCH"
+echo "  Server:   $EC2"
 echo "  Services: $SERVICES"
 echo "  Message:  $MSG"
 echo "========================================="
 echo ""
-
-cd "H:/Development/CommsLink2"
 
 # ── Step 1: Git commit (safety snapshot) ──
 echo "[1/5] Git commit (safety snapshot)..."
@@ -48,7 +82,7 @@ FILES_TO_UPLOAD=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
 
 # ── Step 2: SCP changed files to EC2 ──
 echo ""
-echo "[2/5] Uploading changed files to EC2..."
+echo "[2/5] Uploading changed files to $ENV_LABEL EC2..."
 
 if [ -z "$FILES_TO_UPLOAD" ]; then
   echo "  No files to upload"
@@ -65,16 +99,16 @@ fi
 
 # ── Step 3: Clear old deploy log and trigger remote deploy (detached) ──
 echo ""
-echo "[3/5] Starting EC2 build (detached)..."
+echo "[3/5] Starting $ENV_LABEL EC2 build (detached)..."
 
 # Upload the latest deploy-ec2.sh and clear stale log
 scp -i "$PEM" -o StrictHostKeyChecking=no -q scripts/deploy-ec2.sh "$EC2:$REMOTE/scripts/deploy-ec2.sh"
 ssh -n -i "$PEM" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$EC2" "rm -f /tmp/deploy.log && chmod +x $REMOTE/scripts/deploy-ec2.sh && nohup $REMOTE/scripts/deploy-ec2.sh $SERVICES > /dev/null 2>&1 &"
-echo "  Build started on EC2"
+echo "  Build started on $ENV_LABEL EC2"
 
 # ── Step 4: Poll for completion ──
 echo ""
-echo "[4/5] Waiting for EC2 build to complete..."
+echo "[4/5] Waiting for $ENV_LABEL EC2 build to complete..."
 
 POLL_COUNT=0
 MAX_POLLS=40  # 40 * 15s = 10 minutes max
@@ -88,7 +122,7 @@ while true; do
   if echo "$STATUS" | grep -q "DEPLOY_COMPLETE"; then
     echo "  Build complete!"
     echo ""
-    echo "  --- EC2 deploy log ---"
+    echo "  --- $ENV_LABEL EC2 deploy log ---"
     ssh -n -i "$PEM" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$EC2" "cat /tmp/deploy.log" 2>/dev/null || true
     echo "  --- end log ---"
     break
@@ -115,12 +149,12 @@ done
 
 # ── Step 5: Git push ──
 echo ""
-echo "[5/5] Pushing to GitHub..."
+echo "[5/5] Pushing to GitHub ($CURRENT_BRANCH)..."
 cd "H:/Development/CommsLink2"
-git push origin main 2>&1 && echo "  Pushed" || echo "  Push failed (or nothing to push)"
+git push origin "$CURRENT_BRANCH" 2>&1 && echo "  Pushed" || echo "  Push failed (or nothing to push)"
 
 echo ""
 echo "========================================="
-echo "  Deploy complete!"
+echo "  Deploy complete! [$ENV_LABEL]"
 echo "========================================="
 echo ""

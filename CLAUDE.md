@@ -105,6 +105,45 @@ Uses **Vitest** for all backend/core tests. Config: `vitest.config.ts`.
 - **After modifying core/ or services/api/**: Run tests to catch regressions
 - Tests must pass before code ships — this is a hard requirement
 
+## Branching Workflow
+
+```
+Feature branches ──PR──▶ dev ──auto-deploy──▶ Test EC2 (3.142.247.115)
+                                 │
+                              PR (manual)
+                                 │
+                                 ▼
+                               main ──deploy.sh──▶ Prod EC2 (3.134.145.169)
+```
+
+### Branches
+
+- **`main`** — Production. Only receives merges from `dev`. Deploy via `deploy.sh`.
+- **`dev`** — Integration/test branch. Feature branches merge here via PR. Auto-deploys to test EC2.
+- **`feature/<name>`**, **`fix/<name>`**, **`kara/<name>`** — Short-lived branches off `dev`.
+
+### Feature Development Flow
+
+1. Create branch from dev: `git checkout dev && git pull && git checkout -b feature/my-thing`
+2. Work, commit, push: `git push -u origin feature/my-thing`
+3. Open PR to `dev` on GitHub
+4. CI runs tests automatically — PR blocked until tests pass
+5. Merge PR to `dev` → auto-deploys to test EC2
+6. When ready for prod: PR from `dev` → `main`, then `deploy.sh` from `main`
+
+### Servers
+
+| Branch | EC2 Instance | IP | Purpose |
+|--------|-------------|-----|---------|
+| `dev` | CLTest | 3.142.247.115 | Test/staging |
+| `main` | CommsLink2 | 3.134.145.169 | Production |
+
+### CI/CD
+
+- **GitHub Actions** runs tests on all PRs to `dev` and `main`
+- **Auto-deploy**: pushes to `dev` trigger automatic deploy to test EC2 (after tests pass)
+- **Prod deploy**: manual via `deploy.sh` from `main` branch only
+
 ## Deployment Workflow
 
 ### Automated (preferred — required for AI agents)
@@ -113,11 +152,18 @@ Uses **Vitest** for all backend/core tests. Config: `vitest.config.ts`.
 bash scripts/deploy.sh <services> "<commit message>"
 ```
 
+The script auto-detects your branch and deploys to the right server:
+- **`main`** → Prod EC2 (3.134.145.169)
+- **`dev`** → Test EC2 (3.142.247.115)
+- **Other branches** → Refused (merge to dev/main first)
+
 Examples:
 ```bash
+# From main branch (prod deploy)
 bash scripts/deploy.sh api "Fix chat handler bug"
-bash scripts/deploy.sh web "Update terminal panel UI"
-bash scripts/deploy.sh "api web" "Full stack update"
+
+# From dev branch (test deploy)
+bash scripts/deploy.sh "api web" "Test new feature"
 ```
 
 The script handles everything in one command:
@@ -134,12 +180,12 @@ The script handles everything in one command:
 ### Manual (for special cases)
 
 1. **Edit locally** in `H:\Development\CommsLink2`
-2. **SCP changed files to EC2**: `scp -i PuppyCo.pem <files> ec2-user@3.134.145.169:~/CommsLink2/<path>`
+2. **SCP changed files to EC2**: `scp -i PuppyCo.pem <files> ec2-user@<IP>:~/CommsLink2/<path>`
 3. **Rebuild on EC2**:
    - **Code-only changes** (default): `docker-compose -f docker-compose.prod.yml build api && docker-compose -f docker-compose.prod.yml up -d api`
    - **Dependency changes** (package.json/yarn.lock): `docker-compose -f docker-compose.prod.yml build --no-cache api && docker-compose -f docker-compose.prod.yml up -d api`
    - Replace `api` with `web` or `api web` as needed
-4. **Push to GitHub**: `git add <files> && git commit -m "description" && git push origin main`
+4. **Push to GitHub**: `git add <files> && git commit -m "description" && git push origin <branch>`
 
 **IMPORTANT**: Do NOT use `--no-cache` for code-only changes. The Dockerfile layers deps before source, so code changes invalidate the cache correctly. Using `--no-cache` wastes ~6-8GB per build on a 20GB disk.
 

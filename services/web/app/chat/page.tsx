@@ -1353,28 +1353,113 @@ const ChatPage = () => {
         )}
       </Box>
 
-      <Dialog open={createRoomOpen} onClose={() => setCreateRoomOpen(false)}>
-        <DialogTitle>Create Room</DialogTitle>
-        <DialogContent>
+      <Dialog
+        open={createRoomOpen}
+        onClose={() => setCreateRoomOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(145deg, #0a1929 0%, #0d2137 50%, #0a1929 100%)',
+            border: '1px solid rgba(77, 216, 208, 0.2)',
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{
+          textAlign: 'center', pt: 3,
+          fontFamily: "'Orbitron', monospace",
+          color: '#4dd8d0',
+          textShadow: '0 0 10px rgba(77,216,208,0.3)',
+          fontSize: '1.4rem',
+        }}>
+          Create Your Space
+        </DialogTitle>
+        <DialogContent sx={{ px: 4, pb: 1 }}>
+          <Typography variant="body2" sx={{ color: '#8899aa', textAlign: 'center', mb: 3 }}>
+            Your room is your command center — chat, deploy AI agents, run terminals, and collaborate.
+          </Typography>
+
           <TextField
             fullWidth
             label="Room Name"
             value={newRoomName}
             onChange={(e) => setNewRoomName(e.target.value)}
-            sx={{ mt: 1, mb: 2 }}
+            placeholder="e.g. My Lab, Game Night, Study Group"
+            sx={{
+              mb: 2,
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(77,216,208,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(77,216,208,0.5)' },
+                '&.Mui-focused fieldset': { borderColor: '#4dd8d0' },
+              },
+              '& .MuiInputLabel-root': { color: '#6688aa' },
+              '& .MuiInputBase-input': { color: '#e0e8f0' },
+            }}
           />
+
           <TextField
             fullWidth
-            label="Password (optional)"
+            label="Password (leave empty for invite-only)"
             type="password"
             value={newRoomPassword}
             onChange={(e) => setNewRoomPassword(e.target.value)}
+            sx={{
+              mb: 3,
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(77,216,208,0.15)' },
+                '&:hover fieldset': { borderColor: 'rgba(77,216,208,0.3)' },
+              },
+              '& .MuiInputLabel-root': { color: '#556677' },
+              '& .MuiInputBase-input': { color: '#c0c8d0' },
+            }}
           />
+
+          {/* Feature highlights */}
+          <Box sx={{
+            background: 'rgba(77,216,208,0.05)',
+            border: '1px solid rgba(77,216,208,0.1)',
+            borderRadius: 2, p: 2, mb: 2,
+          }}>
+            <Typography variant="caption" sx={{ color: '#4dd8d0', fontWeight: 'bold', mb: 1, display: 'block' }}>
+              What you can do in your room:
+            </Typography>
+            {[
+              { icon: '🤖', text: 'Deploy AI agents that think, speak, and work autonomously' },
+              { icon: '💻', text: 'Connect remote terminals and run Claude Code sessions' },
+              { icon: '🎙️', text: 'Voice chat with ElevenLabs text-to-speech' },
+              { icon: '👾', text: 'Customize 3D holographic avatars' },
+              { icon: '🔍', text: 'AI-powered web search and browsing' },
+            ].map((f, i) => (
+              <Typography key={i} variant="body2" sx={{ color: '#8899aa', fontSize: '0.78rem', py: 0.3 }}>
+                <span style={{ marginRight: 8 }}>{f.icon}</span>{f.text}
+              </Typography>
+            ))}
+          </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateRoomOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreateRoom}>
-            Create
+        <DialogActions sx={{ px: 4, pb: 3, justifyContent: 'center', gap: 1 }}>
+          <Button
+            onClick={() => setCreateRoomOpen(false)}
+            sx={{ color: '#667788', px: 3 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateRoom}
+            sx={{
+              px: 4,
+              background: 'linear-gradient(135deg, #4dd8d0 0%, #3ab8b0 100%)',
+              color: '#0a1929',
+              fontWeight: 'bold',
+              boxShadow: '0 0 15px rgba(77,216,208,0.3)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #5de8e0 0%, #4ac8c0 100%)',
+                boxShadow: '0 0 25px rgba(77,216,208,0.5)',
+              },
+            }}
+          >
+            Create Room
           </Button>
         </DialogActions>
       </Dialog>
