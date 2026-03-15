@@ -85,12 +85,12 @@ const JOINTS: Record<string, [number, number, number]> = {
   r_elbow:    [0.160, 0.27, 0],
   l_hand:     [-0.160, 0.07, 0],
   r_hand:     [0.160, 0.07, 0],
-  l_hip:      [-0.050, 0, 0],
-  r_hip:      [0.050, 0, 0],
-  l_knee:     [-0.065, -0.44, 0],
-  r_knee:     [0.065, -0.44, 0],
-  l_foot:     [-0.065, -0.88, 0],
-  r_foot:     [0.065, -0.88, 0],
+  l_hip:      [-0.050, -0.10, 0],
+  r_hip:      [0.050, -0.10, 0],
+  l_knee:     [-0.065, -0.48, 0],
+  r_knee:     [0.065, -0.48, 0],
+  l_foot:     [-0.065, -0.86, 0],
+  r_foot:     [0.065, -0.86, 0],
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -179,17 +179,17 @@ type Section = {
 
 const sections: Section[] = [
   // Lower abdomen
-  { y: 0.06,  w: 0.110, d: 0.080, joint: 'root' },
+  { y: -0.06, w: 0.118, d: 0.082, joint: 'root' },
   // Hip bone (widest)
-  { y: 0.10,  w: 0.122, d: 0.085, joint: 'root' },
+  { y: 0.00,  w: 0.130, d: 0.088, joint: 'root' },
   // Above hips
-  { y: 0.15,  w: 0.102, d: 0.078, joint: 'spine' },
+  { y: 0.08,  w: 0.102, d: 0.078, joint: 'spine' },
   // Navel
-  { y: 0.20,  w: 0.085, d: 0.070, joint: 'spine' },
+  { y: 0.16,  w: 0.085, d: 0.070, joint: 'spine' },
   // Natural waist
-  { y: 0.25,  w: 0.073, d: 0.062, joint: 'spine' },
+  { y: 0.22,  w: 0.073, d: 0.062, joint: 'spine' },
   // Above waist
-  { y: 0.29,  w: 0.082, d: 0.068, joint: 'spine' },
+  { y: 0.27,  w: 0.082, d: 0.068, joint: 'spine' },
   // Ribcage
   { y: 0.33,  w: 0.095, d: 0.075, joint: 'chest' },
   // Bust line
@@ -301,7 +301,7 @@ for (let i = 0; i < 195; i++) {
 
 // Glute volume — fuller rear
 for (let i = 0; i < 100; i++) {
-  const y = rand(-0.02, 0.12);
+  const y = rand(-0.12, 0.02);
   const profile = evalTorsoAt(Math.max(y, sections[0].y));
   if (!profile) continue;
   const angle = rand(Math.PI * 0.55, Math.PI * 1.45);
@@ -319,8 +319,8 @@ for (let i = 0; i < 100; i++) {
 // Outer edges align with hip width for smooth contour.
 // ══════════════════════════════════════════════════════════════
 
-const bifurcTop = 0.08;
-const bifurcBot = 0.00;
+const bifurcTop = -0.02;
+const bifurcBot = -0.10;
 const legTopCenterX = 0.050;
 const legTopRadiusW = 0.042;
 const legTopRadiusD = 0.035;
@@ -406,8 +406,8 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
   const topCX = side * legTopCenterX;
   const kneeX = side * 0.065;
   const ankleX = side * 0.065;
-  const kneeY = -0.44;
-  const ankleY = -0.88;
+  const kneeY = -0.48;
+  const ankleY = -0.86;
 
   // Thigh — widest just below hip, tapers to narrow knee
   // Side: fuller at front (positive zShift), neutral at knee
@@ -440,7 +440,7 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
 
   // Feet
   const fx = side * 0.065;
-  const fy = ankleY;
+  const fy = ankleY; // -0.86
   ellipsoid(fx, fy, 0, 0.017, 0.012, 0.017, 50, footJoint, 0.12, COL.body);
   ellipsoid(fx, fy - 0.015, 0.021, 0.017, 0.009, 0.033, 80, footJoint, 0.12, COL.body);
   ellipsoid(fx, fy - 0.009, -0.012, 0.012, 0.009, 0.012, 50, footJoint, 0.12, COL.dim);

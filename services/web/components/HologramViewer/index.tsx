@@ -1117,8 +1117,12 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       jointMarkersRef.current.set(avatar.id, markerMap);
 
       // ── Debug silhouette outline (toggle with 'o' key) ──────────
+      // Traces a complete closed loop around the body from the front view.
+      // Goes: right arm down → right hand → right arm up → right shoulder →
+      // right torso down → right leg down → right foot → right leg up (inner) →
+      // crotch → left leg down (inner) → left foot → left leg up → left torso up →
+      // left shoulder → left arm down → left hand → left arm up → head top
       {
-        // Resolve world positions for all particles
         const worldPts: { x: number; y: number; z: number }[] = [];
         for (const pt of avatar.points) {
           const jPos = jointPositions.get(pt.joint_id);
@@ -1134,47 +1138,81 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         const yMin = Math.min(...worldPts.map((p) => p.y));
         const yMax = Math.max(...worldPts.map((p) => p.y));
 
-        const leftEdge: THREE.Vector3[] = [];
-        const rightEdge: THREE.Vector3[] = [];
-        const frontEdge: THREE.Vector3[] = [];
-        const backEdge: THREE.Vector3[] = [];
+        // At each Y level, find: leftmost X, rightmost X,
+        // and for the inner edges: the rightmost X on left side (X<0) near center,
+        // and leftmost X on right side (X>0) near center
+        type Edge = { y: number; outerX: number; innerX: number };
+        const rightOuter: THREE.Vector3[] = [];
+        const rightInner: THREE.Vector3[] = [];
+        const leftOuter: THREE.Vector3[] = [];
+        const leftInner: THREE.Vector3[] = [];
 
         for (let y = yMin; y <= yMax; y += step) {
           const band = worldPts.filter((p) => Math.abs(p.y - y) < 0.005);
           if (band.length < 2) continue;
 
-          let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+          let minX = Infinity, maxX = -Infinity;
           for (const p of band) {
             if (p.x < minX) minX = p.x;
             if (p.x > maxX) maxX = p.x;
-            if (p.z < minZ) minZ = p.z;
-            if (p.z > maxZ) maxZ = p.z;
           }
 
-          leftEdge.push(new THREE.Vector3(minX, y, 0));
-          rightEdge.push(new THREE.Vector3(maxX, y, 0));
-          frontEdge.push(new THREE.Vector3(0, y, maxZ));
-          backEdge.push(new THREE.Vector3(0, y, minZ));
+          rightOuter.push(new THREE.Vector3(maxX, y, 0));
+          leftOuter.push(new THREE.Vector3(minX, y, 0));
+
+          // Inner edges — only meaningful in leg/crotch zone where there's a gap
+          const rightSide = band.filter((p) => p.x > 0);
+          const leftSide = band.filter((p) => p.x < 0);
+          if (rightSide.length > 0) {
+            const innerR = Math.min(...rightSide.map((p) => p.x));
+            rightInner.push(new THREE.Vector3(innerR, y, 0));
+          }
+          if (leftSide.length > 0) {
+            const innerL = Math.max(...leftSide.map((p) => p.x));
+            leftInner.push(new THREE.Vector3(innerL, y, 0));
+          }
         }
+
+        // Sort all by Y ascending
+        rightOuter.sort((a, b) => a.y - b.y);
+        leftOuter.sort((a, b) => a.y - b.y);
+        rightInner.sort((a, b) => a.y - b.y);
+        leftInner.sort((a, b) => a.y - b.y);
+
+        // Build the closed contour loop:
+        // Start at top of head, go down right outer, across right foot,
+        // up right inner leg, across crotch, down left inner leg,
+        // across left foot, up left outer, back to top
+        const contour: THREE.Vector3[] = [];
+
+        // Right outer: top to bottom
+        const rOuterDown = [...rightOuter].sort((a, b) => b.y - a.y);
+        for (const p of rOuterDown) contour.push(p);
+
+        // Right inner: bottom to top (inner leg)
+        const rInnerUp = [...rightInner].sort((a, b) => a.y - b.y);
+        for (const p of rInnerUp) contour.push(p);
+
+        // Left inner: top to bottom (inner leg)
+        const lInnerDown = [...leftInner].sort((a, b) => b.y - a.y);
+        for (const p of lInnerDown) contour.push(p);
+
+        // Left outer: bottom to top
+        const lOuterUp = [...leftOuter].sort((a, b) => a.y - b.y);
+        for (const p of lOuterUp) contour.push(p);
+
+        // Close the loop
+        if (contour.length > 3) contour.push(contour[0].clone());
 
         const silhouetteGroup = new THREE.Group();
         silhouetteGroup.name = 'silhouette';
-        silhouetteGroup.visible = false; // hidden by default
+        silhouetteGroup.visible = false;
 
         const magentaMat = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 1 });
-        const yellowMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 1 });
 
-        if (leftEdge.length > 2) {
-          silhouetteGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(leftEdge), magentaMat));
-        }
-        if (rightEdge.length > 2) {
-          silhouetteGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rightEdge), magentaMat));
-        }
-        if (frontEdge.length > 2) {
-          silhouetteGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(frontEdge), yellowMat));
-        }
-        if (backEdge.length > 2) {
-          silhouetteGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(backEdge), yellowMat));
+        if (contour.length > 4) {
+          silhouetteGroup.add(new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(contour), magentaMat));
         }
 
         group.add(silhouetteGroup);
