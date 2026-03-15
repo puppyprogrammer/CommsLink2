@@ -2640,7 +2640,11 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           {/* Preset poses */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 8 }}>
             {[
-              { name: 'T-Pose', pose: {} },
+              { name: 'Default', pose: {} },
+              { name: 'T-Pose', pose: {
+                l_shoulder: { rx: 0, ry: 0, rz: -1.57 },
+                r_shoulder: { rx: 0, ry: 0, rz: 1.57 },
+              }},
               { name: 'A-Pose', pose: {
                 l_shoulder: { rx: 0, ry: 0, rz: 0.5 },
                 r_shoulder: { rx: 0, ry: 0, rz: -0.5 },
