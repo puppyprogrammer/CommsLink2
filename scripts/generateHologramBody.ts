@@ -252,7 +252,7 @@ function evalTorsoAt(y: number): { w: number; d: number; joint: string; bust: nu
 const torsoYMin = sections[0].y;
 const torsoYMax = sections[sections.length - 1].y;
 
-for (let i = 0; i < 10000; i++) {
+for (let i = 0; i < 5000; i++) {
   const y = rand(torsoYMin, torsoYMax);
   const profile = evalTorsoAt(y);
   if (!profile) continue;
@@ -276,14 +276,16 @@ for (let i = 0; i < 10000; i++) {
     }
   }
 
-  // Reduce density in neck zone — small circumference = over-dense
-  if (y > 0.50 && Math.random() < 0.55) continue;
+  // Balance density across torso — upper regions are over-dense
+  if (y > 0.50 && Math.random() < 0.80) continue;     // neck zone: keep 20%
+  if (y > 0.33 && y <= 0.50 && Math.random() < 0.65) continue;  // chest: keep 35%
+  if (y > 0.15 && y <= 0.33 && Math.random() < 0.50) continue;  // waist/belly: keep 50%
 
   addPoint(x, y, z, profile.joint, 0.18, COL.body);
 }
 
 // Extra bust surface density
-for (let i = 0; i < 390; i++) {
+for (let i = 0; i < 195; i++) {
   const y = rand(0.34, 0.42);
   const profile = evalTorsoAt(y);
   if (!profile || profile.bust <= 0) continue;
@@ -298,7 +300,7 @@ for (let i = 0; i < 390; i++) {
 }
 
 // Glute volume — fuller rear
-for (let i = 0; i < 325; i++) {
+for (let i = 0; i < 160; i++) {
   const y = rand(-0.02, 0.12);
   const profile = evalTorsoAt(Math.max(y, sections[0].y));
   if (!profile) continue;
@@ -324,7 +326,7 @@ const legTopRadiusW = 0.068;
 const legTopRadiusD = 0.055;
 
 // Only ~800 particles in this narrow 0.08-unit zone — matches density of legs
-for (let i = 0; i < 500; i++) {
+for (let i = 0; i < 250; i++) {
   const y = rand(bifurcBot, bifurcTop);
   const blend = (y - bifurcBot) / (bifurcTop - bifurcBot); // 0=bottom(legs), 1=top(torso)
 
@@ -420,7 +422,7 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
     { y: lerp(bifurcBot, kneeY, 0.92), cx: lerp(topCX, kneeX, 0.92), rw: 0.041,         rd: 0.040,         zShift: 0.000 },
     { y: kneeY,                              cx: kneeX,                      rw: 0.039,         rd: 0.038,         zShift: 0.000 },
   ];
-  sampleEllipticalLimb(thighSections, 3800, hipJoint);
+  sampleEllipticalLimb(thighSections, 1100, hipJoint);
 
   // Calf — knee (narrow) → calf bulge (~1/3 down) → ankle taper
   // Side: calf muscle pushes backward (negative zShift)
@@ -434,13 +436,13 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
     { y: lerp(kneeY, ankleY, 0.90), cx: ankleX, rw: 0.028, rd: 0.026, zShift: 0.000 },
     { y: ankleY + 0.03,                 cx: ankleX, rw: 0.026, rd: 0.024, zShift: 0.000 },
   ];
-  sampleEllipticalLimb(calfSections, 2500, kneeJoint);
+  sampleEllipticalLimb(calfSections, 900, kneeJoint);
 
   // Feet
   const fx = side * 0.08;
   const fy = ankleY;
-  ellipsoid(fx, fy, 0, 0.028, 0.020, 0.028, 100, footJoint, 0.18, COL.body);
-  ellipsoid(fx, fy - 0.025, 0.035, 0.028, 0.015, 0.055, 160, footJoint, 0.18, COL.body);
+  ellipsoid(fx, fy, 0, 0.028, 0.020, 0.028, 50, footJoint, 0.18, COL.body);
+  ellipsoid(fx, fy - 0.025, 0.035, 0.028, 0.015, 0.055, 80, footJoint, 0.18, COL.body);
   ellipsoid(fx, fy - 0.015, -0.020, 0.020, 0.015, 0.020, 50, footJoint, 0.18, COL.dim);
   for (let t = 0; t < 5; t++) {
     const tx = fx - 0.014 + t * 0.007;
@@ -556,7 +558,7 @@ for (const [side, shJoint, elJoint, haJoint] of [
 
   // Sample rings along the curve
   const numRings = 50;
-  const totalParticles = 2100; // shoulder + upper arm + forearm combined
+  const totalParticles = 1050; // shoulder + upper arm + forearm combined
   const particlesPerRing = Math.ceil(totalParticles / numRings);
 
   for (let ring = 0; ring < numRings; ring++) {
@@ -628,7 +630,7 @@ const neckConnectorSecs: EllipseSection[] = [
   { y: 0.617, cx: 0, rw: 0.037, rd: 0.046 },
   { y: 0.650, cx: 0, rw: 0.032, rd: 0.038 },
 ];
-for (let ni = 0; ni < 105; ni++) {
+for (let ni = 0; ni < 50; ni++) {
   const nyMin = neckConnectorSecs[neckConnectorSecs.length - 1].y;
   const nyMax = neckConnectorSecs[0].y;
   const ny = rand(nyMin, nyMax);
@@ -706,16 +708,16 @@ function headZone(
 }
 
 // ════════ SKULL ZONES ════════
-headZone(0.755, 0.795, 200, 0.18, COL.dim, 'full');        // cranium (reduced)
-headZone(0.735, 0.755, 150, 0.18, COL.dim, 'full');        // upper forehead (reduced)
-headZone(0.715, 0.735, 200, 0.18, COL.body, 'front');      // lower forehead
-headZone(0.700, 0.720, 250, 0.18, COL.body, 'sidesOnly');  // temples
-headZone(0.625, 0.795, 500, 0.18, COL.dim, 'backOnly');    // back skull
+headZone(0.755, 0.795, 100, 0.18, COL.dim, 'full');        // cranium
+headZone(0.735, 0.755, 75, 0.18, COL.dim, 'full');         // upper forehead
+headZone(0.715, 0.735, 100, 0.18, COL.body, 'front');      // lower forehead
+headZone(0.700, 0.720, 125, 0.18, COL.body, 'sidesOnly');  // temples
+headZone(0.625, 0.795, 250, 0.18, COL.dim, 'backOnly');    // back skull
 
 // ════════ CHEEK ZONES ════════
-headZone(0.695, 0.715, 350, 0.18, COL.body, 'frontSides');  // upper cheek (increased)
-headZone(0.675, 0.695, 400, 0.18, COL.body, 'frontSides');  // mid cheek (increased)
-headZone(0.655, 0.675, 200, 0.18, COL.body, 'frontSides');  // lower cheek
+headZone(0.695, 0.715, 175, 0.18, COL.body, 'frontSides');  // upper cheek
+headZone(0.675, 0.695, 200, 0.18, COL.body, 'frontSides');  // mid cheek
+headZone(0.655, 0.675, 100, 0.18, COL.body, 'frontSides');  // lower cheek
 
 // ════════ EYE ZONES (mirrored) ════════
 for (const side of [-1, 1]) {
@@ -777,18 +779,18 @@ for (const side of [-1, 1]) {
 
 // ════════ NOSE ZONES ════════
 // Nose bridge — defined
-for (let i = 0; i < 35; i++) {
+for (let i = 0; i < 18; i++) {
   const nt = rand(0, 1);
   addPoint(rand(-0.002, 0.002), lerp(0.707, 0.685, nt), 0.112 + nt * 0.004, 'head', 0.18, COL.body);
 }
 // Nose body — defined
-for (let i = 0; i < 40; i++) {
+for (let i = 0; i < 20; i++) {
   const nt = rand(0, 1);
   const nw = lerp(0.003, 0.005, nt);
   addPoint(rand(-nw, nw), lerp(0.685, 0.672, nt), lerp(0.116, 0.120, nt), 'head', 0.18, COL.body);
 }
 // Nose tip — prominent
-for (let i = 0; i < 25; i++) {
+for (let i = 0; i < 12; i++) {
   const na = rand(0, Math.PI * 2);
   addPoint(0.006 * Math.cos(na), 0.670 + 0.006 * Math.sin(na), 0.128 + rand(-0.002, 0.002),
     'head', 0.18, COL.body);
@@ -808,14 +810,14 @@ for (let i = 0; i < 8; i++) {
 
 // ════════ MOUTH ZONES ════════
 // Upper lip (cupid's bow) — prominent, pushed forward
-for (let i = 0; i < 80; i++) {
+for (let i = 0; i < 40; i++) {
   const lt = rand(-1, 1);
   const bowDip = (1 - lt * lt) * 0.002;
   addPoint(lt * 0.022, 0.652 + 0.002 - bowDip + rand(-0.002, 0.002), 0.118 + rand(-0.001, 0.001),
     'head', 0.18, COL.highlight);
 }
 // Lower lip — prominent, pushed forward
-for (let i = 0; i < 80; i++) {
+for (let i = 0; i < 40; i++) {
   const lt = rand(-1, 1);
   const fullness = (1 - lt * lt) * 0.003;
   addPoint(lt * 0.021, 0.645 - fullness + rand(-0.002, 0.002), 0.117 + rand(-0.001, 0.001),
@@ -830,10 +832,10 @@ for (const side of [-1, 1]) {
 }
 
 // ════════ JAW ZONES ════════
-headZone(0.640, 0.655, 120, 0.18, COL.body, 'frontSides');  // upper jaw
+headZone(0.640, 0.655, 60, 0.18, COL.body, 'frontSides');  // upper jaw
 // Jawline (per side)
 for (const side of [-1, 1]) {
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 12; i++) {
     const jt = rand(0, 1);
     const jx = side * lerp(0.081, 0.037, jt);
     const jy = lerp(0.675, 0.617, jt);
@@ -843,18 +845,18 @@ for (const side of [-1, 1]) {
   }
 }
 // Jaw underside
-headZone(0.617, 0.640, 80, 0.18, COL.body, 'front');
+headZone(0.617, 0.640, 40, 0.18, COL.body, 'front');
 
 // ════════ CHIN ZONES ════════
 // Chin front
-for (let i = 0; i < 100; i++) {
+for (let i = 0; i < 50; i++) {
   addPoint(rand(-0.022, 0.022), 0.617 + rand(-0.006, 0.006), rand(0.055, 0.075),
     'head', 0.18, COL.body);
 }
 // Chin bottom
-headZone(0.602, 0.617, 60, 0.18, COL.body, 'front');
+headZone(0.602, 0.617, 30, 0.18, COL.body, 'front');
 // Chin to neck
-headZone(0.597, 0.607, 80, 0.18, COL.body, 'front');
+headZone(0.597, 0.607, 40, 0.18, COL.body, 'front');
 
 // ════════ EAR ZONES (mirrored) ════════
 for (const side of [-1, 1]) {

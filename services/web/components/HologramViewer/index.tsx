@@ -516,28 +516,26 @@ const hologramGlowFragmentShader = `
   varying float vDepth;
 
   void main() {
-    // Soft glow falloff from center of sphere — bright core, fading edge
+    // Radial gradient: bright core fading to transparent edge
     vec3 viewDir = normalize(vViewPosition);
     float facing = max(dot(viewDir, normalize(vNormal)), 0.0);
-    float softEdge = pow(facing, 0.6);
 
-    // Depth-based brightness: front dots brighter, back dots dimmer
+    // Glow gradient: center = bright, edge = fades out
+    float gradient = pow(facing, 0.4);
+    float coreBoost = pow(facing, 2.0); // extra brightness at dead center
+
+    // Depth-based brightness
     float depthNorm = clamp((vDepth - 0.5) / 2.0, 0.0, 1.0);
-    float depthBrightness = mix(1.3, 0.4, depthNorm);
+    float depthBrightness = mix(1.2, 0.5, depthNorm);
 
-    vec3 coreColor = vColor * depthBrightness;
-
-    float glowFalloff = vGlow > 0.75 ? pow(softEdge, 1.5) : softEdge;
-
-    vec3 finalColor = coreColor * (0.8 + 0.6 * vGlow);
+    vec3 finalColor = vColor * depthBrightness * (1.0 + coreBoost * 0.5);
 
     // Subtle scanline
-    float scanline = sin(gl_FragCoord.y * 1.2) * 0.03 * vGlow;
+    float scanline = sin(gl_FragCoord.y * 1.2) * 0.02;
     finalColor += vec3(scanline);
 
-    // Alpha: per-particle opacity variation applied on top of glow/depth
-    float baseAlpha = vGlow > 0.75 ? 0.12 : 0.45;
-    float alpha = baseAlpha * glowFalloff * mix(1.0, 0.5, depthNorm) * vOpacity;
+    // Alpha: gradient from solid center to transparent edge
+    float alpha = gradient * 0.6 * mix(1.0, 0.4, depthNorm) * vOpacity;
 
     gl_FragColor = vec4(finalColor, alpha);
   }
@@ -987,7 +985,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
 
           // Glow sphere
           instMesh.setMatrixAt(i * 2 + 1, dummy);
-          scaleAttr.setX(i * 2 + 1, (pointSize * 1.5) / 0.008);
+          scaleAttr.setX(i * 2 + 1, (pointSize * 1.0) / 0.008);
         }
 
         scaleAttr.needsUpdate = true;
@@ -1103,7 +1101,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           const glowIdx = i * 2 + 1;
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
           instancedMesh.setMatrixAt(glowIdx, dummy);
-          scaleAttr[glowIdx] = (pointSize * 1.5) / 0.008;
+          scaleAttr[glowIdx] = (pointSize * 1.0) / 0.008;
           colorAttr[glowIdx * 3] = tempColor.r;
           colorAttr[glowIdx * 3 + 1] = tempColor.g;
           colorAttr[glowIdx * 3 + 2] = tempColor.b;
