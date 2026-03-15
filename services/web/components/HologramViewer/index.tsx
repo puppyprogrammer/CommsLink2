@@ -829,7 +829,11 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     neckLength: 1.0, neckThickness: 1.0, shoulderSlope: 1.0, shoulderRoundness: 1.0,
     neckOffsetX: 0, neckOffsetY: 0, shoulderOffsetX: 0, shoulderOffsetY: 0,
     // Torso shape
-    bustProjection: 1.0, bustSpacing: 1.0, bustHeight: 0, ribcageWidth: 1.0,
+    bustProjection: 1.0, bustSpacing: 1.0, bustHeight: 0, bustWidth: 1.0,
+    bustOffsetX: 0, bustOffsetY: 0, bustOffsetZ: 0, bustDrop: 0,
+    nippleSize: 1.0, nippleProjection: 1.0, nippleOffsetX: 0, nippleOffsetY: 0,
+    nippleDensity: 1.0, bustDensity: 1.0,
+    ribcageWidth: 1.0,
     bellyDepth: 1.0, gluteSize: 1.0, torsoLength: 1.0,
     upperTorsoOffsetY: 0, upperTorsoHeight: 1.0,
     waistOffsetY: 0, waistHeight: 1.0,
@@ -980,9 +984,20 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'shoulderOffsetZ', label: 'Shoulder Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift shoulders forward/back' },
     ]},
     { id: 'torsoShape', title: 'Torso Shape', color: '#e0a040', sliders: [
-      { key: 'bustProjection', label: 'Bust Projection', min: 0, max: 5.0, step: 0.1, info: 'Bust forward protrusion' },
-      { key: 'bustSpacing', label: 'Bust Spacing', min: 0.1, max: 5.0, step: M, info: 'Bust volumes apart/together' },
+      { key: 'bustProjection', label: 'Bust Projection', min: 0, max: 5.0, step: 0.1, info: 'How far bust protrudes forward' },
+      { key: 'bustWidth', label: 'Bust Width', min: 0.1, max: 5.0, step: M, info: 'Bust X spread' },
+      { key: 'bustSpacing', label: 'Bust Spacing', min: 0.1, max: 5.0, step: M, info: 'Distance between bust volumes' },
       { key: 'bustHeight', label: 'Bust Height', min: -0.2, max: 0.2, step: S, info: 'Move bust up/down' },
+      { key: 'bustDrop', label: 'Bust Drop', min: -0.1, max: 0.1, step: S, info: 'Gravity sag (positive = lower)' },
+      { key: 'bustOffsetX', label: 'Bust X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift bust left/right' },
+      { key: 'bustOffsetY', label: 'Bust Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift bust up/down' },
+      { key: 'bustOffsetZ', label: 'Bust Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift bust forward/back' },
+      { key: 'bustDensity', label: 'Bust Density', min: 0, max: 5.0, step: 0.1, info: 'Bust particle visibility' },
+      { key: 'nippleProjection', label: 'Nipple Projection', min: 0.1, max: 5.0, step: 0.1, info: 'How far nipples protrude' },
+      { key: 'nippleSize', label: 'Nipple Size', min: 0.1, max: 5.0, step: 0.1, info: 'Nipple area size' },
+      { key: 'nippleOffsetX', label: 'Nipple X Offset', min: -0.1, max: 0.1, step: S, info: 'Shift nipples left/right' },
+      { key: 'nippleOffsetY', label: 'Nipple Y Offset', min: -0.1, max: 0.1, step: S, info: 'Shift nipples up/down' },
+      { key: 'nippleDensity', label: 'Nipple Density', min: 0, max: 5.0, step: 0.1, info: 'Nipple particle visibility' },
       { key: 'ribcageWidth', label: 'Ribcage Width', min: 0.1, max: 5.0, step: M, info: 'Ribcage cross-sections' },
       { key: 'bellyDepth', label: 'Belly Depth', min: 0.1, max: 5.0, step: M, info: 'Front-to-back at navel' },
       { key: 'gluteSize', label: 'Glute Size', min: 0, max: 5.0, step: 0.1, info: 'Glute volume projection' },
@@ -1384,6 +1399,25 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
             // Upper torso / bust area
             pos.x *= c.torsoWidth * c.ribcageWidth;
             pos.z *= c.bustSize * c.bustProjection;
+
+            // Bust-specific transforms (particles in bust zone: Y=0.34-0.42, Z>0.04)
+            const isBustZone = pos.y > 0.34 && pos.y < 0.42 && offset[2] > 0.04;
+            if (isBustZone) {
+              const bustSide = offset[0] > 0 ? 1 : -1;
+              pos.x *= c.bustWidth;
+              pos.x += c.bustOffsetX + bustSide * (c.bustSpacing - 1.0) * 0.02;
+              pos.y += c.bustOffsetY + c.bustHeight + c.bustDrop * Math.abs(offset[2]) * 2;
+              pos.z += c.bustOffsetZ;
+
+              // Nipple detection: particles at the peak of the bust (highest Z offset)
+              const isNipple = offset[2] > 0.07 && Math.abs(offset[0]) > 0.02;
+              if (isNipple) {
+                pos.z *= c.nippleProjection;
+                pos.x += c.nippleOffsetX * bustSide;
+                pos.y += c.nippleOffsetY;
+              }
+            }
+
             // Shoulder slope at top of torso
             if (pos.y > 0.46) {
               const slopeT = (pos.y - 0.46) / (0.53 - 0.46);
@@ -1552,7 +1586,17 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           } else if (jid.includes('hand')) {
             densityMul = c.handDensity;
           } else if (jid === 'chest' || jid === 'spine' || jid === 'root') {
-            densityMul = c.torsoDensity;
+            // Bust/nipple density
+            const off = point.offset;
+            if (jid === 'chest' && off[1] > -0.06 && off[1] < 0.02 && off[2] > 0.04) {
+              if (off[2] > 0.07 && Math.abs(off[0]) > 0.02) {
+                densityMul = c.nippleDensity; // nipple
+              } else {
+                densityMul = c.bustDensity; // bust
+              }
+            } else {
+              densityMul = c.torsoDensity;
+            }
           } else if (jid.includes('hip')) {
             densityMul = c.thighDensity;
           } else if (jid.includes('knee')) {
