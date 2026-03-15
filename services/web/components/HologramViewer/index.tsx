@@ -1013,24 +1013,14 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         effectivePose,
       );
 
-      // ── Bones (Lines) ───────────────────────────────
-      const boneMaterial = new THREE.LineBasicMaterial({
-        color: BONE_COLOR,
-        linewidth: 1,
-        transparent: true,
-        opacity: 0.25,
-      });
-
+      // ── Bones (Lines) — hidden, geometry kept for FK updates ──
       const boneGeos: THREE.BufferGeometry[] = [];
       for (const joint of avatar.skeleton) {
         if (!joint.parent_id) continue;
         const start = jointPositions.get(joint.parent_id);
         const end = jointPositions.get(joint.id);
         if (!start || !end) continue;
-
         const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
-        const line = new THREE.Line(geometry, boneMaterial);
-        group.add(line);
         boneGeos.push(geometry);
       }
       boneGeometriesRef.current.set(avatar.id, boneGeos);
@@ -1114,20 +1104,14 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         instancedMeshRef.current.set(avatar.id, instancedMesh);
       }
 
-      // ── Joint markers (only for joints with no points attached) ──
+      // ── Joint markers (hidden — no visible spheres at joints) ──
       const pointJointIds = new Set(avatar.points.map((p) => p.joint_id));
-      const jointMaterial = new THREE.MeshBasicMaterial({
-        color: HOLOGRAM_COLOR,
-        transparent: true,
-        opacity: 0.5,
-      });
       const markerMap = new Map<string, THREE.Mesh>();
       for (const [jointId, pos] of jointPositions) {
         if (pointJointIds.has(jointId)) continue;
         const geo = new THREE.SphereGeometry(0.015, 6, 4);
-        const marker = new THREE.Mesh(geo, jointMaterial);
+        const marker = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ visible: false }));
         marker.position.copy(pos);
-        group.add(marker);
         markerMap.set(jointId, marker);
       }
       jointMarkersRef.current.set(avatar.id, markerMap);
