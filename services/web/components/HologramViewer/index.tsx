@@ -816,6 +816,19 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   const deletedRef = useRef(deletedParticles);
   useEffect(() => { deletedRef.current = deletedParticles; }, [deletedParticles]);
   const editSphereRef = useRef<THREE.Mesh | null>(null);
+  const [editPart, setEditPart] = useState('chest');
+  const [editAddCount, setEditAddCount] = useState(20);
+  const [addedParticles, setAddedParticles] = useState<Array<{ joint_id: string; offset: [number, number, number]; size: number; color: string }>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('holoAddedParticles');
+        if (saved) return JSON.parse(saved);
+      } catch { /* ignore */ }
+    }
+    return [];
+  });
+  const addedParticlesRef = useRef(addedParticles);
+  useEffect(() => { addedParticlesRef.current = addedParticles; }, [addedParticles]);
   const applyDebugColorsRef = useRef<((enabled: boolean) => void) | null>(null);
   const jointPositionsRef = useRef<Map<string, THREE.Vector3> | null>(null);
 
@@ -1190,7 +1203,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   const visemeStatesRef = useRef<Map<string, VisemeState>>(new Map());
   const debugModeRef = useRef(false);
   const avatarsRef = useRef<AvatarData[]>(avatars);
-  avatarsRef.current = avatars;
+  // Merge added particles into avatar data
+  const mergedAvatars = useMemo(() => {
+    if (addedParticles.length === 0) return avatars;
+    return avatars.map((a) => ({
+      ...a,
+      points: [...a.points, ...addedParticles],
+    }));
+  }, [avatars, addedParticles]);
+  avatarsRef.current = mergedAvatars;
 
   // Keep viseme states ref in sync with prop
   if (visemeStates) {
@@ -1757,6 +1778,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         }
 
         scaleAttr.needsUpdate = true;
+        instMesh.count = Math.min(avatar.points.length * 2, MAX_POINT_INSTANCES);
         instMesh.instanceMatrix.needsUpdate = true;
       }
 
@@ -1826,7 +1848,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       // ── Points (Instanced Mesh with GPU glow shader) ─
       const pointCount = avatar.points.length;
       if (pointCount > 0) {
-        const instanceCount = Math.min(pointCount * 2, MAX_POINT_INSTANCES);
+        // Allocate extra capacity for dynamically added particles
+        const instanceCount = Math.min(Math.max(pointCount * 2, pointCount * 2 + 2000), MAX_POINT_INSTANCES);
         const instancedMesh = new THREE.InstancedMesh(sharedSphereGeo, glowMaterial, instanceCount);
         instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
@@ -2782,12 +2805,30 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
               onChange={(e) => setEditPos([editPos[0], editPos[1], parseFloat(e.target.value)])}
               style={{ width: '80%', accentColor: '#ff4444', height: 3 }} />
           </div>
-          <div style={{ fontSize: 9, marginBottom: 6, color: '#888' }}>
-            Deleted: {deletedParticles.size} particles
+          {/* Part selector */}
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ fontSize: 9 }}>Part: </span>
+            <select value={editPart} onChange={(e) => setEditPart(e.target.value)}
+              style={{ background: '#1a2a2e', color: '#4dd8d0', border: '1px solid #3a5a5e', borderRadius: 3, fontSize: 9, padding: '2px 4px', fontFamily: 'monospace' }}>
+              {['head', 'neck', 'chest', 'spine', 'root',
+                'l_shoulder', 'r_shoulder', 'l_elbow', 'r_elbow', 'l_hand', 'r_hand',
+                'l_hip', 'r_hip', 'l_knee', 'r_knee', 'l_foot', 'r_foot',
+              ].map((j) => <option key={j} value={j}>{j}</option>)}
+            </select>
           </div>
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ fontSize: 9 }}>Add count: </span>
+            <input type="range" min={1} max={100} step={1} value={editAddCount}
+              onChange={(e) => setEditAddCount(parseInt(e.target.value))}
+              style={{ width: '50%', accentColor: '#44ff44', height: 3 }} />
+            <span style={{ color: '#44ff44', fontSize: 9 }}> {editAddCount}</span>
+          </div>
+          <div style={{ fontSize: 9, marginBottom: 4, color: '#888' }}>
+            Deleted: {deletedParticles.size} | Added: {addedParticles.length}
+          </div>
+          <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
             <button onClick={() => {
-              // Delete particles inside the sphere
+              // Delete particles inside sphere
               const avatar = avatarsRef.current[0];
               if (!avatar) return;
               const newDeleted = new Set(deletedParticles);
@@ -2801,23 +2842,54 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
                 const dx = jPos.x + pt.offset[0] - sx;
                 const dy = jPos.y + pt.offset[1] - sy;
                 const dz = jPos.z + pt.offset[2] - sz;
-                if (dx * dx + dy * dy + dz * dz < r2) {
-                  newDeleted.add(i);
-                }
+                if (dx * dx + dy * dy + dz * dz < r2) newDeleted.add(i);
               }
               setDeletedParticles(newDeleted);
               localStorage.setItem('holoDeletedParticles', JSON.stringify([...newDeleted]));
-              // Mark dirty
               for (const [, ms] of morphStateRef.current) ms.dirty = true;
             }}
-              style={{ flex: 1, padding: '5px 0', background: 'rgba(255,68,68,0.3)', border: '1px solid rgba(255,68,68,0.5)', borderRadius: 3, color: '#ff4444', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
-              Delete Inside</button>
+              style={{ flex: 1, padding: '4px 0', background: 'rgba(255,68,68,0.3)', border: '1px solid rgba(255,68,68,0.5)', borderRadius: 3, color: '#ff4444', cursor: 'pointer', fontSize: 9, fontFamily: 'monospace' }}>
+              Delete</button>
+            <button onClick={() => {
+              // Add particles inside sphere
+              const jp = jointPositionsRef.current;
+              const jPos = jp?.get(editPart);
+              if (!jPos) return;
+              const [sx, sy, sz] = editPos;
+              const newPts = [...addedParticles];
+              for (let i = 0; i < editAddCount; i++) {
+                // Random position inside sphere
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const r = editRadius * Math.cbrt(Math.random()); // uniform volume
+                const px = sx + r * Math.sin(phi) * Math.cos(theta);
+                const py = sy + r * Math.sin(phi) * Math.sin(theta); // note: phi for Y in this context
+                const pz = sz + r * Math.cos(phi);
+                newPts.push({
+                  joint_id: editPart,
+                  offset: [px - jPos.x, py - jPos.y, pz - jPos.z] as [number, number, number],
+                  size: 0.12,
+                  color: '#4dd8d0',
+                });
+              }
+              setAddedParticles(newPts);
+              localStorage.setItem('holoAddedParticles', JSON.stringify(newPts));
+              // Need to rebuild instanced mesh to include new particles
+              // For now, mark dirty — added particles need to be merged into avatar data
+              for (const [, ms] of morphStateRef.current) ms.dirty = true;
+            }}
+              style={{ flex: 1, padding: '4px 0', background: 'rgba(68,255,68,0.3)', border: '1px solid rgba(68,255,68,0.5)', borderRadius: 3, color: '#44ff44', cursor: 'pointer', fontSize: 9, fontFamily: 'monospace' }}>
+              Add {editAddCount}</button>
+          </div>
+          <div style={{ display: 'flex', gap: 3 }}>
             <button onClick={() => {
               setDeletedParticles(new Set());
+              setAddedParticles([]);
               localStorage.removeItem('holoDeletedParticles');
+              localStorage.removeItem('holoAddedParticles');
               for (const [, ms] of morphStateRef.current) ms.dirty = true;
             }}
-              style={{ flex: 1, padding: '5px 0', background: 'rgba(100,255,100,0.1)', border: '1px solid rgba(100,255,100,0.3)', borderRadius: 3, color: '#88ff88', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
+              style={{ flex: 1, padding: '4px 0', background: 'rgba(255,200,50,0.15)', border: '1px solid rgba(255,200,50,0.3)', borderRadius: 3, color: '#ffcc44', cursor: 'pointer', fontSize: 9, fontFamily: 'monospace' }}>
               Undo All</button>
           </div>
         </div>
