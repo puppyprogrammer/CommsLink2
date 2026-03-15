@@ -6912,7 +6912,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             name: "Helper Bot",
             room_id: dbRoom.id,
             creator_id: socket.user.id,
-            voice_id: "female",
+            voice_id: "m3yAHyFEFKtbCIM5n7GF", // Ash - Conversation (ElevenLabs)
             model: "grok-4-1-fast-non-reasoning",
             system_instructions: JSON.stringify(helperInstructions),
             memories: JSON.stringify(helperMemories),
