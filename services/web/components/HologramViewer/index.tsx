@@ -816,11 +816,23 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     // Legs
     legLength: 1.0, upperLegLength: 1.0, lowerLegLength: 1.0, legSpacing: 1.0,
     kneeWidth: 1.0, ankleWidth: 1.0, footSize: 1.0,
-    legOffsetX: 0, legOffsetY: 0, calfOffsetX: 0, calfOffsetY: 0, footOffsetX: 0, footOffsetY: 0,
+    hipOffsetX: 0, hipOffsetY: 0, hipHeight: 1.0, hipDepth: 1.0,
+    legOffsetX: 0, legOffsetY: 0, legOffsetZ: 0,
+    calfOffsetX: 0, calfOffsetY: 0, calfOffsetZ: 0,
+    footOffsetX: 0, footOffsetY: 0, footOffsetZ: 0,
     // Arms
     armLength: 1.0, upperArmLength: 1.0, forearmLength: 1.0, armSpread: 1.0,
     elbowWidth: 1.0, wristWidth: 1.0, handSize: 1.0, fingerLength: 1.0,
-    armOffsetX: 0, armOffsetY: 0, handOffsetX: 0, handOffsetY: 0,
+    armOffsetX: 0, armOffsetY: 0, armOffsetZ: 0,
+    handOffsetX: 0, handOffsetY: 0, handOffsetZ: 0,
+    // Z offsets for other parts
+    headOffsetZ: 0, neckOffsetZ: 0, shoulderOffsetZ: 0, torsoOffsetZ: 0,
+    // Part densities (size multiplier — bigger = denser looking)
+    headDensity: 1.0, faceDensity: 1.0, eyeDensity: 1.0, noseDensity: 1.0,
+    mouthDensity: 1.0, browDensity: 1.0, earDensity: 1.0,
+    neckDensity: 1.0, shoulderDensity: 1.0, torsoDensity: 1.0,
+    armDensity: 1.0, handDensity: 1.0,
+    thighDensity: 1.0, calfDensity: 1.0, footDensity: 1.0,
     // Debug
     showSilhouette: 0, showSkeleton: 0, showGrid: 1, wireframeMode: 0,
   };
@@ -890,6 +902,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'chinWidth', label: 'Chin Width', min: 0.1, max: 5.0, step: M, info: 'Width below jaw' },
       { key: 'chinLength', label: 'Chin Length', min: 0.1, max: 5.0, step: M, info: 'Chin extension below mouth' },
       { key: 'cheekboneWidth', label: 'Cheekbone Width', min: 0.1, max: 5.0, step: M, info: 'Width at cheekbone level' },
+      { key: 'headOffsetZ', label: 'Head Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift head forward/back' },
     ]},
     { id: 'eyes', title: 'Eyes', color: '#a060e0', sliders: [
       { key: 'eyeSpacing', label: 'Eye Spacing', min: 0.1, max: 5.0, step: M, info: 'Eyes apart/together' },
@@ -933,6 +946,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'neckOffsetY', label: 'Neck Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift neck up/down' },
       { key: 'shoulderOffsetX', label: 'Shoulder X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift shoulders left/right' },
       { key: 'shoulderOffsetY', label: 'Shoulder Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift shoulders up/down' },
+      { key: 'neckOffsetZ', label: 'Neck Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift neck forward/back' },
+      { key: 'shoulderOffsetZ', label: 'Shoulder Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift shoulders forward/back' },
     ]},
     { id: 'torsoShape', title: 'Torso Shape', color: '#e0a040', sliders: [
       { key: 'bustProjection', label: 'Bust Projection', min: 0, max: 5.0, step: 0.1, info: 'Bust forward protrusion' },
@@ -944,6 +959,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'torsoLength', label: 'Torso Length', min: 0.1, max: 5.0, step: M, info: 'Shoulder to hip distance' },
       { key: 'torsoOffsetX', label: 'Torso X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift torso left/right' },
       { key: 'torsoOffsetY', label: 'Torso Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift torso up/down' },
+      { key: 'torsoOffsetZ', label: 'Torso Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift torso forward/back' },
     ]},
     { id: 'legs', title: 'Legs', color: '#e06080', sliders: [
       { key: 'legLength', label: 'Leg Length', min: 0.1, max: 5.0, step: M, info: 'Total leg length' },
@@ -953,12 +969,19 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'kneeWidth', label: 'Knee Width', min: 0.1, max: 5.0, step: M, info: 'Knee cross-section' },
       { key: 'ankleWidth', label: 'Ankle Width', min: 0.1, max: 5.0, step: M, info: 'Ankle cross-section' },
       { key: 'footSize', label: 'Foot Size', min: 0.1, max: 5.0, step: M, info: 'All foot dimensions' },
-      { key: 'legOffsetX', label: 'Leg X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift legs left/right' },
-      { key: 'legOffsetY', label: 'Leg Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift legs up/down' },
+      { key: 'hipHeight', label: 'Hip Height', min: 0.1, max: 5.0, step: M, info: 'Scale hip region height' },
+      { key: 'hipDepth', label: 'Hip Depth', min: 0.1, max: 5.0, step: M, info: 'Hip front-to-back depth' },
+      { key: 'hipOffsetX', label: 'Hip X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hips left/right' },
+      { key: 'hipOffsetY', label: 'Hip Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hips up/down' },
+      { key: 'legOffsetX', label: 'Thigh X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift thighs left/right' },
+      { key: 'legOffsetY', label: 'Thigh Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift thighs up/down' },
+      { key: 'legOffsetZ', label: 'Thigh Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift thighs forward/back' },
       { key: 'calfOffsetX', label: 'Calf X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift calves left/right' },
       { key: 'calfOffsetY', label: 'Calf Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift calves up/down' },
+      { key: 'calfOffsetZ', label: 'Calf Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift calves forward/back' },
       { key: 'footOffsetX', label: 'Foot X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift feet left/right' },
       { key: 'footOffsetY', label: 'Foot Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift feet up/down' },
+      { key: 'footOffsetZ', label: 'Foot Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift feet forward/back' },
     ]},
     { id: 'arms', title: 'Arms & Hands', color: '#4090e0', sliders: [
       { key: 'armLength', label: 'Arm Length', min: 0.1, max: 5.0, step: M, info: 'Total arm curve length' },
@@ -971,8 +994,27 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'fingerLength', label: 'Finger Length', min: 0.1, max: 5.0, step: M, info: 'Finger tube length' },
       { key: 'armOffsetX', label: 'Arm X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift arms left/right' },
       { key: 'armOffsetY', label: 'Arm Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift arms up/down' },
+      { key: 'armOffsetZ', label: 'Arm Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift arms forward/back' },
       { key: 'handOffsetX', label: 'Hand X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hands left/right' },
       { key: 'handOffsetY', label: 'Hand Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hands up/down' },
+      { key: 'handOffsetZ', label: 'Hand Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hands forward/back' },
+    ]},
+    { id: 'density', title: 'Part Densities', color: '#c0c0c0', sliders: [
+      { key: 'headDensity', label: 'Head', min: 0, max: 5.0, step: 0.1, info: 'Head particle visibility' },
+      { key: 'faceDensity', label: 'Face', min: 0, max: 5.0, step: 0.1, info: 'Cheek/jaw/chin visibility' },
+      { key: 'eyeDensity', label: 'Eyes', min: 0, max: 5.0, step: 0.1, info: 'Eye particle visibility' },
+      { key: 'browDensity', label: 'Eyebrows', min: 0, max: 5.0, step: 0.1, info: 'Brow particle visibility' },
+      { key: 'noseDensity', label: 'Nose', min: 0, max: 5.0, step: 0.1, info: 'Nose particle visibility' },
+      { key: 'mouthDensity', label: 'Mouth', min: 0, max: 5.0, step: 0.1, info: 'Lip particle visibility' },
+      { key: 'earDensity', label: 'Ears', min: 0, max: 5.0, step: 0.1, info: 'Ear particle visibility' },
+      { key: 'neckDensity', label: 'Neck', min: 0, max: 5.0, step: 0.1, info: 'Neck particle visibility' },
+      { key: 'shoulderDensity', label: 'Shoulders', min: 0, max: 5.0, step: 0.1, info: 'Shoulder particle visibility' },
+      { key: 'torsoDensity', label: 'Torso', min: 0, max: 5.0, step: 0.1, info: 'Torso particle visibility' },
+      { key: 'armDensity', label: 'Arms', min: 0, max: 5.0, step: 0.1, info: 'Arm particle visibility' },
+      { key: 'handDensity', label: 'Hands', min: 0, max: 5.0, step: 0.1, info: 'Hand particle visibility' },
+      { key: 'thighDensity', label: 'Thighs', min: 0, max: 5.0, step: 0.1, info: 'Thigh particle visibility' },
+      { key: 'calfDensity', label: 'Calves', min: 0, max: 5.0, step: 0.1, info: 'Calf particle visibility' },
+      { key: 'footDensity', label: 'Feet', min: 0, max: 5.0, step: 0.1, info: 'Foot particle visibility' },
     ]},
     { id: 'debug', title: 'Debug', color: '#e04040', sliders: [
       { key: 'showSilhouette', label: 'Silhouette', min: 0, max: 1, step: 1, info: 'Show outline (O key)' },
@@ -1166,6 +1208,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           pos.x *= c.headScale * c.faceWidth;
           pos.z *= c.headScale * c.faceDepth;
           pos.y += c.headY * 0.1;
+          pos.z += c.headOffsetZ;
 
           // Face height: scale Y distance from head center
           const relY = pos.y - headCenterY;
@@ -1243,6 +1286,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           pos.z *= c.neckWidth * c.neckThickness;
           pos.x += c.neckOffsetX;
           pos.y += c.neckOffsetY;
+          pos.z += c.neckOffsetZ;
           // Neck length: scale Y between shoulder and head
           const neckBaseY = 0.53;
           const neckTopY = 0.59;
@@ -1278,12 +1322,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
             pos.z *= c.wristWidth * c.handSize;
             pos.x += c.handOffsetX * side;
             pos.y += c.handOffsetY;
+            pos.z += c.handOffsetZ;
           }
           // Arm offsets
           pos.x += c.armOffsetX * side;
           pos.y += c.armOffsetY;
+          pos.z += c.armOffsetZ;
           pos.x += c.shoulderOffsetX * side;
           pos.y += c.shoulderOffsetY;
+          pos.z += c.shoulderOffsetZ;
 
         } else if (jointId === 'chest' || jointId === 'spine' || jointId === 'root') {
           // ─── TORSO ───
@@ -1318,6 +1365,13 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           pos.y = torsoCenter + (pos.y - torsoCenter) * c.torsoLength;
           pos.x += c.torsoOffsetX;
           pos.y += c.torsoOffsetY;
+          pos.z += c.torsoOffsetZ;
+          // Hip-specific offsets for lower torso
+          if (pos.y < 0.10) {
+            pos.x += c.hipOffsetX;
+            pos.y += c.hipOffsetY;
+            pos.z *= c.hipDepth;
+          }
 
         } else if (jointId === 'l_hip' || jointId === 'r_hip') {
           // ─── THIGHS ───
@@ -1330,6 +1384,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           pos.y = hipY + (pos.y - hipY) * c.legLength * c.upperLegLength;
           pos.x += c.legOffsetX * side;
           pos.y += c.legOffsetY;
+          pos.z += c.legOffsetZ;
 
         } else if (jointId === 'l_knee' || jointId === 'r_knee') {
           // ─── CALVES ───
@@ -1349,6 +1404,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           pos.y = kneeY + (pos.y - kneeY) * c.legLength * c.lowerLegLength;
           pos.x += c.legOffsetX * side + c.calfOffsetX * side;
           pos.y += c.legOffsetY + c.calfOffsetY;
+          pos.z += c.legOffsetZ + c.calfOffsetZ;
 
         } else if (jointId === 'l_foot' || jointId === 'r_foot') {
           // ─── FEET ───
@@ -1358,8 +1414,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           pos.x += legSign * hipBaseX * (c.legSpacing - 1.0);
           pos.x += c.footOffsetX * side;
           pos.y += c.footOffsetY;
+          pos.z += c.footOffsetZ;
           pos.x += c.legOffsetX * side;
           pos.y += c.legOffsetY;
+          pos.z += c.legOffsetZ;
         }
       };
 
@@ -1408,7 +1466,47 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
           applyProportion(worldPos, point.joint_id, point);
-          const pointSize = point.size * 0.008 * sizeScale;
+
+          // Per-part density: multiply particle size (bigger = denser looking)
+          let densityMul = 1.0;
+          const jid = point.joint_id;
+          if (jid === 'head') {
+            const off = point.offset;
+            // Detect sub-features by offset position
+            if (Math.abs(off[0]) > 0.02 && Math.abs(off[1] - 0.087) < 0.015 && off[2] > 0.08) {
+              densityMul = c.eyeDensity; // eyes
+            } else if (off[1] > 0.09 && off[2] > 0.08) {
+              densityMul = c.browDensity; // brows
+            } else if (Math.abs(off[0]) < 0.01 && off[2] > 0.10) {
+              densityMul = c.noseDensity; // nose
+            } else if (off[1] < 0.04 && off[1] > 0.02 && off[2] > 0.08) {
+              densityMul = c.mouthDensity; // mouth
+            } else if (Math.abs(off[0]) > 0.06) {
+              densityMul = c.earDensity; // ears
+            } else if (off[1] < 0.06) {
+              densityMul = c.faceDensity; // lower face
+            } else {
+              densityMul = c.headDensity; // skull
+            }
+          } else if (jid === 'neck') {
+            densityMul = c.neckDensity;
+          } else if (jid.includes('shoulder')) {
+            densityMul = c.shoulderDensity;
+          } else if (jid.includes('elbow')) {
+            densityMul = c.armDensity;
+          } else if (jid.includes('hand')) {
+            densityMul = c.handDensity;
+          } else if (jid === 'chest' || jid === 'spine' || jid === 'root') {
+            densityMul = c.torsoDensity;
+          } else if (jid.includes('hip')) {
+            densityMul = c.thighDensity;
+          } else if (jid.includes('knee')) {
+            densityMul = c.calfDensity;
+          } else if (jid.includes('foot')) {
+            densityMul = c.footDensity;
+          }
+
+          const pointSize = point.size * 0.008 * sizeScale * densityMul;
 
           // Core point
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
