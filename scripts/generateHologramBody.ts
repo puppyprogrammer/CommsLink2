@@ -85,12 +85,12 @@ const JOINTS: Record<string, [number, number, number]> = {
   r_elbow:    [0.160, 0.27, 0],
   l_hand:     [-0.160, 0.07, 0],
   r_hand:     [0.160, 0.07, 0],
-  l_hip:      [-0.06, 0, 0],
-  r_hip:      [0.06, 0, 0],
-  l_knee:     [-0.06, -0.44, 0],
-  r_knee:     [0.06, -0.44, 0],
-  l_foot:     [-0.06, -0.88, 0],
-  r_foot:     [0.06, -0.88, 0],
+  l_hip:      [-0.050, 0, 0],
+  r_hip:      [0.050, 0, 0],
+  l_knee:     [-0.065, -0.44, 0],
+  r_knee:     [0.065, -0.44, 0],
+  l_foot:     [-0.065, -0.88, 0],
+  r_foot:     [0.065, -0.88, 0],
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -179,21 +179,21 @@ type Section = {
 
 const sections: Section[] = [
   // Lower abdomen
-  { y: 0.06,  w: 0.130, d: 0.090, joint: 'root' },
+  { y: 0.06,  w: 0.110, d: 0.080, joint: 'root' },
   // Hip bone (widest)
-  { y: 0.10,  w: 0.145, d: 0.095, joint: 'root' },
+  { y: 0.10,  w: 0.122, d: 0.085, joint: 'root' },
   // Above hips
-  { y: 0.15,  w: 0.118, d: 0.085, joint: 'spine' },
+  { y: 0.15,  w: 0.102, d: 0.078, joint: 'spine' },
   // Navel
-  { y: 0.20,  w: 0.100, d: 0.078, joint: 'spine' },
-  // Natural waist — narrowest (strong hourglass taper)
-  { y: 0.25,  w: 0.088, d: 0.070, joint: 'spine' },
+  { y: 0.20,  w: 0.085, d: 0.070, joint: 'spine' },
+  // Natural waist
+  { y: 0.25,  w: 0.073, d: 0.062, joint: 'spine' },
   // Above waist
-  { y: 0.29,  w: 0.095, d: 0.073, joint: 'spine' },
-  // Under-bust / ribcage
-  { y: 0.33,  w: 0.108, d: 0.080, joint: 'chest' },
+  { y: 0.29,  w: 0.082, d: 0.068, joint: 'spine' },
+  // Ribcage
+  { y: 0.33,  w: 0.095, d: 0.075, joint: 'chest' },
   // Bust line
-  { y: 0.38,  w: 0.125, d: 0.090, joint: 'chest', bust: 0.050 },
+  { y: 0.38,  w: 0.106, d: 0.082, joint: 'chest', bust: 0.050 },
   // Above bust
   { y: 0.41,  w: 0.112, d: 0.080, joint: 'chest', bust: 0.015 },
   // Armpit
@@ -300,14 +300,14 @@ for (let i = 0; i < 195; i++) {
 }
 
 // Glute volume — fuller rear
-for (let i = 0; i < 160; i++) {
+for (let i = 0; i < 100; i++) {
   const y = rand(-0.02, 0.12);
   const profile = evalTorsoAt(Math.max(y, sections[0].y));
   if (!profile) continue;
   const angle = rand(Math.PI * 0.55, Math.PI * 1.45);
   addPoint(
     profile.w * Math.cos(angle) * rand(0.95, 1.05), y,
-    profile.d * Math.sin(angle) * rand(1.0, 1.15),
+    profile.d * Math.sin(angle) * rand(1.0, 1.10),
     'root', 0.18, COL.body,
   );
 }
@@ -321,9 +321,9 @@ for (let i = 0; i < 160; i++) {
 
 const bifurcTop = 0.08;
 const bifurcBot = 0.00;
-const legTopCenterX = 0.060;
-const legTopRadiusW = 0.068;
-const legTopRadiusD = 0.055;
+const legTopCenterX = 0.050;
+const legTopRadiusW = 0.042;
+const legTopRadiusD = 0.035;
 
 // Only ~800 particles in this narrow 0.08-unit zone — matches density of legs
 for (let i = 0; i < 250; i++) {
@@ -404,8 +404,8 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
   [1, 'r_hip', 'r_knee', 'r_foot'],
 ] as const) {
   const topCX = side * legTopCenterX;
-  const kneeX = side * 0.08;
-  const ankleX = side * 0.08;
+  const kneeX = side * 0.065;
+  const ankleX = side * 0.065;
   const kneeY = -0.44;
   const ankleY = -0.88;
 
@@ -413,41 +413,41 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
   // Side: fuller at front (positive zShift), neutral at knee
   // Leg center interpolates from ±0.060 (top) to ±0.08 (knee) — subtle outward angle
   const thighSections: EllipseSection[] = [
-    { y: bifurcBot,                          cx: topCX,                       rw: 0.068,         rd: 0.055,         zShift: 0.008 },
-    { y: lerp(bifurcBot, kneeY, 0.08), cx: lerp(topCX, kneeX, 0.08), rw: 0.074,         rd: 0.062,         zShift: 0.012 },
-    { y: lerp(bifurcBot, kneeY, 0.20), cx: lerp(topCX, kneeX, 0.20), rw: 0.068,         rd: 0.058,         zShift: 0.010 },
-    { y: lerp(bifurcBot, kneeY, 0.40), cx: lerp(topCX, kneeX, 0.40), rw: 0.060,         rd: 0.053,         zShift: 0.006 },
-    { y: lerp(bifurcBot, kneeY, 0.60), cx: lerp(topCX, kneeX, 0.60), rw: 0.052,         rd: 0.048,         zShift: 0.003 },
-    { y: lerp(bifurcBot, kneeY, 0.80), cx: lerp(topCX, kneeX, 0.80), rw: 0.045,         rd: 0.042,         zShift: 0.000 },
-    { y: lerp(bifurcBot, kneeY, 0.92), cx: lerp(topCX, kneeX, 0.92), rw: 0.041,         rd: 0.040,         zShift: 0.000 },
-    { y: kneeY,                              cx: kneeX,                      rw: 0.039,         rd: 0.038,         zShift: 0.000 },
+    { y: bifurcBot,                          cx: topCX,                       rw: 0.042,         rd: 0.035,         zShift: 0.005 },
+    { y: lerp(bifurcBot, kneeY, 0.08), cx: lerp(topCX, kneeX, 0.08), rw: 0.045,         rd: 0.038,         zShift: 0.007 },
+    { y: lerp(bifurcBot, kneeY, 0.20), cx: lerp(topCX, kneeX, 0.20), rw: 0.042,         rd: 0.036,         zShift: 0.005 },
+    { y: lerp(bifurcBot, kneeY, 0.40), cx: lerp(topCX, kneeX, 0.40), rw: 0.038,         rd: 0.033,         zShift: 0.003 },
+    { y: lerp(bifurcBot, kneeY, 0.60), cx: lerp(topCX, kneeX, 0.60), rw: 0.034,         rd: 0.030,         zShift: 0.002 },
+    { y: lerp(bifurcBot, kneeY, 0.80), cx: lerp(topCX, kneeX, 0.80), rw: 0.028,         rd: 0.025,         zShift: 0.000 },
+    { y: lerp(bifurcBot, kneeY, 0.92), cx: lerp(topCX, kneeX, 0.92), rw: 0.024,         rd: 0.022,         zShift: 0.000 },
+    { y: kneeY,                              cx: kneeX,                      rw: 0.021,         rd: 0.020,         zShift: 0.000 },
   ];
   sampleEllipticalLimb(thighSections, 1100, hipJoint);
 
   // Calf — knee (narrow) → calf bulge (~1/3 down) → ankle taper
   // Side: calf muscle pushes backward (negative zShift)
   const calfSections: EllipseSection[] = [
-    { y: kneeY,                          cx: kneeX,  rw: 0.039, rd: 0.038, zShift: 0.000 },
-    { y: lerp(kneeY, ankleY, 0.12), cx: kneeX,  rw: 0.042, rd: 0.041, zShift: -0.004 },
-    { y: lerp(kneeY, ankleY, 0.28), cx: kneeX,  rw: 0.046, rd: 0.045, zShift: -0.009 }, // calf peak
-    { y: lerp(kneeY, ankleY, 0.42), cx: kneeX,  rw: 0.044, rd: 0.042, zShift: -0.007 },
-    { y: lerp(kneeY, ankleY, 0.58), cx: kneeX,  rw: 0.037, rd: 0.035, zShift: -0.003 },
-    { y: lerp(kneeY, ankleY, 0.75), cx: ankleX, rw: 0.032, rd: 0.030, zShift: -0.001 },
-    { y: lerp(kneeY, ankleY, 0.90), cx: ankleX, rw: 0.028, rd: 0.026, zShift: 0.000 },
-    { y: ankleY + 0.03,                 cx: ankleX, rw: 0.026, rd: 0.024, zShift: 0.000 },
+    { y: kneeY,                          cx: kneeX,  rw: 0.021, rd: 0.020, zShift: 0.000 },
+    { y: lerp(kneeY, ankleY, 0.12), cx: kneeX,  rw: 0.022, rd: 0.021, zShift: -0.002 },
+    { y: lerp(kneeY, ankleY, 0.28), cx: kneeX,  rw: 0.024, rd: 0.023, zShift: -0.005 }, // calf peak
+    { y: lerp(kneeY, ankleY, 0.42), cx: kneeX,  rw: 0.023, rd: 0.022, zShift: -0.004 },
+    { y: lerp(kneeY, ankleY, 0.58), cx: kneeX,  rw: 0.019, rd: 0.018, zShift: -0.002 },
+    { y: lerp(kneeY, ankleY, 0.75), cx: ankleX, rw: 0.015, rd: 0.014, zShift: -0.001 },
+    { y: lerp(kneeY, ankleY, 0.90), cx: ankleX, rw: 0.012, rd: 0.011, zShift: 0.000 },
+    { y: ankleY + 0.03,                 cx: ankleX, rw: 0.010, rd: 0.010, zShift: 0.000 },
   ];
   sampleEllipticalLimb(calfSections, 900, kneeJoint);
 
   // Feet
-  const fx = side * 0.08;
+  const fx = side * 0.065;
   const fy = ankleY;
-  ellipsoid(fx, fy, 0, 0.028, 0.020, 0.028, 50, footJoint, 0.18, COL.body);
-  ellipsoid(fx, fy - 0.025, 0.035, 0.028, 0.015, 0.055, 80, footJoint, 0.18, COL.body);
-  ellipsoid(fx, fy - 0.015, -0.020, 0.020, 0.015, 0.020, 50, footJoint, 0.18, COL.dim);
+  ellipsoid(fx, fy, 0, 0.017, 0.012, 0.017, 50, footJoint, 0.18, COL.body);
+  ellipsoid(fx, fy - 0.015, 0.021, 0.017, 0.009, 0.033, 80, footJoint, 0.18, COL.body);
+  ellipsoid(fx, fy - 0.009, -0.012, 0.012, 0.009, 0.012, 50, footJoint, 0.18, COL.dim);
   for (let t = 0; t < 5; t++) {
-    const tx = fx - 0.014 + t * 0.007;
-    const toeSize = t === 0 ? 0.008 : 0.006;
-    ellipsoid(tx, fy - 0.030, 0.085 - Math.abs(t - 1) * 0.004, toeSize, toeSize, toeSize, 8, footJoint, 0.12, COL.highlight);
+    const tx = fx - 0.008 + t * 0.004;
+    const toeSize = t === 0 ? 0.005 : 0.004;
+    ellipsoid(tx, fy - 0.018, 0.051 - Math.abs(t - 1) * 0.003, toeSize, toeSize, toeSize, 8, footJoint, 0.10, COL.highlight);
   }
 }
 

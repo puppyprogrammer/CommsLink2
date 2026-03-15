@@ -527,8 +527,8 @@ const hologramGlowFragmentShader = `
     // No depth-based dimming — constant brightness at all distances
     vec3 finalColor = vColor * (1.0 + coreBoost * 0.5);
 
-    // Alpha: gradient from solid center to transparent edge, no distance fade
-    float alpha = gradient * 0.7 * vOpacity;
+    // Alpha: gradient from solid center to transparent edge
+    float alpha = gradient * 0.4 * vOpacity;
 
     gl_FragColor = vec4(finalColor, alpha);
   }
@@ -810,7 +810,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   }
 
   // Shared instanced sphere geometry for all point rendering
-  const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.016, 5, 4), []);
+  const sharedSphereGeo = useMemo(() => new THREE.SphereGeometry(0.008, 5, 4), []);
 
   // Custom shader material for holographic glow with per-particle drift
   const bodyTimeUniform = useMemo(() => ({ uTime: { value: 0 } }), []);
@@ -969,12 +969,12 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // Apply joint world rotation to point offset (fixes arm/leg rotation)
           offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
-          const pointSize = point.size * 0.016 * sizeScale;
+          const pointSize = point.size * 0.008 * sizeScale;
 
           // Core point
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
           instMesh.setMatrixAt(i * 2, dummy);
-          scaleAttr.setX(i * 2, pointSize / 0.016);
+          scaleAttr.setX(i * 2, pointSize / 0.008);
 
           // Glow sphere
           instMesh.setMatrixAt(i * 2 + 1, dummy);
@@ -1075,12 +1075,12 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // Apply joint world rotation to point offset (fixes arm/leg rotation)
           offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
-          const pointSize = point.size * 0.016 * sizeScale;
+          const pointSize = point.size * 0.008 * sizeScale;
 
           // Core point — tiny, bright
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
           instancedMesh.setMatrixAt(i * 2, dummy);
-          scaleAttr[i * 2] = pointSize / 0.016;
+          scaleAttr[i * 2] = pointSize / 0.008;
           tempColor.set(point.color || `#${HOLOGRAM_COLOR.toString(16)}`);
           colorAttr[i * 2 * 3] = tempColor.r;
           colorAttr[i * 2 * 3 + 1] = tempColor.g;
