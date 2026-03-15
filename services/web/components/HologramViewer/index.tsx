@@ -2593,6 +2593,80 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
               style={{ marginLeft: 'auto', padding: '2px 6px', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: 3, color: '#ff8888', cursor: 'pointer', fontSize: 9, fontFamily: 'monospace' }}>
               Reset</button>
           </div>
+          {/* Preset poses */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 8 }}>
+            {[
+              { name: 'T-Pose', pose: {} },
+              { name: 'A-Pose', pose: {
+                l_shoulder: { rx: 0, ry: 0, rz: 0.5 },
+                r_shoulder: { rx: 0, ry: 0, rz: -0.5 },
+              }},
+              { name: 'Idle', pose: {
+                l_shoulder: { rx: 0, ry: 0, rz: 0.3 },
+                r_shoulder: { rx: 0, ry: 0, rz: -0.3 },
+                l_elbow: { rx: -0.2, ry: 0, rz: 0 },
+                r_elbow: { rx: -0.2, ry: 0, rz: 0 },
+                l_hip: { rx: 0.05, ry: 0, rz: 0 },
+                r_hip: { rx: -0.05, ry: 0, rz: 0 },
+                spine: { rx: 0, ry: 0.03, rz: 0 },
+              }},
+              { name: 'Wave', pose: {
+                r_shoulder: { rx: 0, ry: 0, rz: -2.8 },
+                r_elbow: { rx: 0, ry: 1.2, rz: 0 },
+                l_shoulder: { rx: 0, ry: 0, rz: 0.3 },
+                head: { rx: 0, ry: 0.1, rz: 0.05 },
+              }},
+              { name: 'Hip Pose', pose: {
+                l_shoulder: { rx: 0, ry: 0, rz: 0.3 },
+                r_shoulder: { rx: 0.3, ry: 0, rz: -0.8 },
+                r_elbow: { rx: -1.4, ry: 0, rz: 0 },
+                l_hip: { rx: 0, ry: 0, rz: -0.08 },
+                r_hip: { rx: 0.15, ry: 0, rz: 0.08 },
+                spine: { rx: 0, ry: 0, rz: 0.05 },
+                head: { rx: 0, ry: -0.1, rz: -0.05 },
+              }},
+              { name: 'Sit', pose: {
+                l_hip: { rx: -1.5, ry: 0, rz: 0 },
+                r_hip: { rx: -1.5, ry: 0, rz: 0 },
+                l_knee: { rx: 1.5, ry: 0, rz: 0 },
+                r_knee: { rx: 1.5, ry: 0, rz: 0 },
+                l_shoulder: { rx: 0, ry: 0, rz: 0.3 },
+                r_shoulder: { rx: 0, ry: 0, rz: -0.3 },
+                l_elbow: { rx: -0.8, ry: 0, rz: 0 },
+                r_elbow: { rx: -0.8, ry: 0, rz: 0 },
+              }},
+              { name: 'Walk', pose: {
+                l_hip: { rx: -0.4, ry: 0, rz: 0 },
+                r_hip: { rx: 0.3, ry: 0, rz: 0 },
+                l_knee: { rx: 0.2, ry: 0, rz: 0 },
+                r_knee: { rx: 0.5, ry: 0, rz: 0 },
+                l_shoulder: { rx: 0.3, ry: 0, rz: 0.2 },
+                r_shoulder: { rx: -0.3, ry: 0, rz: -0.2 },
+                l_elbow: { rx: -0.3, ry: 0, rz: 0 },
+                r_elbow: { rx: -0.5, ry: 0, rz: 0 },
+              }},
+              { name: 'Dance', pose: {
+                l_shoulder: { rx: 0, ry: 0, rz: 1.8 },
+                r_shoulder: { rx: 0.5, ry: 0, rz: -2.5 },
+                l_elbow: { rx: -1.2, ry: 0.5, rz: 0 },
+                r_elbow: { rx: -0.8, ry: -0.5, rz: 0 },
+                l_hip: { rx: -0.2, ry: 0.1, rz: -0.1 },
+                r_hip: { rx: 0.1, ry: -0.1, rz: 0.15 },
+                spine: { rx: 0, ry: 0, rz: -0.1 },
+                chest: { rx: 0, ry: 0.15, rz: 0 },
+                head: { rx: 0, ry: 0.2, rz: 0.1 },
+              }},
+            ].map(({ name, pose }) => (
+              <button key={name} onClick={() => setPoseAngles(pose)}
+                style={{
+                  padding: '3px 6px', background: 'rgba(64,192,224,0.15)',
+                  border: '1px solid rgba(64,192,224,0.3)', borderRadius: 3,
+                  color: '#40c0e0', cursor: 'pointer', fontSize: 9, fontFamily: 'monospace',
+                }}>
+                {name}
+              </button>
+            ))}
+          </div>
           <div style={{ marginBottom: 8, fontSize: 9, color: '#666' }}>
             Rotate joints. Values in degrees.
           </div>
