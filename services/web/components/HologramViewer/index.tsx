@@ -14,6 +14,7 @@ import { auraVertexShader, auraFragmentShader, AURA_COLORS } from './auraShader'
 
 // Styles
 import classes from './HologramViewer.module.scss';
+import AnimationPanel from './AnimationPanel';
 
 // ── Binary PoseBuffer constants (must match core/interfaces/hologram.ts) ──
 const POSE_BUFFER_JOINTS = 20;
@@ -792,6 +793,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   const containerRef = useRef<HTMLDivElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [poseOpen, setPoseOpen] = useState(false);
+  const [animOpen, setAnimOpen] = useState(false);
+  const [animPlaying, setAnimPlaying] = useState(false);
   const [poseAngles, setPoseAngles] = useState<Record<string, { rx: number; ry: number; rz: number }>>({});
   const poseAnglesRef = useRef(poseAngles);
   useEffect(() => {
@@ -2607,6 +2610,31 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         }}
         title="Hologram Settings"
       >&#9881;</div>
+
+      {/* Animation maker button */}
+      <div
+        onClick={() => setAnimOpen(!animOpen)}
+        style={{
+          position: 'absolute', top: 8, left: 110, zIndex: 10, cursor: 'pointer',
+          width: 28, height: 28, borderRadius: 4,
+          background: animOpen ? 'rgba(224,160,64,0.3)' : 'rgba(255,255,255,0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14, color: animOpen ? '#e0a040' : '#888',
+          border: `1px solid ${animOpen ? 'rgba(224,160,64,0.5)' : 'rgba(255,255,255,0.2)'}`,
+        }}
+        title="Animation Maker"
+      >&#9835;</div>
+
+      {/* Animation panel */}
+      {animOpen && (
+        <AnimationPanel
+          poseAngles={poseAngles}
+          onPoseChange={setPoseAngles}
+          onPlayingChange={setAnimPlaying}
+          poseAnglesRef={poseAnglesRef}
+          morphStateRef={morphStateRef as React.MutableRefObject<Map<string, { dirty: boolean }>>}
+        />
+      )}
 
       {/* Pose controller button */}
       <div
