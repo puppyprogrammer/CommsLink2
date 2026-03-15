@@ -279,8 +279,8 @@ const ChatPage = () => {
     );
 
     socket.on('no_rooms', () => {
-      // User has no room memberships — redirect to about page
-      window.location.href = '/about';
+      // User has no room memberships — show room creation dialog
+      setCreateRoomOpen(true);
     });
 
     socket.on('room_join_error', (data: { error: string }) => {
