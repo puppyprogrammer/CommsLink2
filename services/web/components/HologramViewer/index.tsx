@@ -831,6 +831,8 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     // Torso shape
     bustProjection: 1.0, bustSpacing: 1.0, bustHeight: 0, ribcageWidth: 1.0,
     bellyDepth: 1.0, gluteSize: 1.0, torsoLength: 1.0,
+    upperTorsoOffsetY: 0, upperTorsoHeight: 1.0,
+    waistOffsetY: 0, waistHeight: 1.0,
     torsoOffsetX: 0, torsoOffsetY: 0,
     // Legs
     legLength: 1.0, upperLegLength: 1.0, lowerLegLength: 1.0, legSpacing: 1.0,
@@ -976,8 +978,14 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'bellyDepth', label: 'Belly Depth', min: 0.1, max: 5.0, step: M, info: 'Front-to-back at navel' },
       { key: 'gluteSize', label: 'Glute Size', min: 0, max: 5.0, step: 0.1, info: 'Glute volume projection' },
       { key: 'torsoLength', label: 'Torso Length', min: 0.1, max: 5.0, step: M, info: 'Shoulder to hip distance' },
+      { key: 'upperTorsoOffsetY', label: 'Upper Torso Y', min: -0.5, max: 0.5, step: S, info: 'Shift chest/bust zone up/down' },
+      { key: 'upperTorsoHeight', label: 'Upper Torso Height', min: 0.1, max: 5.0, step: M, info: 'Stretch/compress chest zone' },
+      { key: 'waistOffsetY', label: 'Waist Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift waist/belly zone up/down' },
+      { key: 'waistHeight', label: 'Waist Height', min: 0.1, max: 5.0, step: M, info: 'Stretch/compress waist zone' },
+      { key: 'hipOffsetY', label: 'Hip Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hip zone up/down' },
+      { key: 'hipHeight', label: 'Hip Height', min: 0.1, max: 5.0, step: M, info: 'Stretch/compress hip zone' },
       { key: 'torsoOffsetX', label: 'Torso X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift torso left/right' },
-      { key: 'torsoOffsetY', label: 'Torso Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift torso up/down' },
+      { key: 'torsoOffsetY', label: 'Torso Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift entire torso up/down' },
       { key: 'torsoOffsetZ', label: 'Torso Z Offset', min: -0.5, max: 0.5, step: S, info: 'Shift torso forward/back' },
     ]},
     { id: 'legs', title: 'Legs', color: '#e06080', sliders: [
@@ -1363,14 +1371,23 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
               const slopeT = (pos.y - 0.46) / (0.53 - 0.46);
               pos.x *= 1.0 + (c.shoulderSlope - 1.0) * slopeT;
             }
+            // Upper torso Y offset and height
+            const upperCenter = 0.40;
+            pos.y = upperCenter + (pos.y - upperCenter) * c.upperTorsoHeight + c.upperTorsoOffsetY;
           } else if (pos.y > 0.10) {
             // Waist / belly
             pos.x *= c.waistWidth;
             pos.z *= c.waistWidth * c.bellyDepth;
+            // Waist Y offset and height
+            const waistCenter = 0.20;
+            pos.y = waistCenter + (pos.y - waistCenter) * c.waistHeight + c.waistOffsetY;
           } else if (pos.y > -0.02) {
             // Hip / lower abdomen (above bifurcation)
             pos.x *= c.hipWidth;
-            pos.z *= c.hipWidth * c.gluteSize;
+            pos.z *= c.hipWidth * c.gluteSize * c.hipDepth;
+            // Hip Y offset and height
+            const hipCenter = 0.04;
+            pos.y = hipCenter + (pos.y - hipCenter) * c.hipHeight + c.hipOffsetY;
           } else {
             // Bifurcation zone / glutes (below hip, transitions to legs)
             // Apply both hip and leg scaling so they match
