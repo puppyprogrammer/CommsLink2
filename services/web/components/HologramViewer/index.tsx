@@ -1122,48 +1122,194 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         }
       }
 
-      // ── Proportion scaling helper ─────────────────────
-      const bp = bodyProportionsRef.current;
-      const headJoints = new Set(['head']);
-      const neckJoints = new Set(['neck']);
-      const shoulderJoints = new Set(['l_shoulder', 'r_shoulder']);
-      const armJoints = new Set(['l_shoulder', 'r_shoulder', 'l_elbow', 'r_elbow', 'l_hand', 'r_hand']);
-      const torsoJoints = new Set(['chest', 'spine', 'root']);
-      const legJoints = new Set(['l_hip', 'r_hip', 'l_knee', 'r_knee', 'l_foot', 'r_foot']);
+      // ── Comprehensive proportion scaling ─────────────────────
+      const c = bodyProportionsRef.current;
 
-      const applyProportion = (pos: THREE.Vector3, jointId: string): void => {
-        if (headJoints.has(jointId)) {
-          pos.x *= bp.headScale;
-          pos.z *= bp.headScale;
-          pos.y += bp.headY * 0.1;
-        } else if (neckJoints.has(jointId)) {
-          pos.x *= bp.neckWidth;
-          pos.z *= bp.neckWidth;
-        } else if (armJoints.has(jointId)) {
-          // Scale arm thickness (X/Z) and length (Y stretch from shoulder)
-          const armSign = jointId.startsWith('l_') ? -1 : 1;
-          const shoulderX = armSign * 0.125 * bp.shoulderWidth;
-          pos.x = shoulderX + (pos.x - armSign * 0.125) * bp.armThickness;
-          pos.z *= bp.armThickness;
-        } else if (torsoJoints.has(jointId)) {
-          // Different width scaling per Y zone
-          if (pos.y > 0.33) {
-            pos.x *= bp.torsoWidth;
-            pos.z *= bp.bustSize;
-          } else if (pos.y > 0.15) {
-            pos.x *= bp.waistWidth;
-            pos.z *= bp.waistWidth;
-          } else {
-            pos.x *= bp.hipWidth;
-            pos.z *= bp.hipWidth;
+      // Reference positions for relative scaling
+      const headCenterY = 0.70;
+      const shoulderBaseX = 0.125;
+      const hipBaseX = 0.04;
+      const eyeBaseY = 0.707;
+      const noseBaseY = 0.685;
+      const mouthBaseY = 0.652;
+
+      const applyProportion = (pos: THREE.Vector3, jointId: string, point?: { offset: [number, number, number] }): void => {
+        const side = jointId.startsWith('l_') ? -1 : (jointId.startsWith('r_') ? 1 : 0);
+        const offset = point?.offset || [0, 0, 0];
+
+        if (jointId === 'head') {
+          // ─── HEAD / FACE ───
+          // Base face scaling
+          pos.x *= c.headScale * c.faceWidth;
+          pos.z *= c.headScale * c.faceDepth;
+          pos.y += c.headY * 0.1;
+
+          // Face height: scale Y distance from head center
+          const relY = pos.y - headCenterY;
+          pos.y = headCenterY + relY * c.faceHeight + c.headY * 0.1;
+
+          // Forehead height: stretch above brow
+          if (pos.y > 0.72) {
+            const aboveBrow = pos.y - 0.72;
+            pos.y = 0.72 + aboveBrow * c.foreheadHeight;
           }
-        } else if (legJoints.has(jointId)) {
-          const isThigh = pos.y > -0.48;
-          const widthMul = isThigh ? bp.thighWidth : bp.calfWidth;
-          const legSign = jointId.startsWith('l_') ? -1 : 1;
-          const legCenterX = legSign * 0.04;
-          pos.x = legCenterX + (pos.x - legCenterX) * widthMul;
-          pos.z *= widthMul;
+
+          // Cheekbone width at cheekbone Y
+          if (pos.y > 0.68 && pos.y < 0.72) {
+            pos.x *= c.cheekboneWidth;
+          }
+
+          // Jaw width below cheekbones
+          if (pos.y < 0.68 && pos.y > 0.63) {
+            pos.x *= c.jawWidth;
+          }
+
+          // Chin width and length
+          if (pos.y < 0.63) {
+            pos.x *= c.chinWidth;
+            const belowJaw = 0.63 - pos.y;
+            pos.y = 0.63 - belowJaw * c.chinLength;
+          }
+
+          // Eye adjustments (particles near eye Y)
+          const eyeRelY = Math.abs(pos.y - (eyeBaseY + c.eyeHeight));
+          if (eyeRelY < 0.015 && Math.abs(offset[0]) > 0.015) {
+            // Eye spacing
+            pos.x *= c.eyeSpacing;
+            pos.y += c.eyeHeight;
+          }
+
+          // Eyebrow adjustments
+          if (pos.y > 0.71 && pos.y < 0.73 && Math.abs(offset[2]) > 0.09) {
+            pos.y += c.browHeight;
+            pos.x *= c.browSpacing;
+            // Arch: scale Y offset from baseline
+            const browBaseY = 0.719;
+            pos.y = browBaseY + (pos.y - browBaseY) * c.browArch + c.browHeight;
+          }
+
+          // Nose adjustments (particles near nose Z range)
+          if (offset[2] > 0.10 && Math.abs(offset[0]) < 0.015 && pos.y > 0.66 && pos.y < 0.72) {
+            pos.y += c.noseHeight;
+            pos.x *= c.noseBridgeWidth * c.noseWidth;
+            // Projection: scale Z offset beyond face surface
+            const noseBaseZ = 0.108;
+            pos.z = noseBaseZ + (pos.z - noseBaseZ) * c.noseProjection;
+            // Length: scale Y extent
+            const noseRelY = pos.y - 0.707;
+            pos.y = 0.707 + noseRelY * c.noseLength + c.noseHeight;
+          }
+
+          // Mouth adjustments (particles near mouth Y)
+          if (pos.y > 0.64 && pos.y < 0.66 && offset[2] > 0.09) {
+            pos.y += c.mouthHeight;
+            pos.x *= c.mouthWidth;
+            // Lip projection
+            const lipBaseZ = 0.117;
+            pos.z = lipBaseZ + (pos.z - lipBaseZ) * c.lipProjection;
+            // Smile: shift corners up/down
+            const mouthRelX = Math.abs(pos.x) / 0.022;
+            if (mouthRelX > 0.5) {
+              pos.y += c.smileAmount * 0.005 * mouthRelX;
+            }
+          }
+
+        } else if (jointId === 'neck') {
+          // ─── NECK ───
+          pos.x *= c.neckWidth * c.neckThickness;
+          pos.z *= c.neckWidth * c.neckThickness;
+          // Neck length: scale Y between shoulder and head
+          const neckBaseY = 0.53;
+          const neckTopY = 0.59;
+          const neckRelY = (pos.y - neckBaseY) / (neckTopY - neckBaseY);
+          pos.y = neckBaseY + neckRelY * (neckTopY - neckBaseY) * c.neckLength;
+
+        } else if (jointId === 'l_shoulder' || jointId === 'r_shoulder' ||
+                   jointId === 'l_elbow' || jointId === 'r_elbow' ||
+                   jointId === 'l_hand' || jointId === 'r_hand') {
+          // ─── ARMS ───
+          const armSign = side;
+          const shoulderX = armSign * shoulderBaseX * c.shoulderWidth;
+
+          // Arm spread (X offset from torso)
+          pos.x = shoulderX + (pos.x - armSign * shoulderBaseX) * c.armThickness * c.armSpread;
+          pos.z *= c.armThickness;
+
+          // Shoulder roundness at shoulder peak
+          if (jointId.includes('shoulder') && pos.y > 0.44) {
+            const shoulderRelR = Math.sqrt((pos.x - shoulderX) ** 2 + pos.z ** 2);
+            const scale = c.shoulderRoundness;
+            pos.x = shoulderX + (pos.x - shoulderX) * scale;
+            pos.z *= scale;
+          }
+
+          // Elbow/wrist width
+          if (jointId.includes('elbow')) {
+            pos.x = shoulderX + (pos.x - shoulderX) * c.elbowWidth;
+            pos.z *= c.elbowWidth;
+          }
+          if (jointId.includes('hand')) {
+            pos.x = shoulderX + (pos.x - shoulderX) * c.wristWidth * c.handSize;
+            pos.z *= c.wristWidth * c.handSize;
+          }
+
+        } else if (jointId === 'chest' || jointId === 'spine' || jointId === 'root') {
+          // ─── TORSO ───
+          if (pos.y > 0.33) {
+            // Upper torso / bust area
+            pos.x *= c.torsoWidth * c.ribcageWidth;
+            pos.z *= c.bustSize * c.bustProjection;
+            // Shoulder slope at top of torso
+            if (pos.y > 0.46) {
+              const slopeT = (pos.y - 0.46) / (0.53 - 0.46);
+              pos.x *= 1.0 + (c.shoulderSlope - 1.0) * slopeT;
+            }
+          } else if (pos.y > 0.10) {
+            // Waist / belly
+            pos.x *= c.waistWidth;
+            pos.z *= c.waistWidth * c.bellyDepth;
+          } else {
+            // Hip / lower abdomen
+            pos.x *= c.hipWidth;
+            pos.z *= c.hipWidth * c.gluteSize;
+          }
+          // Torso length: scale Y from center
+          const torsoCenter = 0.20;
+          pos.y = torsoCenter + (pos.y - torsoCenter) * c.torsoLength;
+
+        } else if (jointId === 'l_hip' || jointId === 'r_hip') {
+          // ─── THIGHS ───
+          const legSign = side;
+          const legCX = legSign * hipBaseX * c.legSpacing;
+          pos.x = legCX + (pos.x - legSign * hipBaseX) * c.thighWidth;
+          pos.z *= c.thighWidth;
+          // Leg length
+          const hipY = -0.10;
+          pos.y = hipY + (pos.y - hipY) * c.legLength * c.upperLegLength;
+
+        } else if (jointId === 'l_knee' || jointId === 'r_knee') {
+          // ─── CALVES ───
+          const legSign = side;
+          const legCX = legSign * 0.055 * c.legSpacing;
+          pos.x = legCX + (pos.x - legSign * 0.055) * c.calfWidth * c.kneeWidth;
+          pos.z *= c.calfWidth;
+          // Ankle taper
+          if (pos.y < -0.70) {
+            const ankleT = (-0.70 - pos.y) / 0.16;
+            const ankleMul = 1.0 + (c.ankleWidth - 1.0) * ankleT;
+            pos.x = legCX + (pos.x - legCX) * ankleMul;
+            pos.z *= ankleMul;
+          }
+          // Lower leg length
+          const kneeY = -0.48;
+          pos.y = kneeY + (pos.y - kneeY) * c.legLength * c.lowerLegLength;
+
+        } else if (jointId === 'l_foot' || jointId === 'r_foot') {
+          // ─── FEET ───
+          pos.x *= c.footSize;
+          pos.z *= c.footSize;
+          const legSign = side;
+          pos.x += legSign * hipBaseX * (c.legSpacing - 1.0);
         }
       };
 
@@ -1211,7 +1357,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // Apply joint world rotation to point offset (fixes arm/leg rotation)
           offset.applyQuaternion(jointRot);
           const worldPos = jointPos.clone().add(offset);
-          applyProportion(worldPos, point.joint_id);
+          applyProportion(worldPos, point.joint_id, point);
           const pointSize = point.size * 0.008 * sizeScale;
 
           // Core point
