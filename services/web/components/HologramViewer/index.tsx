@@ -525,10 +525,10 @@ const hologramGlowFragmentShader = `
     float coreBoost = pow(facing, 2.0); // extra brightness at dead center
 
     // No depth-based dimming — constant brightness at all distances
-    vec3 finalColor = vColor * (0.6 + coreBoost * 0.3);
+    vec3 finalColor = vColor * (0.9 + coreBoost * 0.45);
 
     // Alpha: gradient from solid center to transparent edge
-    float alpha = gradient * 0.25 * vOpacity;
+    float alpha = gradient * 0.375 * vOpacity;
 
     gl_FragColor = vec4(finalColor, alpha);
   }
