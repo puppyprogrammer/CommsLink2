@@ -987,7 +987,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
 
           // Glow sphere
           instMesh.setMatrixAt(i * 2 + 1, dummy);
-          scaleAttr.setX(i * 2 + 1, (pointSize * 2.5) / 0.008);
+          scaleAttr.setX(i * 2 + 1, (pointSize * 1.5) / 0.008);
         }
 
         scaleAttr.needsUpdate = true;
@@ -1103,7 +1103,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           const glowIdx = i * 2 + 1;
           dummy.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
           instancedMesh.setMatrixAt(glowIdx, dummy);
-          scaleAttr[glowIdx] = (pointSize * 2.5) / 0.008;
+          scaleAttr[glowIdx] = (pointSize * 1.5) / 0.008;
           colorAttr[glowIdx * 3] = tempColor.r;
           colorAttr[glowIdx * 3 + 1] = tempColor.g;
           colorAttr[glowIdx * 3 + 2] = tempColor.b;
