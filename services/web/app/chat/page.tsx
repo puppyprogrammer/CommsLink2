@@ -109,7 +109,19 @@ const ChatPage = () => {
   terminalPanelOpenRef.current = terminalPanelOpen;
   const [terminalWidth, setTerminalWidth] = useState(600);
   const [webPanelWidth, setWebPanelWidth] = useState(600);
-  const [hologramPanelOpen, setHologramPanelOpen] = useState(false);
+  const [hologramPanelOpen, setHologramPanelOpenRaw] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('hologramPanelOpen') === 'true';
+    }
+    return false;
+  });
+  const setHologramPanelOpen = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setHologramPanelOpenRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      localStorage.setItem('hologramPanelOpen', String(next));
+      return next;
+    });
+  }, []);
   const [hologramAvatars, setHologramAvatars] = useState<
     {
       id: string;
