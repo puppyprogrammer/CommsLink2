@@ -1314,16 +1314,20 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   const updateAvatarGeometry = useCallback(
     (avatar: AvatarData, morphState: MorphState) => {
       const morphTargets = getEffectiveMorphTargets(avatar);
-      const effectivePose = blendPoseMulti(avatar.pose, morphTargets, morphState.currentInfluences);
-      // Merge manual pose angles from UI
+      let effectivePose = blendPoseMulti(avatar.pose, morphTargets, morphState.currentInfluences);
+      // Merge manual pose angles from UI (clone to avoid mutation)
       const pa = poseAnglesRef.current;
-      if (Object.keys(pa).length > 0 && effectivePose?.joints) {
+      if (Object.keys(pa).length > 0) {
+        const poseJoints = { ...(effectivePose?.joints || {}) };
         for (const [jid, angles] of Object.entries(pa)) {
-          if (!effectivePose.joints[jid]) effectivePose.joints[jid] = { rx: 0, ry: 0, rz: 0 };
-          effectivePose.joints[jid].rx += angles.rx;
-          effectivePose.joints[jid].ry += angles.ry;
-          effectivePose.joints[jid].rz += angles.rz;
+          const existing = poseJoints[jid] || { rx: 0, ry: 0, rz: 0 };
+          poseJoints[jid] = {
+            rx: existing.rx + angles.rx,
+            ry: existing.ry + angles.ry,
+            rz: existing.rz + angles.rz,
+          };
         }
+        effectivePose = { ...effectivePose, joints: poseJoints };
       }
       const { positions: jointPositions, rotations: jointRotations } = resolveJointTransforms(
         avatar.skeleton,
