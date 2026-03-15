@@ -1244,11 +1244,79 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     const ambient = new THREE.AmbientLight(0xffffff, 0.3);
     scene.add(ambient);
 
+    // ── Free-roam camera controls (WASD + mouse look) ──────────────
+    const keysDown = new Set<string>();
+    let moveSpeed = 1.0;
+    let yaw = 0;
+    let pitch = 0;
+    let isPointerLocked = false;
+
+    // Extract initial yaw/pitch from camera direction
+    const initDir = new THREE.Vector3(0, -0.1, 0).sub(camera.position).normalize();
+    yaw = Math.atan2(-initDir.x, -initDir.z);
+    pitch = Math.asin(initDir.y);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Don't capture keys when typing in inputs
+      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
+      keysDown.add(e.key.toLowerCase());
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      keysDown.delete(e.key.toLowerCase());
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.target === renderer.domElement && e.button === 0) {
+        renderer.domElement.requestPointerLock();
+      }
+    };
+    const onPointerLockChange = () => {
+      isPointerLocked = document.pointerLockElement === renderer.domElement;
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isPointerLocked) return;
+      const sensitivity = 0.002;
+      yaw -= e.movementX * sensitivity;
+      pitch -= e.movementY * sensitivity;
+      pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (e.target !== renderer.domElement) return;
+      moveSpeed = Math.max(0.1, Math.min(10, moveSpeed * (e.deltaY > 0 ? 0.9 : 1.1)));
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+    renderer.domElement.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('pointerlockchange', onPointerLockChange);
+    document.addEventListener('mousemove', onMouseMove);
+    renderer.domElement.addEventListener('wheel', onWheel, { passive: true });
+
+    const updateFlyCamera = (delta: number) => {
+      // Apply yaw/pitch to camera rotation
+      const euler = new THREE.Euler(pitch, yaw, 0, 'YXZ');
+      camera.quaternion.setFromEuler(euler);
+
+      // Movement relative to camera direction
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+      const speed = moveSpeed * delta;
+
+      if (keysDown.has('w')) camera.position.addScaledVector(forward, speed);
+      if (keysDown.has('s')) camera.position.addScaledVector(forward, -speed);
+      if (keysDown.has('a')) camera.position.addScaledVector(right, -speed);
+      if (keysDown.has('d')) camera.position.addScaledVector(right, speed);
+      if (keysDown.has(' ')) camera.position.y += speed;
+      if (keysDown.has('shift')) camera.position.y -= speed;
+    };
+
     // Animation loop
     const clock = new THREE.Clock();
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
       const delta = clock.getDelta();
+
+      // Free-roam camera
+      updateFlyCamera(delta);
 
       // ── Smooth morph interpolation ────────────────────
       for (const [avatarId, mState] of morphStateRef.current) {
@@ -1383,6 +1451,14 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       cancelAnimationFrame(frameRef.current);
       observer.disconnect();
       clearInterval(debugPollInterval);
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('keyup', onKeyUp);
+      renderer.domElement.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('pointerlockchange', onPointerLockChange);
+      document.removeEventListener('mousemove', onMouseMove);
+      if (document.pointerLockElement === renderer.domElement) {
+        document.exitPointerLock();
+      }
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);

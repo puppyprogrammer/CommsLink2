@@ -11,7 +11,7 @@ const skeleton = [
   { id: 'spine',      position: [0, 0.20, 0],       parent_id: 'root' },
   { id: 'chest',      position: [0, 0.20, 0],       parent_id: 'spine' },
   { id: 'neck',       position: [0, 0.13, 0],       parent_id: 'chest' },
-  { id: 'head',       position: [0, 0.13, 0],       parent_id: 'neck' },
+  { id: 'head',       position: [0, 0.09, 0],       parent_id: 'neck' },
   { id: 'l_shoulder', position: [-0.125, 0.08, 0],  parent_id: 'chest' },
   { id: 'r_shoulder', position: [0.125, 0.08, 0],   parent_id: 'chest' },
   { id: 'l_elbow',    position: [-0.035, -0.21, 0], parent_id: 'l_shoulder' },

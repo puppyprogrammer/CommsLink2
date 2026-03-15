@@ -64,7 +64,7 @@ function debugColor(jointId: string): string {
 //   spine:      [0, 0.20, 0]       → [0, 0.20, 0]
 //   chest:      [0, 0.20, 0]       → [0, 0.40, 0]
 //   neck:       [0, 0.13, 0]       → [0, 0.53, 0]
-//   head:       [0, 0.13, 0]       → [0, 0.66, 0]
+//   head:       [0, 0.09, 0]       → [0, 0.62, 0]
 //   l_shoulder: [-0.125, 0.08, 0]  → [-0.125, 0.48, 0]
 //   l_elbow:    [-0.035, -0.21, 0] → [-0.160, 0.27, 0]
 //   l_hand:     [0, -0.20, 0]      → [-0.160, 0.07, 0]
@@ -78,7 +78,7 @@ const JOINTS: Record<string, [number, number, number]> = {
   spine:      [0, 0.20, 0],
   chest:      [0, 0.40, 0],
   neck:       [0, 0.53, 0],
-  head:       [0, 0.66, 0],
+  head:       [0, 0.62, 0],
   l_shoulder: [-0.125, 0.48, 0],
   r_shoulder: [0.125, 0.48, 0],
   l_elbow:    [-0.160, 0.27, 0],
@@ -614,33 +614,36 @@ for (const [side, shJoint, elJoint, haJoint] of [
 // NECK-TO-HEAD CONNECTOR
 // ══════════════════════════════════════════════════════════════
 const neckConnectorSecs: EllipseSection[] = [
-  { y: 0.59, cx: 0, rw: 0.036, rd: 0.036 },
-  { y: 0.62, cx: 0, rw: 0.038, rd: 0.040 },
-  { y: 0.65, cx: 0, rw: 0.050, rd: 0.055 },
+  { y: 0.56, cx: 0, rw: 0.034, rd: 0.034 },
+  { y: 0.58, cx: 0, rw: 0.038, rd: 0.040 },
+  { y: 0.60, cx: 0, rw: 0.044, rd: 0.046 },
+  { y: 0.615, cx: 0, rw: 0.048, rd: 0.048 },
+  { y: 0.625, cx: 0, rw: 0.050, rd: 0.048 },
 ];
-sampleEllipticalLimb(neckConnectorSecs, 150, 'head');
+sampleEllipticalLimb(neckConnectorSecs, 400, 'head');
 
 // ══════════════════════════════════════════════════════════════
 // HEAD — oval face with density-based features
-// Head center at Y=0.74 (joint at 0.66 + offset 0.08)
+// Head center at Y=0.70 (joint at 0.62 + offset 0.08)
+// Moved down 0.04 for shorter neck.
 //
 // Egg-shaped: wide at forehead/cheekbones, tapers to narrow chin.
 // Face (Z>0) is flattened. Features defined by density/brightness.
 // ══════════════════════════════════════════════════════════════
-const headCY = 0.74;
+const headCY = 0.70;
 const headH = 0.075; // half-height
 
-// Head width/depth profile — tapers from cheekbones to chin
+// Head width/depth profile — all Y positions shifted down 0.04
 type HeadSection = { y: number; hw: number; hd: number };
 const headProfile: HeadSection[] = [
-  { y: headCY + headH,       hw: 0.050, hd: 0.060 },  // top of head (narrow)
-  { y: headCY + headH * 0.5, hw: 0.068, hd: 0.078 },  // upper forehead
-  { y: 0.740,                hw: 0.070, hd: 0.080 },  // forehead
-  { y: 0.729,                hw: 0.072, hd: 0.082 },  // eye level (widest — cheekbones)
-  { y: 0.710,                hw: 0.068, hd: 0.078 },  // cheek
-  { y: 0.691,                hw: 0.055, hd: 0.065 },  // mouth
-  { y: 0.676,                hw: 0.035, hd: 0.045 },  // chin (narrow)
-  { y: headCY - headH,       hw: 0.020, hd: 0.030 },  // below chin
+  { y: headCY + headH,       hw: 0.058, hd: 0.065 },  // top of head (0.775)
+  { y: headCY + headH * 0.5, hw: 0.078, hd: 0.084 },  // upper forehead (0.738)
+  { y: 0.700,                hw: 0.085, hd: 0.086 },  // forehead — wide
+  { y: 0.689,                hw: 0.090, hd: 0.089 },  // eye level — widest
+  { y: 0.670,                hw: 0.088, hd: 0.084 },  // cheek — almost as wide
+  { y: 0.651,                hw: 0.078, hd: 0.070 },  // mouth — wider
+  { y: 0.636,                hw: 0.060, hd: 0.055 },  // chin — soft round
+  { y: 0.630,                hw: 0.050, hd: 0.048 },  // below chin (above connector end)
 ];
 
 /** Interpolate head width/depth at a Y position */
@@ -659,8 +662,8 @@ function headProfileAt(y: number): { hw: number; hd: number } {
   return headProfile[0];
 }
 
-// Eye positions (for exclusion zones and feature placement)
-const eyeY = 0.729;
+// Eye positions (shifted down 0.04)
+const eyeY = 0.689;
 const eyeSpacing = 0.034;
 const faceZ = 0.072;
 
@@ -674,54 +677,52 @@ function inEyeZone(x: number, y: number): boolean {
   return false;
 }
 
-// ── Main skull particles — oval with face flattening ──
-// Surface-area weighted: rejection sampling based on cross-section circumference
-// so density is uniform across the head surface (not concentrated at the top)
-const maxCircumference = Math.PI * (0.072 + 0.082); // max at cheekbones
-for (let i = 0; i < 2200; i++) {
-  const y = rand(headCY - headH, headCY + headH);
+// ── Main skull particles — ONE uniform surface, no flattening ──
+// All particles on the natural elliptical surface. Same color everywhere.
+const maxCircumference = Math.PI * (0.090 + 0.089); // max at cheekbones
+
+// Head starts at Y=0.630 (connector stops at 0.625, no overlap)
+const headYMin = headCY - headH + 0.005; // 0.630
+
+for (let i = 0; i < 3500; i++) {
+  const y = rand(headYMin, headCY + headH);
   const prof = headProfileAt(y);
 
-  // Rejection sampling: accept with probability proportional to circumference
   const circumference = Math.PI * (prof.hw + prof.hd);
   if (Math.random() > circumference / maxCircumference) { i--; continue; }
 
+  // Soften top of skull density by 20%
+  if (y > 0.72 && Math.random() < 0.20) continue;
+
+  // Full ellipse surface — no front/back split, no flattening
   const angle = rand(0, Math.PI * 2);
   const x = prof.hw * Math.cos(angle);
-  let z = prof.hd * Math.sin(angle);
+  const z = prof.hd * Math.sin(angle);
 
-  // Flatten face: compress Z for front-facing particles
-  if (z > 0.02) {
-    z = 0.02 + (z - 0.02) * 0.3;
-  }
+  // Eye socket exclusion (front face only)
+  if (z > 0 && inEyeZone(x, y) && Math.random() < 0.6) continue;
 
-  // Eye socket exclusion — skip 60% of particles in eye zones
-  if (z > 0.02 && inEyeZone(x, y) && Math.random() < 0.6) continue;
-
-  // Chin shadow — reduce density below lips
-  if (y >= 0.676 && y <= 0.685 && z > 0.02 && Math.random() < 0.3) continue;
-
-  // Top of head (above forehead) is darker — where hair would be
+  // Uniform color — only very top (Y>0.74) slightly dimmer
   const col = y > 0.74 ? COL.dim : COL.body;
-  const sz = y > 0.74 ? 0.30 : 0.38;
+  const sz = 0.30; // smaller particles for finer detail
 
   addPoint(x, y, z, 'head', sz, col);
 }
 
-// ── Eyes — glowing spots in dark sockets ──
+// ── Eyes — soft bright dots, not alien headlights ──
 for (const side of [-1, 1]) {
-  // Bright eye glow (small, intense)
-  for (let i = 0; i < 15; i++) {
+  // Subtle eye glow — matches body color but slightly brighter
+  for (let i = 0; i < 8; i++) {
     const ex = side * eyeSpacing + rand(-0.008, 0.008);
     const ey = eyeY + rand(-0.004, 0.004);
     const ez = faceZ + rand(0, 0.004);
-    addPoint(ex, ey, ez, 'head', 0.7, COL.eyeGlow);
+    addPoint(ex, ey, ez, 'head', 0.45, '#90ede8');
   }
-  // Pupil center (brighter, smaller)
-  for (let i = 0; i < 8; i++) {
-    const ex = side * eyeSpacing + rand(-0.003, 0.003);
-    const ey = eyeY + rand(-0.002, 0.002);
-    addPoint(ex, ey, faceZ + 0.003, 'head', 0.9, COL.eye);
+  // Pupil center — soft dots
+  for (let i = 0; i < 6; i++) {
+    const ex = side * eyeSpacing + rand(-0.004, 0.004);
+    const ey = eyeY + rand(-0.003, 0.003);
+    addPoint(ex, ey, faceZ + 0.003, 'head', 0.50, '#90ede8');
   }
 }
 
@@ -732,56 +733,70 @@ for (const side of [-1, 1]) {
     const bx = side * eyeSpacing + t * 0.022;
     const by = eyeY + 0.014 + (1 - t * t) * 0.005; // arched
     const bz = faceZ - 0.003;
-    addPoint(bx, by, bz, 'head', 0.35, COL.highlight);
+    addPoint(bx, by, bz, 'head', 0.30, COL.body);
   }
 }
 
 // ── Nose — subtle vertical ridge ──
 for (let i = 0; i < 25; i++) {
   const t = rand(0, 1);
-  const ny = lerp(eyeY, 0.700, t);
+  const ny = lerp(eyeY, 0.660, t);
   const nz = faceZ + t * 0.013; // projects forward
-  addPoint(rand(-0.003, 0.003), ny, nz, 'head', 0.32, COL.highlight);
+  addPoint(rand(-0.003, 0.003), ny, nz, 'head', 0.30, COL.body);
 }
 // Nose tip
 for (let i = 0; i < 12; i++) {
-  addPoint(rand(-0.005, 0.005), 0.700 + rand(-0.003, 0.003), faceZ + 0.012, 'head', 0.35, COL.highlight);
+  addPoint(rand(-0.005, 0.005), 0.660 + rand(-0.003, 0.003), faceZ + 0.012, 'head', 0.30, COL.body);
 }
 
-// ── Lips — bow-shaped concentration ──
-const mouthY = 0.691;
-for (let i = 0; i < 40; i++) {
+// Cheekbones defined by head profile shape (widest at eye level) — no extra particles
+
+// ── Lips — bow-shaped with subtle smile ──
+const mouthY = 0.651;
+for (let i = 0; i < 60; i++) {
   const t = rand(-1, 1);
-  const lx = t * 0.025;
-  // Upper lip — slight cupid's bow
-  const uly = mouthY + 0.004 + (1 - t * t) * 0.003;
-  addPoint(lx, uly, faceZ - 0.002, 'head', 0.35, COL.lip);
-  // Lower lip — fuller
-  const lly = mouthY - 0.004 - (1 - t * t) * 0.004;
-  addPoint(lx * 0.9, lly, faceZ - 0.003, 'head', 0.35, COL.lip);
+  const lx = t * 0.030; // wider mouth for wider face
+  // Smile: outer edges curve upward
+  const smileUp = Math.abs(t) > 0.5 ? 0.003 * (Math.abs(t) - 0.5) * 2 : 0;
+  // Upper lip — slight cupid's bow + smile
+  const uly = mouthY + 0.004 + (1 - t * t) * 0.003 + smileUp;
+  addPoint(lx, uly, faceZ - 0.002, 'head', 0.30, COL.body);
+  // Lower lip — fuller + smile
+  const lly = mouthY - 0.004 - (1 - t * t) * 0.004 + smileUp;
+  addPoint(lx * 0.9, lly, faceZ - 0.003, 'head', 0.30, COL.body);
 }
 
-// ── Jawline — defined edge from cheek to chin ──
+// ── Jawline — soft round jaw matching wider face ──
 for (const side of [-1, 1]) {
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 30; i++) {
     const t = rand(0, 1);
-    const jx = side * lerp(0.068, 0.035, t); // cheek to chin width
-    const jy = lerp(0.710, 0.676, t);
+    const jx = side * lerp(0.088, 0.060, t); // wider cheek to wider chin
+    const jy = lerp(0.670, 0.636, t);
     const prof = headProfileAt(jy);
-    const jz = prof.hd * 0.55 * (1 - t * 0.3); // follows face surface
-    addPoint(jx, jy, jz, 'head', 0.32, COL.contour);
+    const jz = prof.hd * 0.55 * (1 - t * 0.3);
+    addPoint(jx, jy, jz, 'head', 0.30, COL.body);
   }
 }
 
 // ── Chin ──
-for (let i = 0; i < 30; i++) {
-  addPoint(rand(-0.015, 0.015), 0.676 + rand(-0.005, 0.005), rand(0.02, 0.04), 'head', 0.35, COL.body);
+for (let i = 0; i < 80; i++) {
+  addPoint(rand(-0.020, 0.020), 0.636 + rand(-0.008, 0.008), rand(0.02, 0.045), 'head', 0.30, COL.body);
+}
+
+// ── Below-chin fill — bridges jaw to neck connector ──
+for (let i = 0; i < 60; i++) {
+  const y = rand(0.630, 0.636);
+  const prof = headProfileAt(y);
+  const angle = rand(0, Math.PI * 2);
+  const x = prof.hw * Math.cos(angle);
+  let z = prof.hd * Math.sin(angle);
+  addPoint(x, y, z, 'head', 0.30, COL.body);
 }
 
 // ── Ears ──
 for (const side of [-1, 1]) {
-  const earX = side * 0.072;
-  ellipsoid(earX, headCY, 0, 0.008, 0.018, 0.008, 30, 'head', 0.25, COL.dim);
+  const earX = side * 0.090;
+  ellipsoid(earX, 0.70, 0, 0.008, 0.018, 0.008, 15, 'head', 0.30, COL.body);
 }
 
 // Hair is handled by the ponytail verlet-physics system in the renderer.
