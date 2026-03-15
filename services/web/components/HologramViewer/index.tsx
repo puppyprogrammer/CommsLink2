@@ -2638,7 +2638,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
 
       {/* Pose controller button */}
       <div
-        onClick={() => setPoseOpen(!poseOpen)}
+        onClick={() => { setPoseOpen(!poseOpen); if (!poseOpen) setEditMode(false); }}
         style={{
           position: 'absolute', top: 8, left: 76, zIndex: 10, cursor: 'pointer',
           width: 28, height: 28, borderRadius: 4,
@@ -2653,7 +2653,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       {/* Pose controller panel */}
       {poseOpen && (
         <div style={{
-          position: 'absolute', top: 42, right: 220, zIndex: 10,
+          position: 'absolute', top: 8, right: 8, zIndex: 10,
           background: 'rgba(10,20,25,0.94)', border: '1px solid rgba(64,192,224,0.3)',
           borderRadius: 6, padding: '10px 12px', width: 220,
           fontFamily: 'monospace', fontSize: 10, color: '#a0d8e0',
@@ -2805,7 +2805,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
 
       {/* Edit mode button */}
       <div
-        onClick={() => setEditMode(!editMode)}
+        onClick={() => { setEditMode(!editMode); if (!editMode) setPoseOpen(false); }}
         style={{
           position: 'absolute', top: 8, left: 42, zIndex: 10, cursor: 'pointer',
           width: 28, height: 28, borderRadius: 4,
@@ -2820,7 +2820,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       {/* Edit mode controls */}
       {editMode && (
         <div style={{
-          position: 'absolute', top: 42, right: 8, zIndex: 10,
+          position: 'absolute', top: 8, right: 8, zIndex: 10,
           background: 'rgba(10,20,25,0.94)', border: '1px solid rgba(255,68,68,0.3)',
           borderRadius: 6, padding: '10px 12px', width: 200,
           fontFamily: 'monospace', fontSize: 10, color: '#e0a0a0',
