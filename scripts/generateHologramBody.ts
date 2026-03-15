@@ -85,12 +85,12 @@ const JOINTS: Record<string, [number, number, number]> = {
   r_elbow:    [0.160, 0.27, 0],
   l_hand:     [-0.160, 0.07, 0],
   r_hand:     [0.160, 0.07, 0],
-  l_hip:      [-0.050, -0.10, 0],
-  r_hip:      [0.050, -0.10, 0],
-  l_knee:     [-0.065, -0.48, 0],
-  r_knee:     [0.065, -0.48, 0],
-  l_foot:     [-0.065, -0.86, 0],
-  r_foot:     [0.065, -0.86, 0],
+  l_hip:      [-0.040, -0.10, 0],
+  r_hip:      [0.040, -0.10, 0],
+  l_knee:     [-0.055, -0.48, 0],
+  r_knee:     [0.055, -0.48, 0],
+  l_foot:     [-0.055, -0.86, 0],
+  r_foot:     [0.055, -0.86, 0],
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -321,9 +321,9 @@ for (let i = 0; i < 100; i++) {
 
 const bifurcTop = -0.02;
 const bifurcBot = -0.10;
-const legTopCenterX = 0.050;
-const legTopRadiusW = 0.042;
-const legTopRadiusD = 0.035;
+const legTopCenterX = 0.040;
+const legTopRadiusW = 0.070;
+const legTopRadiusD = 0.055;
 
 // Only ~800 particles in this narrow 0.08-unit zone — matches density of legs
 for (let i = 0; i < 250; i++) {
@@ -404,8 +404,8 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
   [1, 'r_hip', 'r_knee', 'r_foot'],
 ] as const) {
   const topCX = side * legTopCenterX;
-  const kneeX = side * 0.065;
-  const ankleX = side * 0.065;
+  const kneeX = side * 0.055;
+  const ankleX = side * 0.055;
   const kneeY = -0.48;
   const ankleY = -0.86;
 
@@ -413,33 +413,33 @@ for (const [side, hipJoint, kneeJoint, footJoint] of [
   // Side: fuller at front (positive zShift), neutral at knee
   // Leg center interpolates from ±0.060 (top) to ±0.08 (knee) — subtle outward angle
   const thighSections: EllipseSection[] = [
-    { y: bifurcBot,                          cx: topCX,                       rw: 0.042,         rd: 0.035,         zShift: 0.005 },
-    { y: lerp(bifurcBot, kneeY, 0.08), cx: lerp(topCX, kneeX, 0.08), rw: 0.045,         rd: 0.038,         zShift: 0.007 },
-    { y: lerp(bifurcBot, kneeY, 0.20), cx: lerp(topCX, kneeX, 0.20), rw: 0.042,         rd: 0.036,         zShift: 0.005 },
-    { y: lerp(bifurcBot, kneeY, 0.40), cx: lerp(topCX, kneeX, 0.40), rw: 0.038,         rd: 0.033,         zShift: 0.003 },
-    { y: lerp(bifurcBot, kneeY, 0.60), cx: lerp(topCX, kneeX, 0.60), rw: 0.034,         rd: 0.030,         zShift: 0.002 },
-    { y: lerp(bifurcBot, kneeY, 0.80), cx: lerp(topCX, kneeX, 0.80), rw: 0.028,         rd: 0.025,         zShift: 0.000 },
-    { y: lerp(bifurcBot, kneeY, 0.92), cx: lerp(topCX, kneeX, 0.92), rw: 0.024,         rd: 0.022,         zShift: 0.000 },
-    { y: kneeY,                              cx: kneeX,                      rw: 0.021,         rd: 0.020,         zShift: 0.000 },
+    { y: bifurcBot,                          cx: topCX,                       rw: 0.070,         rd: 0.055,         zShift: 0.005 },
+    { y: lerp(bifurcBot, kneeY, 0.08), cx: lerp(topCX, kneeX, 0.08), rw: 0.075,         rd: 0.060,         zShift: 0.007 },
+    { y: lerp(bifurcBot, kneeY, 0.20), cx: lerp(topCX, kneeX, 0.20), rw: 0.068,         rd: 0.055,         zShift: 0.005 },
+    { y: lerp(bifurcBot, kneeY, 0.40), cx: lerp(topCX, kneeX, 0.40), rw: 0.058,         rd: 0.048,         zShift: 0.003 },
+    { y: lerp(bifurcBot, kneeY, 0.60), cx: lerp(topCX, kneeX, 0.60), rw: 0.048,         rd: 0.040,         zShift: 0.002 },
+    { y: lerp(bifurcBot, kneeY, 0.80), cx: lerp(topCX, kneeX, 0.80), rw: 0.038,         rd: 0.032,         zShift: 0.000 },
+    { y: lerp(bifurcBot, kneeY, 0.92), cx: lerp(topCX, kneeX, 0.92), rw: 0.033,         rd: 0.028,         zShift: 0.000 },
+    { y: kneeY,                              cx: kneeX,                      rw: 0.029,         rd: 0.026,         zShift: 0.000 },
   ];
   sampleEllipticalLimb(thighSections, 1100, hipJoint);
 
   // Calf — knee (narrow) → calf bulge (~1/3 down) → ankle taper
   // Side: calf muscle pushes backward (negative zShift)
   const calfSections: EllipseSection[] = [
-    { y: kneeY,                          cx: kneeX,  rw: 0.021, rd: 0.020, zShift: 0.000 },
-    { y: lerp(kneeY, ankleY, 0.12), cx: kneeX,  rw: 0.022, rd: 0.021, zShift: -0.002 },
-    { y: lerp(kneeY, ankleY, 0.28), cx: kneeX,  rw: 0.024, rd: 0.023, zShift: -0.005 }, // calf peak
-    { y: lerp(kneeY, ankleY, 0.42), cx: kneeX,  rw: 0.023, rd: 0.022, zShift: -0.004 },
-    { y: lerp(kneeY, ankleY, 0.58), cx: kneeX,  rw: 0.019, rd: 0.018, zShift: -0.002 },
-    { y: lerp(kneeY, ankleY, 0.75), cx: ankleX, rw: 0.015, rd: 0.014, zShift: -0.001 },
-    { y: lerp(kneeY, ankleY, 0.90), cx: ankleX, rw: 0.012, rd: 0.011, zShift: 0.000 },
-    { y: ankleY + 0.03,                 cx: ankleX, rw: 0.010, rd: 0.010, zShift: 0.000 },
+    { y: kneeY,                          cx: kneeX,  rw: 0.029, rd: 0.026, zShift: 0.000 },
+    { y: lerp(kneeY, ankleY, 0.12), cx: kneeX,  rw: 0.031, rd: 0.028, zShift: -0.003 },
+    { y: lerp(kneeY, ankleY, 0.28), cx: kneeX,  rw: 0.034, rd: 0.031, zShift: -0.006 }, // calf peak
+    { y: lerp(kneeY, ankleY, 0.42), cx: kneeX,  rw: 0.032, rd: 0.029, zShift: -0.005 },
+    { y: lerp(kneeY, ankleY, 0.58), cx: kneeX,  rw: 0.026, rd: 0.024, zShift: -0.002 },
+    { y: lerp(kneeY, ankleY, 0.75), cx: ankleX, rw: 0.021, rd: 0.019, zShift: -0.001 },
+    { y: lerp(kneeY, ankleY, 0.90), cx: ankleX, rw: 0.016, rd: 0.014, zShift: 0.000 },
+    { y: ankleY + 0.03,                 cx: ankleX, rw: 0.013, rd: 0.012, zShift: 0.000 },
   ];
   sampleEllipticalLimb(calfSections, 900, kneeJoint);
 
   // Feet
-  const fx = side * 0.065;
+  const fx = side * 0.055;
   const fy = ankleY; // -0.86
   ellipsoid(fx, fy, 0, 0.017, 0.012, 0.017, 50, footJoint, 0.12, COL.body);
   ellipsoid(fx, fy - 0.015, 0.021, 0.017, 0.009, 0.033, 80, footJoint, 0.12, COL.body);
