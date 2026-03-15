@@ -873,6 +873,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     breastDensity: 1.0, heartDensity: 1.0, lungDensity: 1.0, stomachDensity: 1.0,
     intestineDensity: 1.0, wombDensity: 1.0, ovaryDensity: 1.0,
     fallopianDensity: 1.0, cervixDensity: 1.0, vaginaDensity: 1.0,
+    // Joint offsets (per-joint X/Y position adjustment)
+    rootX: 0, rootY: 0, spineX: 0, spineY: 0, chestX: 0, chestY: 0,
+    neckJointX: 0, neckJointY: 0, headJointX: 0, headJointY: 0,
+    lShoulderX: 0, lShoulderY: 0, rShoulderX: 0, rShoulderY: 0,
+    lElbowX: 0, lElbowY: 0, rElbowX: 0, rElbowY: 0,
+    lHandX: 0, lHandY: 0, rHandX: 0, rHandY: 0,
+    lHipX: 0, lHipY: 0, rHipX: 0, rHipY: 0,
+    lKneeX: 0, lKneeY: 0, rKneeX: 0, rKneeY: 0,
+    lFootX: 0, lFootY: 0, rFootX: 0, rFootY: 0,
     // Debug colors (hex as numeric — 1.0 = show organ debug colors, 0 = normal)
     debugOrgans: 0,
     // Debug
@@ -1096,6 +1105,42 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       { key: 'calfDensity', label: 'Calves', min: 0, max: 5.0, step: 0.1, info: 'Calf particle visibility' },
       { key: 'footDensity', label: 'Feet', min: 0, max: 5.0, step: 0.1, info: 'Foot particle visibility' },
     ]},
+    { id: 'joints', title: 'Joint Positions', color: '#40c0e0', sliders: [
+      { key: 'rootX', label: 'Root X', min: -0.5, max: 0.5, step: S, info: 'Root joint X offset' },
+      { key: 'rootY', label: 'Root Y', min: -0.5, max: 0.5, step: S, info: 'Root joint Y offset' },
+      { key: 'spineX', label: 'Spine X', min: -0.5, max: 0.5, step: S, info: 'Spine joint X' },
+      { key: 'spineY', label: 'Spine Y', min: -0.5, max: 0.5, step: S, info: 'Spine joint Y' },
+      { key: 'chestX', label: 'Chest X', min: -0.5, max: 0.5, step: S, info: 'Chest joint X' },
+      { key: 'chestY', label: 'Chest Y', min: -0.5, max: 0.5, step: S, info: 'Chest joint Y' },
+      { key: 'neckJointX', label: 'Neck X', min: -0.5, max: 0.5, step: S, info: 'Neck joint X' },
+      { key: 'neckJointY', label: 'Neck Y', min: -0.5, max: 0.5, step: S, info: 'Neck joint Y' },
+      { key: 'headJointX', label: 'Head X', min: -0.5, max: 0.5, step: S, info: 'Head joint X' },
+      { key: 'headJointY', label: 'Head Y', min: -0.5, max: 0.5, step: S, info: 'Head joint Y' },
+      { key: 'lShoulderX', label: 'L Shoulder X', min: -0.5, max: 0.5, step: S, info: 'Left shoulder X' },
+      { key: 'lShoulderY', label: 'L Shoulder Y', min: -0.5, max: 0.5, step: S, info: 'Left shoulder Y' },
+      { key: 'rShoulderX', label: 'R Shoulder X', min: -0.5, max: 0.5, step: S, info: 'Right shoulder X' },
+      { key: 'rShoulderY', label: 'R Shoulder Y', min: -0.5, max: 0.5, step: S, info: 'Right shoulder Y' },
+      { key: 'lElbowX', label: 'L Elbow X', min: -0.5, max: 0.5, step: S, info: 'Left elbow X' },
+      { key: 'lElbowY', label: 'L Elbow Y', min: -0.5, max: 0.5, step: S, info: 'Left elbow Y' },
+      { key: 'rElbowX', label: 'R Elbow X', min: -0.5, max: 0.5, step: S, info: 'Right elbow X' },
+      { key: 'rElbowY', label: 'R Elbow Y', min: -0.5, max: 0.5, step: S, info: 'Right elbow Y' },
+      { key: 'lHandX', label: 'L Hand X', min: -0.5, max: 0.5, step: S, info: 'Left hand X' },
+      { key: 'lHandY', label: 'L Hand Y', min: -0.5, max: 0.5, step: S, info: 'Left hand Y' },
+      { key: 'rHandX', label: 'R Hand X', min: -0.5, max: 0.5, step: S, info: 'Right hand X' },
+      { key: 'rHandY', label: 'R Hand Y', min: -0.5, max: 0.5, step: S, info: 'Right hand Y' },
+      { key: 'lHipX', label: 'L Hip X', min: -0.5, max: 0.5, step: S, info: 'Left hip X' },
+      { key: 'lHipY', label: 'L Hip Y', min: -0.5, max: 0.5, step: S, info: 'Left hip Y' },
+      { key: 'rHipX', label: 'R Hip X', min: -0.5, max: 0.5, step: S, info: 'Right hip X' },
+      { key: 'rHipY', label: 'R Hip Y', min: -0.5, max: 0.5, step: S, info: 'Right hip Y' },
+      { key: 'lKneeX', label: 'L Knee X', min: -0.5, max: 0.5, step: S, info: 'Left knee X' },
+      { key: 'lKneeY', label: 'L Knee Y', min: -0.5, max: 0.5, step: S, info: 'Left knee Y' },
+      { key: 'rKneeX', label: 'R Knee X', min: -0.5, max: 0.5, step: S, info: 'Right knee X' },
+      { key: 'rKneeY', label: 'R Knee Y', min: -0.5, max: 0.5, step: S, info: 'Right knee Y' },
+      { key: 'lFootX', label: 'L Foot X', min: -0.5, max: 0.5, step: S, info: 'Left foot X' },
+      { key: 'lFootY', label: 'L Foot Y', min: -0.5, max: 0.5, step: S, info: 'Left foot Y' },
+      { key: 'rFootX', label: 'R Foot X', min: -0.5, max: 0.5, step: S, info: 'Right foot X' },
+      { key: 'rFootY', label: 'R Foot Y', min: -0.5, max: 0.5, step: S, info: 'Right foot Y' },
+    ]},
     { id: 'debug', title: 'Debug', color: '#e04040', sliders: [
       { key: 'showSilhouette', label: 'Silhouette', min: 0, max: 1, step: 1, info: 'Show body outline' },
       { key: 'showSkeleton', label: 'Bones', min: 0, max: 1, step: 1, info: 'Show skeleton bone lines' },
@@ -1202,6 +1247,25 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
 
       // World rotation = parent world rotation * local rotation
       const worldRot = parentWorldRot.clone().multiply(localRot);
+
+      // Apply per-joint position offsets from settings
+      const jc = cfgRef.current;
+      const jointOffsetMap: Record<string, [string, string]> = {
+        root: ['rootX', 'rootY'], spine: ['spineX', 'spineY'],
+        chest: ['chestX', 'chestY'], neck: ['neckJointX', 'neckJointY'],
+        head: ['headJointX', 'headJointY'],
+        l_shoulder: ['lShoulderX', 'lShoulderY'], r_shoulder: ['rShoulderX', 'rShoulderY'],
+        l_elbow: ['lElbowX', 'lElbowY'], r_elbow: ['rElbowX', 'rElbowY'],
+        l_hand: ['lHandX', 'lHandY'], r_hand: ['rHandX', 'rHandY'],
+        l_hip: ['lHipX', 'lHipY'], r_hip: ['rHipX', 'rHipY'],
+        l_knee: ['lKneeX', 'lKneeY'], r_knee: ['rKneeX', 'rKneeY'],
+        l_foot: ['lFootX', 'lFootY'], r_foot: ['rFootX', 'rFootY'],
+      };
+      const jOff = jointOffsetMap[joint.id];
+      if (jOff) {
+        worldPos.x += (jc as Record<string, number>)[jOff[0]] || 0;
+        worldPos.y += (jc as Record<string, number>)[jOff[1]] || 0;
+      }
 
       positions.set(joint.id, worldPos);
       rotations.set(joint.id, worldRot);
