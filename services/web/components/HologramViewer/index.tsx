@@ -1255,25 +1255,6 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       // World rotation = parent world rotation * local rotation
       const worldRot = parentWorldRot.clone().multiply(localRot);
 
-      // Apply per-joint position offsets from settings
-      const jc = cfgRef.current;
-      const jointOffsetMap: Record<string, [string, string]> = {
-        root: ['rootX', 'rootY'], spine: ['spineX', 'spineY'],
-        chest: ['chestX', 'chestY'], neck: ['neckJointX', 'neckJointY'],
-        head: ['headJointX', 'headJointY'],
-        l_shoulder: ['lShoulderX', 'lShoulderY'], r_shoulder: ['rShoulderX', 'rShoulderY'],
-        l_elbow: ['lElbowX', 'lElbowY'], r_elbow: ['rElbowX', 'rElbowY'],
-        l_hand: ['lHandX', 'lHandY'], r_hand: ['rHandX', 'rHandY'],
-        l_hip: ['lHipX', 'lHipY'], r_hip: ['rHipX', 'rHipY'],
-        l_knee: ['lKneeX', 'lKneeY'], r_knee: ['rKneeX', 'rKneeY'],
-        l_foot: ['lFootX', 'lFootY'], r_foot: ['rFootX', 'rFootY'],
-      };
-      const jOff = jointOffsetMap[joint.id];
-      if (jOff) {
-        worldPos.x += (jc as Record<string, number>)[jOff[0]] || 0;
-        worldPos.y += (jc as Record<string, number>)[jOff[1]] || 0;
-      }
-
       positions.set(joint.id, worldPos);
       rotations.set(joint.id, worldRot);
 
@@ -1623,6 +1604,24 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           pos.x += c.legOffsetX * side;
           pos.y += c.legOffsetY;
           pos.z += c.legOffsetZ;
+        }
+
+        // Per-joint pivot offset — moves particles relative to their joint, not the FK chain
+        const jointOffsets: Record<string, [string, string]> = {
+          root: ['rootX', 'rootY'], spine: ['spineX', 'spineY'],
+          chest: ['chestX', 'chestY'], neck: ['neckJointX', 'neckJointY'],
+          head: ['headJointX', 'headJointY'],
+          l_shoulder: ['lShoulderX', 'lShoulderY'], r_shoulder: ['rShoulderX', 'rShoulderY'],
+          l_elbow: ['lElbowX', 'lElbowY'], r_elbow: ['rElbowX', 'rElbowY'],
+          l_hand: ['lHandX', 'lHandY'], r_hand: ['rHandX', 'rHandY'],
+          l_hip: ['lHipX', 'lHipY'], r_hip: ['rHipX', 'rHipY'],
+          l_knee: ['lKneeX', 'lKneeY'], r_knee: ['rKneeX', 'rKneeY'],
+          l_foot: ['lFootX', 'lFootY'], r_foot: ['rFootX', 'rFootY'],
+        };
+        const jOff = jointOffsets[jointId];
+        if (jOff) {
+          pos.x += (c as Record<string, number>)[jOff[0]] || 0;
+          pos.y += (c as Record<string, number>)[jOff[1]] || 0;
         }
       };
 
