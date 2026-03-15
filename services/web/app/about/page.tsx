@@ -112,37 +112,24 @@ const AboutPage = () => {
         </Stack>
 
         <Box sx={{ textAlign: 'center' }}>
-          {isLoggedIn ? (
-            <Link href="/chat" style={{ textDecoration: 'none' }}>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<AddCircleOutlineIcon />}
-                sx={{ px: 4, fontSize: '1.1rem' }}
-              >
-                Create a Room
-              </Button>
-            </Link>
-          ) : (
-            <Stack spacing={2} alignItems="center">
-              <Typography variant="body1" sx={{ color: '#ccc' }}>
-                Get started — create an account and set up your first room.
+          <Link href={isLoggedIn ? '/chat' : '/login?returnUrl=/chat'} style={{ textDecoration: 'none' }}>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<AddCircleOutlineIcon />}
+              sx={{ px: 4, fontSize: '1.1rem', mb: 2 }}
+            >
+              Create a Room
+            </Button>
+          </Link>
+          {!isLoggedIn && (
+            <Stack spacing={1} alignItems="center">
+              <Typography variant="body2" sx={{ color: '#858585' }}>
+                Don&apos;t have an account?{' '}
+                <Link href="/register?redirect=/chat" style={{ color: '#4dd8d0' }}>
+                  Sign up free
+                </Link>
               </Typography>
-              <Stack direction="row" spacing={2} justifyContent="center">
-                <Button
-                  component={Link}
-                  href="/register?redirect=/chat"
-                  variant="contained"
-                  size="large"
-                  startIcon={<AddCircleOutlineIcon />}
-                  sx={{ px: 4 }}
-                >
-                  Create Account
-                </Button>
-                <Button component={Link} href="/login?returnUrl=/chat" variant="outlined" size="large" sx={{ px: 4 }}>
-                  Sign In
-                </Button>
-              </Stack>
             </Stack>
           )}
         </Box>
