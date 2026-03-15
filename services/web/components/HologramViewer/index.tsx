@@ -1116,6 +1116,70 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       }
       jointMarkersRef.current.set(avatar.id, markerMap);
 
+      // ── Debug silhouette outline (toggle with 'o' key) ──────────
+      {
+        // Resolve world positions for all particles
+        const worldPts: { x: number; y: number; z: number }[] = [];
+        for (const pt of avatar.points) {
+          const jPos = jointPositions.get(pt.joint_id);
+          if (!jPos) continue;
+          worldPts.push({
+            x: jPos.x + pt.offset[0],
+            y: jPos.y + pt.offset[1],
+            z: jPos.z + pt.offset[2],
+          });
+        }
+
+        const step = 0.01;
+        const yMin = Math.min(...worldPts.map((p) => p.y));
+        const yMax = Math.max(...worldPts.map((p) => p.y));
+
+        const leftEdge: THREE.Vector3[] = [];
+        const rightEdge: THREE.Vector3[] = [];
+        const frontEdge: THREE.Vector3[] = [];
+        const backEdge: THREE.Vector3[] = [];
+
+        for (let y = yMin; y <= yMax; y += step) {
+          const band = worldPts.filter((p) => Math.abs(p.y - y) < 0.005);
+          if (band.length < 2) continue;
+
+          let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+          for (const p of band) {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.z < minZ) minZ = p.z;
+            if (p.z > maxZ) maxZ = p.z;
+          }
+
+          leftEdge.push(new THREE.Vector3(minX, y, 0));
+          rightEdge.push(new THREE.Vector3(maxX, y, 0));
+          frontEdge.push(new THREE.Vector3(0, y, maxZ));
+          backEdge.push(new THREE.Vector3(0, y, minZ));
+        }
+
+        const silhouetteGroup = new THREE.Group();
+        silhouetteGroup.name = 'silhouette';
+        silhouetteGroup.visible = false; // hidden by default
+
+        const magentaMat = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 1 });
+        const yellowMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 1 });
+
+        if (leftEdge.length > 2) {
+          silhouetteGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(leftEdge), magentaMat));
+        }
+        if (rightEdge.length > 2) {
+          silhouetteGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rightEdge), magentaMat));
+        }
+        if (frontEdge.length > 2) {
+          silhouetteGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(frontEdge), yellowMat));
+        }
+        if (backEdge.length > 2) {
+          silhouetteGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(backEdge), yellowMat));
+        }
+
+        group.add(silhouetteGroup);
+      }
+
       // ── Aura glow plane (emotion-modulated) ────────────
       const emotionIdx = avatar.activeMorph ? (EMOTION_INDEX[avatar.activeMorph] ?? 3) : 3;
       const emotionKey = EMOTIONS[emotionIdx] || 'neutral';
@@ -1236,6 +1300,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       // Don't capture keys when typing in inputs
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
       keysDown.add(e.key.toLowerCase());
+
+      // Toggle silhouette outline with 'O' key
+      if (e.key.toLowerCase() === 'o') {
+        scene.traverse((obj) => {
+          if (obj.name === 'silhouette') {
+            obj.visible = !obj.visible;
+          }
+        });
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysDown.delete(e.key.toLowerCase());
