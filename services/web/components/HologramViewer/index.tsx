@@ -1764,7 +1764,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
                 type="range"
                 min={min} max={max} step={step}
                 value={holoSettings[key as keyof typeof holoSettings]}
-                onChange={(e) => setHoloSettings((s) => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                onChange={(e) => setHoloSettings((s: typeof holoSettings) => ({ ...s, [key]: parseFloat(e.target.value) }))}
                 style={{ width: '100%', accentColor: '#4dd8d0', height: 4 }}
               />
             </div>
