@@ -817,6 +817,13 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   useEffect(() => { deletedRef.current = deletedParticles; }, [deletedParticles]);
   const editSphereRef = useRef<THREE.Mesh | null>(null);
   const [editPart, setEditPart] = useState('chest');
+  const editPartRef = useRef(editPart);
+  const editModeRef = useRef(editMode);
+  useEffect(() => {
+    editPartRef.current = editPart;
+    editModeRef.current = editMode;
+    for (const [, ms] of morphStateRef.current) ms.dirty = true;
+  }, [editPart, editMode]);
   const [editAddCount, setEditAddCount] = useState(20);
   const [addedParticles, setAddedParticles] = useState<Array<{ joint_id: string; offset: [number, number, number]; size: number; color: string }>>(() => {
     if (typeof window !== 'undefined') {
@@ -1775,6 +1782,21 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
           // Glow sphere
           instMesh.setMatrixAt(i * 2 + 1, dummy);
           scaleAttr.setX(i * 2 + 1, (pointSize * 1.0) / 0.008);
+        }
+
+        // Highlight selected part purple in edit mode
+        const colorAttr = instMesh.geometry.getAttribute('instanceColor') as THREE.InstancedBufferAttribute;
+        if (colorAttr && editModeRef.current) {
+          const purple = new THREE.Color(0x9933ff);
+          const bodyCol = new THREE.Color(0x4dd8d0);
+          for (let i = 0; i < avatar.points.length; i++) {
+            if (deletedRef.current.has(i)) continue;
+            const isSelected = avatar.points[i].joint_id === editPartRef.current;
+            const col = isSelected ? purple : bodyCol;
+            colorAttr.setXYZ(i * 2, col.r, col.g, col.b);
+            colorAttr.setXYZ(i * 2 + 1, col.r, col.g, col.b);
+          }
+          colorAttr.needsUpdate = true;
         }
 
         scaleAttr.needsUpdate = true;
