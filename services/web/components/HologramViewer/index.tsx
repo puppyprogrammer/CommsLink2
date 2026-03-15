@@ -791,6 +791,13 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [poseOpen, setPoseOpen] = useState(false);
+  const [poseAngles, setPoseAngles] = useState<Record<string, { rx: number; ry: number; rz: number }>>({});
+  const poseAnglesRef = useRef(poseAngles);
+  useEffect(() => {
+    poseAnglesRef.current = poseAngles;
+    for (const [, ms] of morphStateRef.current) ms.dirty = true;
+  }, [poseAngles]);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['rendering']));
 
   // ── Particle Editor state ──
@@ -1308,6 +1315,16 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     (avatar: AvatarData, morphState: MorphState) => {
       const morphTargets = getEffectiveMorphTargets(avatar);
       const effectivePose = blendPoseMulti(avatar.pose, morphTargets, morphState.currentInfluences);
+      // Merge manual pose angles from UI
+      const pa = poseAnglesRef.current;
+      if (Object.keys(pa).length > 0 && effectivePose?.joints) {
+        for (const [jid, angles] of Object.entries(pa)) {
+          if (!effectivePose.joints[jid]) effectivePose.joints[jid] = { rx: 0, ry: 0, rz: 0 };
+          effectivePose.joints[jid].rx += angles.rx;
+          effectivePose.joints[jid].ry += angles.ry;
+          effectivePose.joints[jid].rz += angles.rz;
+        }
+      }
       const { positions: jointPositions, rotations: jointRotations } = resolveJointTransforms(
         avatar.skeleton,
         effectivePose,
@@ -2542,6 +2559,95 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         }}
         title="Hologram Settings"
       >&#9881;</div>
+
+      {/* Pose controller button */}
+      <div
+        onClick={() => setPoseOpen(!poseOpen)}
+        style={{
+          position: 'absolute', top: 8, left: 76, zIndex: 10, cursor: 'pointer',
+          width: 28, height: 28, borderRadius: 4,
+          background: poseOpen ? 'rgba(64,192,224,0.3)' : 'rgba(255,255,255,0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14, color: poseOpen ? '#40c0e0' : '#888',
+          border: `1px solid ${poseOpen ? 'rgba(64,192,224,0.5)' : 'rgba(255,255,255,0.2)'}`,
+        }}
+        title="Pose Controller"
+      >&#9995;</div>
+
+      {/* Pose controller panel */}
+      {poseOpen && (
+        <div style={{
+          position: 'absolute', top: 42, right: 220, zIndex: 10,
+          background: 'rgba(10,20,25,0.94)', border: '1px solid rgba(64,192,224,0.3)',
+          borderRadius: 6, padding: '10px 12px', width: 220,
+          fontFamily: 'monospace', fontSize: 10, color: '#a0d8e0',
+          maxHeight: '85vh', overflowY: 'auto',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 'bold', color: '#40c0e0' }}>Pose Controller</span>
+            <button onClick={() => { setPoseAngles({}); }}
+              style={{ marginLeft: 'auto', padding: '2px 6px', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: 3, color: '#ff8888', cursor: 'pointer', fontSize: 9, fontFamily: 'monospace' }}>
+              Reset</button>
+          </div>
+          <div style={{ marginBottom: 8, fontSize: 9, color: '#666' }}>
+            Rotate joints. Values in degrees.
+          </div>
+          {/* Redraw silhouette button */}
+          <button onClick={() => {
+            if (sceneRef.current) {
+              // Remove old silhouette
+              sceneRef.current.traverse((obj) => {
+                if (obj.name === 'silhouette') obj.removeFromParent();
+              });
+              // Mark dirty to regenerate
+              for (const [, ms] of morphStateRef.current) ms.dirty = true;
+            }
+          }}
+            style={{ width: '100%', padding: '4px 0', marginBottom: 8, background: 'rgba(255,0,255,0.15)', border: '1px solid rgba(255,0,255,0.3)', borderRadius: 3, color: '#ff66ff', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
+            Redraw Silhouette
+          </button>
+          {[
+            { id: 'l_shoulder', label: 'L Shoulder' },
+            { id: 'r_shoulder', label: 'R Shoulder' },
+            { id: 'l_elbow', label: 'L Elbow' },
+            { id: 'r_elbow', label: 'R Elbow' },
+            { id: 'l_hand', label: 'L Wrist' },
+            { id: 'r_hand', label: 'R Wrist' },
+            { id: 'l_hip', label: 'L Hip' },
+            { id: 'r_hip', label: 'R Hip' },
+            { id: 'l_knee', label: 'L Knee' },
+            { id: 'r_knee', label: 'R Knee' },
+            { id: 'l_foot', label: 'L Ankle' },
+            { id: 'r_foot', label: 'R Ankle' },
+            { id: 'spine', label: 'Spine' },
+            { id: 'chest', label: 'Chest' },
+            { id: 'neck', label: 'Neck' },
+            { id: 'head', label: 'Head' },
+          ].map(({ id, label }) => {
+            const a = poseAngles[id] || { rx: 0, ry: 0, rz: 0 };
+            const setA = (axis: 'rx' | 'ry' | 'rz', val: number) => {
+              setPoseAngles((prev) => ({ ...prev, [id]: { ...a, [axis]: val } }));
+            };
+            return (
+              <div key={id} style={{ marginBottom: 6, borderBottom: '1px solid rgba(64,192,224,0.1)', paddingBottom: 4 }}>
+                <div style={{ fontSize: 10, color: '#40c0e0', marginBottom: 2 }}>{label}</div>
+                {(['rx', 'ry', 'rz'] as const).map((axis) => (
+                  <div key={axis} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 1 }}>
+                    <span style={{ width: 16, fontSize: 9, color: '#888' }}>{axis.toUpperCase()}</span>
+                    <input type="range" min={-180} max={180} step={1}
+                      value={Math.round((a[axis] || 0) * 180 / Math.PI)}
+                      onChange={(e) => setA(axis, parseFloat(e.target.value) * Math.PI / 180)}
+                      style={{ flex: 1, accentColor: '#40c0e0', height: 3 }} />
+                    <span style={{ width: 28, fontSize: 9, color: '#40c0e0', textAlign: 'right' }}>
+                      {Math.round((a[axis] || 0) * 180 / Math.PI)}°
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Edit mode button */}
       <div
