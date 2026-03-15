@@ -784,6 +784,24 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['rendering']));
 
+  // ── Particle Editor state ──
+  const [editMode, setEditMode] = useState(false);
+  const [editRadius, setEditRadius] = useState(0.05);
+  const [editPos, setEditPos] = useState<[number, number, number]>([0, 0, 0]);
+  const [deletedParticles, setDeletedParticles] = useState<Set<number>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('holoDeletedParticles');
+        if (saved) return new Set(JSON.parse(saved));
+      } catch { /* ignore */ }
+    }
+    return new Set();
+  });
+  const deletedRef = useRef(deletedParticles);
+  useEffect(() => { deletedRef.current = deletedParticles; }, [deletedParticles]);
+  const editSphereRef = useRef<THREE.Mesh | null>(null);
+  const jointPositionsRef = useRef<Map<string, THREE.Vector3> | null>(null);
+
   // ── All hologram settings in one object ──
   const allDefaults = {
     // Rendering
@@ -1167,6 +1185,7 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         avatar.skeleton,
         effectivePose,
       );
+      jointPositionsRef.current = jointPositions;
 
       // ── Update bone lines ─────────────────────────────
       const boneGeos = boneGeometriesRef.current.get(avatar.id);
@@ -1507,6 +1526,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
             densityMul = c.footDensity;
           }
 
+          // Hide deleted particles
+          if (deletedRef.current.has(i)) {
+            dummy.makeTranslation(0, -100, 0); // move off-screen
+            instMesh.setMatrixAt(i * 2, dummy);
+            instMesh.setMatrixAt(i * 2 + 1, dummy);
+            scaleAttr.setX(i * 2, 0);
+            scaleAttr.setX(i * 2 + 1, 0);
+            continue;
+          }
           const pointSize = point.size * 0.008 * sizeScale * densityMul;
 
           // Core point
@@ -1837,6 +1865,16 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     scene.add(gridHelper);
     gridRef.current = gridHelper;
 
+    // Edit mode selection sphere
+    const editSphereGeo = new THREE.SphereGeometry(1, 16, 12);
+    const editSphereMat = new THREE.MeshBasicMaterial({
+      color: 0xff4444, transparent: true, opacity: 0.15, wireframe: true,
+    });
+    const editSphere = new THREE.Mesh(editSphereGeo, editSphereMat);
+    editSphere.visible = false;
+    scene.add(editSphere);
+    editSphereRef.current = editSphere;
+
     // Ambient light
     const ambient = new THREE.AmbientLight(0xffffff, 0.3);
     scene.add(ambient);
@@ -1871,10 +1909,35 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
       keysDown.delete(e.key.toLowerCase());
     };
     const onMouseDown = (e: MouseEvent) => {
-      if (e.target === renderer.domElement && e.button === 0) {
+      if (e.target !== renderer.domElement) return;
+
+      // Edit mode: right-click places selection sphere
+      if (e.button === 2 && editSphereRef.current?.visible) {
+        e.preventDefault();
+        const rect = renderer.domElement.getBoundingClientRect();
+        const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+        // Intersect with Z=0 plane
+        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        const hit = new THREE.Vector3();
+        raycaster.ray.intersectPlane(plane, hit);
+        if (hit) {
+          setEditPos([hit.x, hit.y, hit.z]);
+          editSphereRef.current.position.set(hit.x, hit.y, hit.z);
+        }
+        return;
+      }
+
+      if (e.button === 0) {
         renderer.domElement.requestPointerLock();
       }
     };
+    // Prevent context menu in edit mode
+    renderer.domElement.addEventListener('contextmenu', (e: Event) => {
+      if (editSphereRef.current?.visible) e.preventDefault();
+    });
     const onPointerLockChange = () => {
       isPointerLocked = document.pointerLockElement === renderer.domElement;
     };
@@ -2204,6 +2267,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     }
   }, [avatars, buildAvatarGroup, resolveJointTransforms]);
 
+  // Sync edit sphere visibility/size
+  useEffect(() => {
+    if (editSphereRef.current) {
+      editSphereRef.current.visible = editMode;
+      editSphereRef.current.scale.setScalar(editRadius);
+      editSphereRef.current.position.set(editPos[0], editPos[1], editPos[2]);
+    }
+  }, [editMode, editRadius, editPos]);
+
   // Sync settings to shader uniforms in real-time
   useEffect(() => {
     holoUniforms.uBrightness.value = holoSettings.brightness;
@@ -2232,6 +2304,103 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         }}
         title="Hologram Settings"
       >&#9881;</div>
+
+      {/* Edit mode button */}
+      <div
+        onClick={() => setEditMode(!editMode)}
+        style={{
+          position: 'absolute', top: 8, left: 42, zIndex: 10, cursor: 'pointer',
+          width: 28, height: 28, borderRadius: 4,
+          background: editMode ? 'rgba(255,68,68,0.4)' : 'rgba(255,255,255,0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14, color: editMode ? '#ff4444' : '#888',
+          border: `1px solid ${editMode ? 'rgba(255,68,68,0.5)' : 'rgba(255,255,255,0.2)'}`,
+        }}
+        title="Particle Editor (right-click to place, scroll to resize, Enter to delete)"
+      >&#9986;</div>
+
+      {/* Edit mode controls */}
+      {editMode && (
+        <div style={{
+          position: 'absolute', top: 42, right: 8, zIndex: 10,
+          background: 'rgba(10,20,25,0.94)', border: '1px solid rgba(255,68,68,0.3)',
+          borderRadius: 6, padding: '10px 12px', width: 200,
+          fontFamily: 'monospace', fontSize: 10, color: '#e0a0a0',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 8, color: '#ff4444' }}>
+            Particle Editor
+          </div>
+          <div style={{ marginBottom: 6, fontSize: 9, color: '#999' }}>
+            Right-click to place sphere. Scroll to resize. Particles inside will be highlighted.
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <span>Radius: </span>
+            <span style={{ color: '#ff6666' }}>{editRadius.toFixed(3)}</span>
+            <input type="range" min={0.005} max={0.3} step={0.005} value={editRadius}
+              onChange={(e) => setEditRadius(parseFloat(e.target.value))}
+              style={{ width: '100%', accentColor: '#ff4444', height: 3 }} />
+          </div>
+          <div style={{ marginBottom: 6, fontSize: 9 }}>
+            Pos: ({editPos[0].toFixed(3)}, {editPos[1].toFixed(3)}, {editPos[2].toFixed(3)})
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <span>X: </span>
+            <input type="range" min={-0.5} max={0.5} step={0.005} value={editPos[0]}
+              onChange={(e) => setEditPos([parseFloat(e.target.value), editPos[1], editPos[2]])}
+              style={{ width: '80%', accentColor: '#ff4444', height: 3 }} />
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <span>Y: </span>
+            <input type="range" min={-1.0} max={1.0} step={0.005} value={editPos[1]}
+              onChange={(e) => setEditPos([editPos[0], parseFloat(e.target.value), editPos[2]])}
+              style={{ width: '80%', accentColor: '#ff4444', height: 3 }} />
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <span>Z: </span>
+            <input type="range" min={-0.5} max={0.5} step={0.005} value={editPos[2]}
+              onChange={(e) => setEditPos([editPos[0], editPos[1], parseFloat(e.target.value)])}
+              style={{ width: '80%', accentColor: '#ff4444', height: 3 }} />
+          </div>
+          <div style={{ fontSize: 9, marginBottom: 6, color: '#888' }}>
+            Deleted: {deletedParticles.size} particles
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={() => {
+              // Delete particles inside the sphere
+              const avatar = avatarsRef.current[0];
+              if (!avatar) return;
+              const newDeleted = new Set(deletedParticles);
+              const [sx, sy, sz] = editPos;
+              const r2 = editRadius * editRadius;
+              const jp = jointPositionsRef.current;
+              for (let i = 0; i < avatar.points.length; i++) {
+                const pt = avatar.points[i];
+                const jPos = jp?.get(pt.joint_id);
+                if (!jPos) continue;
+                const dx = jPos.x + pt.offset[0] - sx;
+                const dy = jPos.y + pt.offset[1] - sy;
+                const dz = jPos.z + pt.offset[2] - sz;
+                if (dx * dx + dy * dy + dz * dz < r2) {
+                  newDeleted.add(i);
+                }
+              }
+              setDeletedParticles(newDeleted);
+              localStorage.setItem('holoDeletedParticles', JSON.stringify([...newDeleted]));
+              // Mark dirty
+              for (const [, ms] of morphStateRef.current) ms.dirty = true;
+            }}
+              style={{ flex: 1, padding: '5px 0', background: 'rgba(255,68,68,0.3)', border: '1px solid rgba(255,68,68,0.5)', borderRadius: 3, color: '#ff4444', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
+              Delete Inside</button>
+            <button onClick={() => {
+              setDeletedParticles(new Set());
+              localStorage.removeItem('holoDeletedParticles');
+              for (const [, ms] of morphStateRef.current) ms.dirty = true;
+            }}
+              style={{ flex: 1, padding: '5px 0', background: 'rgba(100,255,100,0.1)', border: '1px solid rgba(100,255,100,0.3)', borderRadius: 3, color: '#88ff88', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
+              Undo All</button>
+          </div>
+        </div>
+      )}
 
       {/* Settings panel */}
       {settingsOpen && (
