@@ -826,42 +826,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   };
   type HoloSettings = typeof allDefaults;
 
-  // Base values: accumulated from previous saves. Sliders always show relative to this.
-  const [cfgBase, setCfgBase] = useState<HoloSettings>(() => {
+  const [cfg, setCfg] = useState<HoloSettings>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('holoCfgBase');
+        const saved = localStorage.getItem('holoCfg');
         if (saved) return { ...allDefaults, ...JSON.parse(saved) };
       } catch { /* ignore */ }
     }
     return { ...allDefaults };
   });
-
-  // Current slider adjustments (always start at defaults — 1.0 for multipliers, 0.0 for offsets)
-  const [cfgAdj, setCfgAdj] = useState<HoloSettings>({ ...allDefaults });
-
-  // Which keys are offsets (additive) vs multipliers
-  const offsetKeys = new Set([
-    'headY', 'eyeHeight', 'browHeight', 'noseHeight', 'mouthHeight', 'bustHeight',
-    'neckOffsetX', 'neckOffsetY', 'shoulderOffsetX', 'shoulderOffsetY',
-    'torsoOffsetX', 'torsoOffsetY', 'legOffsetX', 'legOffsetY', 'calfOffsetY',
-    'footOffsetX', 'footOffsetY', 'armOffsetX', 'armOffsetY',
-    'handOffsetX', 'handOffsetY', 'smileAmount',
-  ]);
-
-  // Compute effective config: base * adjustment (multipliers) or base + adjustment (offsets)
-  const cfg = useMemo(() => {
-    const result = { ...allDefaults } as HoloSettings;
-    for (const key of Object.keys(allDefaults) as (keyof HoloSettings)[]) {
-      if (offsetKeys.has(key)) {
-        (result as Record<string, number>)[key] = (cfgBase[key] as number) + (cfgAdj[key] as number);
-      } else {
-        (result as Record<string, number>)[key] = (cfgBase[key] as number) * (cfgAdj[key] as number);
-      }
-    }
-    return result;
-  }, [cfgBase, cfgAdj]);
-
   const cfgRef = useRef(cfg);
 
   // Aliases for backward compat with existing code
@@ -882,120 +855,123 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
   type SliderDef = { key: string; label: string; min: number; max: number; step: number; info: string };
   type SectionDef = { id: string; title: string; color: string; sliders: SliderDef[] };
 
+  const S = 0.01; // step for offsets
+  const M = 0.05; // step for multipliers
+
   const sections: SectionDef[] = [
     { id: 'rendering', title: 'Rendering', color: '#4dd8d0', sliders: [
-      { key: 'brightness', label: 'Brightness', min: 0.1, max: 5.0, step: 0.1, info: 'Color intensity multiplier' },
-      { key: 'alpha', label: 'Opacity', min: 0.05, max: 1.0, step: 0.05, info: 'Particle transparency' },
-      { key: 'coreBoost', label: 'Core Glow', min: 0, max: 3.0, step: 0.1, info: 'Center brightness boost' },
-      { key: 'gradientPower', label: 'Edge Falloff', min: 0.1, max: 2.0, step: 0.1, info: 'Edge fade speed' },
-      { key: 'sizeScale', label: 'Particle Size', min: 0.2, max: 3.0, step: 0.1, info: 'Size multiplier' },
+      { key: 'brightness', label: 'Brightness', min: 0, max: 10, step: 0.1, info: 'Color intensity multiplier' },
+      { key: 'alpha', label: 'Opacity', min: 0, max: 2.0, step: 0.05, info: 'Particle transparency' },
+      { key: 'coreBoost', label: 'Core Glow', min: 0, max: 5.0, step: 0.1, info: 'Center brightness boost' },
+      { key: 'gradientPower', label: 'Edge Falloff', min: 0.05, max: 5.0, step: 0.05, info: 'Edge fade speed' },
+      { key: 'sizeScale', label: 'Particle Size', min: 0.1, max: 5.0, step: 0.1, info: 'Size multiplier' },
       { key: 'gridOpacity', label: 'Grid Opacity', min: 0, max: 1.0, step: 0.05, info: 'Floor grid visibility' },
-      { key: 'driftSpeed', label: 'Drift Speed', min: 0, max: 3.0, step: 0.1, info: 'Particle animation speed' },
+      { key: 'driftSpeed', label: 'Drift Speed', min: 0, max: 5.0, step: 0.1, info: 'Particle animation speed' },
     ]},
     { id: 'body', title: 'Body Proportions', color: '#e0a040', sliders: [
-      { key: 'headScale', label: 'Head Size', min: 0.5, max: 2.0, step: 0.05, info: 'Scale head width/depth' },
-      { key: 'headY', label: 'Head Y Offset', min: -1.0, max: 1.0, step: 0.05, info: 'Move head up/down' },
-      { key: 'neckWidth', label: 'Neck Width', min: 0.3, max: 2.0, step: 0.05, info: 'Neck thickness' },
-      { key: 'shoulderWidth', label: 'Shoulder Width', min: 0.5, max: 2.0, step: 0.05, info: 'Shoulder spread' },
-      { key: 'bustSize', label: 'Bust Size', min: 0.5, max: 2.0, step: 0.05, info: 'Bust/chest depth' },
-      { key: 'torsoWidth', label: 'Upper Torso', min: 0.5, max: 2.0, step: 0.05, info: 'Ribcage/chest width' },
-      { key: 'waistWidth', label: 'Waist Width', min: 0.3, max: 2.0, step: 0.05, info: 'Waist/belly width' },
-      { key: 'hipWidth', label: 'Hip Width', min: 0.5, max: 2.0, step: 0.05, info: 'Hip/lower abdomen' },
-      { key: 'armThickness', label: 'Arm Thickness', min: 0.3, max: 2.0, step: 0.05, info: 'Arm cross-section' },
-      { key: 'thighWidth', label: 'Thigh Width', min: 0.3, max: 2.5, step: 0.05, info: 'Upper leg thickness' },
-      { key: 'calfWidth', label: 'Calf Width', min: 0.3, max: 2.5, step: 0.05, info: 'Lower leg thickness' },
+      { key: 'headScale', label: 'Head Size', min: 0.1, max: 5.0, step: M, info: 'Scale head width/depth' },
+      { key: 'headY', label: 'Head Y Offset', min: -0.5, max: 0.5, step: S, info: 'Move head up/down' },
+      { key: 'neckWidth', label: 'Neck Width', min: 0.1, max: 5.0, step: M, info: 'Neck thickness' },
+      { key: 'shoulderWidth', label: 'Shoulder Width', min: 0.1, max: 5.0, step: M, info: 'Shoulder spread' },
+      { key: 'bustSize', label: 'Bust Size', min: 0.1, max: 5.0, step: M, info: 'Bust/chest depth' },
+      { key: 'torsoWidth', label: 'Upper Torso', min: 0.1, max: 5.0, step: M, info: 'Ribcage/chest width' },
+      { key: 'waistWidth', label: 'Waist Width', min: 0.1, max: 5.0, step: M, info: 'Waist/belly width' },
+      { key: 'hipWidth', label: 'Hip Width', min: 0.1, max: 5.0, step: M, info: 'Hip/lower abdomen' },
+      { key: 'armThickness', label: 'Arm Thickness', min: 0.1, max: 5.0, step: M, info: 'Arm cross-section' },
+      { key: 'thighWidth', label: 'Thigh Width', min: 0.1, max: 5.0, step: M, info: 'Upper leg thickness' },
+      { key: 'calfWidth', label: 'Calf Width', min: 0.1, max: 5.0, step: M, info: 'Lower leg thickness' },
     ]},
     { id: 'face', title: 'Face Shape', color: '#40e080', sliders: [
-      { key: 'faceWidth', label: 'Face Width', min: 0.3, max: 2.0, step: 0.05, info: 'Scale all head widths' },
-      { key: 'faceHeight', label: 'Face Height', min: 0.5, max: 2.0, step: 0.05, info: 'Taller/shorter head' },
-      { key: 'faceDepth', label: 'Face Depth', min: 0.3, max: 2.0, step: 0.05, info: 'Front-to-back depth' },
-      { key: 'foreheadHeight', label: 'Forehead Height', min: 0.5, max: 2.0, step: 0.05, info: 'Brow to crown distance' },
-      { key: 'jawWidth', label: 'Jaw Width', min: 0.3, max: 2.0, step: 0.05, info: 'Width below cheekbones' },
-      { key: 'chinWidth', label: 'Chin Width', min: 0.3, max: 2.0, step: 0.05, info: 'Width below jaw' },
-      { key: 'chinLength', label: 'Chin Length', min: 0.5, max: 2.0, step: 0.05, info: 'Chin extension below mouth' },
-      { key: 'cheekboneWidth', label: 'Cheekbone Width', min: 0.5, max: 2.0, step: 0.05, info: 'Width at cheekbone level' },
+      { key: 'faceWidth', label: 'Face Width', min: 0.1, max: 5.0, step: M, info: 'Scale all head widths' },
+      { key: 'faceHeight', label: 'Face Height', min: 0.1, max: 5.0, step: M, info: 'Taller/shorter head' },
+      { key: 'faceDepth', label: 'Face Depth', min: 0.1, max: 5.0, step: M, info: 'Front-to-back depth' },
+      { key: 'foreheadHeight', label: 'Forehead Height', min: 0.1, max: 5.0, step: M, info: 'Brow to crown distance' },
+      { key: 'jawWidth', label: 'Jaw Width', min: 0.1, max: 5.0, step: M, info: 'Width below cheekbones' },
+      { key: 'chinWidth', label: 'Chin Width', min: 0.1, max: 5.0, step: M, info: 'Width below jaw' },
+      { key: 'chinLength', label: 'Chin Length', min: 0.1, max: 5.0, step: M, info: 'Chin extension below mouth' },
+      { key: 'cheekboneWidth', label: 'Cheekbone Width', min: 0.1, max: 5.0, step: M, info: 'Width at cheekbone level' },
     ]},
     { id: 'eyes', title: 'Eyes', color: '#a060e0', sliders: [
-      { key: 'eyeSpacing', label: 'Eye Spacing', min: 0.3, max: 2.0, step: 0.05, info: 'Eyes apart/together' },
-      { key: 'eyeHeight', label: 'Eye Height', min: -0.02, max: 0.02, step: 0.001, info: 'Move eyes up/down' },
-      { key: 'eyeSize', label: 'Eye Size', min: 0.3, max: 3.0, step: 0.1, info: 'Eyeball particle size' },
-      { key: 'eyeBrightness', label: 'Eye Brightness', min: 0.1, max: 3.0, step: 0.1, info: 'Eye color brightness' },
-      { key: 'eyeSocketDepth', label: 'Socket Depth', min: 0, max: 3.0, step: 0.1, info: 'Socket exclusion strength' },
-      { key: 'pupilSize', label: 'Pupil Size', min: 0.3, max: 3.0, step: 0.1, info: 'Iris particle size' },
-      { key: 'eyelidThickness', label: 'Eyelid Thickness', min: 0, max: 3.0, step: 0.1, info: 'Eyelid particle count' },
+      { key: 'eyeSpacing', label: 'Eye Spacing', min: 0.1, max: 5.0, step: M, info: 'Eyes apart/together' },
+      { key: 'eyeHeight', label: 'Eye Height', min: -0.1, max: 0.1, step: S, info: 'Move eyes up/down' },
+      { key: 'eyeSize', label: 'Eye Size', min: 0.1, max: 5.0, step: 0.1, info: 'Eyeball particle size' },
+      { key: 'eyeBrightness', label: 'Eye Brightness', min: 0, max: 5.0, step: 0.1, info: 'Eye color brightness' },
+      { key: 'eyeSocketDepth', label: 'Socket Depth', min: 0, max: 5.0, step: 0.1, info: 'Socket exclusion strength' },
+      { key: 'pupilSize', label: 'Pupil Size', min: 0.1, max: 5.0, step: 0.1, info: 'Iris particle size' },
+      { key: 'eyelidThickness', label: 'Eyelid Thickness', min: 0, max: 5.0, step: 0.1, info: 'Eyelid particle count' },
     ]},
     { id: 'brows', title: 'Eyebrows', color: '#a060e0', sliders: [
-      { key: 'browHeight', label: 'Brow Height', min: -0.02, max: 0.02, step: 0.001, info: 'Move brows up/down' },
-      { key: 'browArch', label: 'Brow Arch', min: 0, max: 3.0, step: 0.1, info: 'Arch curve height' },
-      { key: 'browThickness', label: 'Brow Thickness', min: 0.3, max: 3.0, step: 0.1, info: 'Brow particle density' },
-      { key: 'browLength', label: 'Brow Length', min: 0.5, max: 2.0, step: 0.05, info: 'Brow X extent' },
-      { key: 'browSpacing', label: 'Brow Spacing', min: 0.5, max: 2.0, step: 0.05, info: 'Distance from center' },
+      { key: 'browHeight', label: 'Brow Height', min: -0.1, max: 0.1, step: S, info: 'Move brows up/down' },
+      { key: 'browArch', label: 'Brow Arch', min: 0, max: 5.0, step: 0.1, info: 'Arch curve height' },
+      { key: 'browThickness', label: 'Brow Thickness', min: 0.1, max: 5.0, step: 0.1, info: 'Brow particle density' },
+      { key: 'browLength', label: 'Brow Length', min: 0.1, max: 5.0, step: M, info: 'Brow X extent' },
+      { key: 'browSpacing', label: 'Brow Spacing', min: 0.1, max: 5.0, step: M, info: 'Distance from center' },
     ]},
     { id: 'nose', title: 'Nose', color: '#a060e0', sliders: [
-      { key: 'noseLength', label: 'Nose Length', min: 0.3, max: 2.0, step: 0.05, info: 'Nose Y extent' },
-      { key: 'noseWidth', label: 'Nose Width', min: 0.3, max: 3.0, step: 0.1, info: 'Nostril spacing and body width' },
-      { key: 'noseProjection', label: 'Nose Projection', min: 0.3, max: 3.0, step: 0.1, info: 'How far nose sticks out (Z)' },
-      { key: 'noseBridgeWidth', label: 'Bridge Width', min: 0.3, max: 3.0, step: 0.1, info: 'Bridge X spread' },
-      { key: 'noseTipSize', label: 'Tip Size', min: 0.3, max: 3.0, step: 0.1, info: 'Tip particle spread' },
-      { key: 'noseHeight', label: 'Nose Height', min: -0.02, max: 0.02, step: 0.001, info: 'Move nose up/down' },
+      { key: 'noseLength', label: 'Nose Length', min: 0.1, max: 5.0, step: M, info: 'Nose Y extent' },
+      { key: 'noseWidth', label: 'Nose Width', min: 0.1, max: 5.0, step: 0.1, info: 'Nostril spacing and body width' },
+      { key: 'noseProjection', label: 'Nose Projection', min: 0.1, max: 5.0, step: 0.1, info: 'How far nose sticks out (Z)' },
+      { key: 'noseBridgeWidth', label: 'Bridge Width', min: 0.1, max: 5.0, step: 0.1, info: 'Bridge X spread' },
+      { key: 'noseTipSize', label: 'Tip Size', min: 0.1, max: 5.0, step: 0.1, info: 'Tip particle spread' },
+      { key: 'noseHeight', label: 'Nose Height', min: -0.1, max: 0.1, step: S, info: 'Move nose up/down' },
     ]},
     { id: 'mouth', title: 'Mouth', color: '#a060e0', sliders: [
-      { key: 'mouthWidth', label: 'Mouth Width', min: 0.3, max: 2.0, step: 0.05, info: 'Lip X extent' },
-      { key: 'mouthHeight', label: 'Mouth Height', min: -0.02, max: 0.02, step: 0.001, info: 'Move mouth up/down' },
-      { key: 'upperLipFullness', label: 'Upper Lip', min: 0.3, max: 3.0, step: 0.1, info: 'Upper lip thickness' },
-      { key: 'lowerLipFullness', label: 'Lower Lip', min: 0.3, max: 3.0, step: 0.1, info: 'Lower lip thickness' },
-      { key: 'lipProjection', label: 'Lip Projection', min: 0.3, max: 3.0, step: 0.1, info: 'Lip forward protrusion (Z)' },
-      { key: 'smileAmount', label: 'Smile', min: -1.0, max: 1.0, step: 0.05, info: 'Positive=smile, negative=frown' },
-      { key: 'lipBrightness', label: 'Lip Brightness', min: 0.5, max: 2.0, step: 0.05, info: 'Lip highlight intensity' },
+      { key: 'mouthWidth', label: 'Mouth Width', min: 0.1, max: 5.0, step: M, info: 'Lip X extent' },
+      { key: 'mouthHeight', label: 'Mouth Height', min: -0.1, max: 0.1, step: S, info: 'Move mouth up/down' },
+      { key: 'upperLipFullness', label: 'Upper Lip', min: 0.1, max: 5.0, step: 0.1, info: 'Upper lip thickness' },
+      { key: 'lowerLipFullness', label: 'Lower Lip', min: 0.1, max: 5.0, step: 0.1, info: 'Lower lip thickness' },
+      { key: 'lipProjection', label: 'Lip Projection', min: 0.1, max: 5.0, step: 0.1, info: 'Lip forward protrusion (Z)' },
+      { key: 'smileAmount', label: 'Smile', min: -2.0, max: 2.0, step: 0.05, info: 'Positive=smile, negative=frown' },
+      { key: 'lipBrightness', label: 'Lip Brightness', min: 0.1, max: 5.0, step: M, info: 'Lip highlight intensity' },
     ]},
     { id: 'neckShoulders', title: 'Neck & Shoulders', color: '#e0a040', sliders: [
-      { key: 'neckLength', label: 'Neck Length', min: 0.3, max: 2.0, step: 0.05, info: 'Vertical neck distance' },
-      { key: 'neckThickness', label: 'Neck Thickness', min: 0.3, max: 2.0, step: 0.05, info: 'Neck cross-section' },
-      { key: 'shoulderSlope', label: 'Shoulder Slope', min: 0, max: 2.0, step: 0.05, info: 'Shoulder drop steepness' },
-      { key: 'shoulderRoundness', label: 'Shoulder Roundness', min: 0, max: 2.0, step: 0.05, info: 'Arm tube shoulder radius' },
-      { key: 'neckOffsetX', label: 'Neck X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift neck left/right' },
-      { key: 'neckOffsetY', label: 'Neck Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift neck up/down' },
-      { key: 'shoulderOffsetX', label: 'Shoulder X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift shoulders left/right' },
-      { key: 'shoulderOffsetY', label: 'Shoulder Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift shoulders up/down' },
+      { key: 'neckLength', label: 'Neck Length', min: 0.1, max: 5.0, step: M, info: 'Vertical neck distance' },
+      { key: 'neckThickness', label: 'Neck Thickness', min: 0.1, max: 5.0, step: M, info: 'Neck cross-section' },
+      { key: 'shoulderSlope', label: 'Shoulder Slope', min: 0, max: 5.0, step: M, info: 'Shoulder drop steepness' },
+      { key: 'shoulderRoundness', label: 'Shoulder Roundness', min: 0, max: 5.0, step: M, info: 'Arm tube shoulder radius' },
+      { key: 'neckOffsetX', label: 'Neck X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift neck left/right' },
+      { key: 'neckOffsetY', label: 'Neck Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift neck up/down' },
+      { key: 'shoulderOffsetX', label: 'Shoulder X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift shoulders left/right' },
+      { key: 'shoulderOffsetY', label: 'Shoulder Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift shoulders up/down' },
     ]},
     { id: 'torsoShape', title: 'Torso Shape', color: '#e0a040', sliders: [
-      { key: 'bustProjection', label: 'Bust Projection', min: 0, max: 3.0, step: 0.1, info: 'Bust forward protrusion' },
-      { key: 'bustSpacing', label: 'Bust Spacing', min: 0.5, max: 2.0, step: 0.05, info: 'Bust volumes apart/together' },
-      { key: 'bustHeight', label: 'Bust Height', min: -0.05, max: 0.05, step: 0.005, info: 'Move bust up/down' },
-      { key: 'ribcageWidth', label: 'Ribcage Width', min: 0.5, max: 2.0, step: 0.05, info: 'Ribcage cross-sections' },
-      { key: 'bellyDepth', label: 'Belly Depth', min: 0.5, max: 2.0, step: 0.05, info: 'Front-to-back at navel' },
-      { key: 'gluteSize', label: 'Glute Size', min: 0, max: 3.0, step: 0.1, info: 'Glute volume projection' },
-      { key: 'torsoLength', label: 'Torso Length', min: 0.5, max: 2.0, step: 0.05, info: 'Shoulder to hip distance' },
-      { key: 'torsoOffsetX', label: 'Torso X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift torso left/right' },
-      { key: 'torsoOffsetY', label: 'Torso Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift torso up/down' },
+      { key: 'bustProjection', label: 'Bust Projection', min: 0, max: 5.0, step: 0.1, info: 'Bust forward protrusion' },
+      { key: 'bustSpacing', label: 'Bust Spacing', min: 0.1, max: 5.0, step: M, info: 'Bust volumes apart/together' },
+      { key: 'bustHeight', label: 'Bust Height', min: -0.2, max: 0.2, step: S, info: 'Move bust up/down' },
+      { key: 'ribcageWidth', label: 'Ribcage Width', min: 0.1, max: 5.0, step: M, info: 'Ribcage cross-sections' },
+      { key: 'bellyDepth', label: 'Belly Depth', min: 0.1, max: 5.0, step: M, info: 'Front-to-back at navel' },
+      { key: 'gluteSize', label: 'Glute Size', min: 0, max: 5.0, step: 0.1, info: 'Glute volume projection' },
+      { key: 'torsoLength', label: 'Torso Length', min: 0.1, max: 5.0, step: M, info: 'Shoulder to hip distance' },
+      { key: 'torsoOffsetX', label: 'Torso X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift torso left/right' },
+      { key: 'torsoOffsetY', label: 'Torso Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift torso up/down' },
     ]},
     { id: 'legs', title: 'Legs', color: '#e06080', sliders: [
-      { key: 'legLength', label: 'Leg Length', min: 0.5, max: 2.0, step: 0.05, info: 'Total leg length' },
-      { key: 'upperLegLength', label: 'Upper Leg', min: 0.5, max: 2.0, step: 0.05, info: 'Thigh length' },
-      { key: 'lowerLegLength', label: 'Lower Leg', min: 0.5, max: 2.0, step: 0.05, info: 'Calf length' },
-      { key: 'legSpacing', label: 'Leg Spacing', min: 0.3, max: 2.0, step: 0.05, info: 'Legs apart/together' },
-      { key: 'kneeWidth', label: 'Knee Width', min: 0.3, max: 2.5, step: 0.05, info: 'Knee cross-section' },
-      { key: 'ankleWidth', label: 'Ankle Width', min: 0.3, max: 2.5, step: 0.05, info: 'Ankle cross-section' },
-      { key: 'footSize', label: 'Foot Size', min: 0.3, max: 2.0, step: 0.05, info: 'All foot dimensions' },
-      { key: 'legOffsetX', label: 'Leg X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift legs left/right' },
-      { key: 'legOffsetY', label: 'Leg Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift legs up/down' },
-      { key: 'calfOffsetY', label: 'Calf Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift calves up/down' },
-      { key: 'footOffsetX', label: 'Foot X Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift feet left/right' },
-      { key: 'footOffsetY', label: 'Foot Y Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift feet up/down' },
+      { key: 'legLength', label: 'Leg Length', min: 0.1, max: 5.0, step: M, info: 'Total leg length' },
+      { key: 'upperLegLength', label: 'Upper Leg', min: 0.1, max: 5.0, step: M, info: 'Thigh length' },
+      { key: 'lowerLegLength', label: 'Lower Leg', min: 0.1, max: 5.0, step: M, info: 'Calf length' },
+      { key: 'legSpacing', label: 'Leg Spacing', min: 0.1, max: 5.0, step: M, info: 'Legs apart/together' },
+      { key: 'kneeWidth', label: 'Knee Width', min: 0.1, max: 5.0, step: M, info: 'Knee cross-section' },
+      { key: 'ankleWidth', label: 'Ankle Width', min: 0.1, max: 5.0, step: M, info: 'Ankle cross-section' },
+      { key: 'footSize', label: 'Foot Size', min: 0.1, max: 5.0, step: M, info: 'All foot dimensions' },
+      { key: 'legOffsetX', label: 'Leg X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift legs left/right' },
+      { key: 'legOffsetY', label: 'Leg Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift legs up/down' },
+      { key: 'calfOffsetY', label: 'Calf Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift calves up/down' },
+      { key: 'footOffsetX', label: 'Foot X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift feet left/right' },
+      { key: 'footOffsetY', label: 'Foot Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift feet up/down' },
     ]},
     { id: 'arms', title: 'Arms & Hands', color: '#4090e0', sliders: [
-      { key: 'armLength', label: 'Arm Length', min: 0.5, max: 2.0, step: 0.05, info: 'Total arm curve length' },
-      { key: 'upperArmLength', label: 'Upper Arm', min: 0.5, max: 2.0, step: 0.05, info: 'Shoulder to elbow' },
-      { key: 'forearmLength', label: 'Forearm', min: 0.5, max: 2.0, step: 0.05, info: 'Elbow to wrist' },
-      { key: 'armSpread', label: 'Arm Spread', min: 0.5, max: 2.0, step: 0.05, info: 'Distance from torso' },
-      { key: 'elbowWidth', label: 'Elbow Width', min: 0.3, max: 2.0, step: 0.05, info: 'Elbow cross-section' },
-      { key: 'wristWidth', label: 'Wrist Width', min: 0.3, max: 2.0, step: 0.05, info: 'Wrist cross-section' },
-      { key: 'handSize', label: 'Hand Size', min: 0.3, max: 2.0, step: 0.05, info: 'All hand dimensions' },
-      { key: 'fingerLength', label: 'Finger Length', min: 0.3, max: 2.0, step: 0.05, info: 'Finger tube length' },
-      { key: 'armOffsetX', label: 'Arm X Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift arms left/right' },
-      { key: 'armOffsetY', label: 'Arm Y Offset', min: -0.1, max: 0.1, step: 0.005, info: 'Shift arms up/down' },
-      { key: 'handOffsetX', label: 'Hand X Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift hands left/right' },
-      { key: 'handOffsetY', label: 'Hand Y Offset', min: -0.05, max: 0.05, step: 0.005, info: 'Shift hands up/down' },
+      { key: 'armLength', label: 'Arm Length', min: 0.1, max: 5.0, step: M, info: 'Total arm curve length' },
+      { key: 'upperArmLength', label: 'Upper Arm', min: 0.1, max: 5.0, step: M, info: 'Shoulder to elbow' },
+      { key: 'forearmLength', label: 'Forearm', min: 0.1, max: 5.0, step: M, info: 'Elbow to wrist' },
+      { key: 'armSpread', label: 'Arm Spread', min: 0.1, max: 5.0, step: M, info: 'Distance from torso' },
+      { key: 'elbowWidth', label: 'Elbow Width', min: 0.1, max: 5.0, step: M, info: 'Elbow cross-section' },
+      { key: 'wristWidth', label: 'Wrist Width', min: 0.1, max: 5.0, step: M, info: 'Wrist cross-section' },
+      { key: 'handSize', label: 'Hand Size', min: 0.1, max: 5.0, step: M, info: 'All hand dimensions' },
+      { key: 'fingerLength', label: 'Finger Length', min: 0.1, max: 5.0, step: M, info: 'Finger tube length' },
+      { key: 'armOffsetX', label: 'Arm X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift arms left/right' },
+      { key: 'armOffsetY', label: 'Arm Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift arms up/down' },
+      { key: 'handOffsetX', label: 'Hand X Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hands left/right' },
+      { key: 'handOffsetY', label: 'Hand Y Offset', min: -0.5, max: 0.5, step: S, info: 'Shift hands up/down' },
     ]},
     { id: 'debug', title: 'Debug', color: '#e04040', sliders: [
       { key: 'showSilhouette', label: 'Silhouette', min: 0, max: 1, step: 1, info: 'Show outline (O key)' },
@@ -2160,19 +2136,10 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
         }}>
           {/* Global buttons */}
           <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-            <button onClick={() => {
-              // Bake current effective values into base, reset sliders to center
-              setCfgBase({ ...cfg });
-              setCfgAdj({ ...allDefaults });
-              localStorage.setItem('holoCfgBase', JSON.stringify(cfg));
-            }}
+            <button onClick={() => { localStorage.setItem('holoCfg', JSON.stringify(cfg)); }}
               style={{ flex: 1, padding: '4px 0', background: 'rgba(77,216,208,0.2)', border: '1px solid rgba(77,216,208,0.4)', borderRadius: 3, color: '#4dd8d0', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
               Save All</button>
-            <button onClick={() => {
-              setCfgBase({ ...allDefaults });
-              setCfgAdj({ ...allDefaults });
-              localStorage.removeItem('holoCfgBase');
-            }}
+            <button onClick={() => { setCfg({ ...allDefaults }); localStorage.removeItem('holoCfg'); }}
               style={{ flex: 1, padding: '4px 0', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: 3, color: '#ff8888', cursor: 'pointer', fontSize: 10, fontFamily: 'monospace' }}>
               Reset All</button>
           </div>
@@ -2202,12 +2169,12 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
                           alignItems: 'center', justifyContent: 'center',
                         }}>?</span>
                         <span style={{ marginLeft: 'auto', color: sec.color, fontSize: 10 }}>
-                          {(cfgAdj[key as keyof HoloSettings] as number).toFixed(step < 0.01 ? 3 : 2)}
+                          {(cfg[key as keyof HoloSettings] as number).toFixed(step < 0.01 ? 3 : 2)}
                         </span>
                       </div>
                       <input type="range" min={min} max={max} step={step}
-                        value={cfgAdj[key as keyof HoloSettings] as number}
-                        onChange={(e) => setCfgAdj((s: HoloSettings) => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                        value={cfg[key as keyof HoloSettings] as number}
+                        onChange={(e) => setCfg((s: HoloSettings) => ({ ...s, [key]: parseFloat(e.target.value) }))}
                         style={{ width: '100%', accentColor: sec.color, height: 3 }} />
                     </div>
                   ))}
