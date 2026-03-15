@@ -811,7 +811,15 @@ const HologramViewer: React.FC<HologramViewerProps> = ({ avatars: avatarsProp, v
     return defaultProportions;
   });
   const bodyProportionsRef = useRef(bodyProportions);
-  useEffect(() => { bodyProportionsRef.current = bodyProportions; }, [bodyProportions]);
+  useEffect(() => {
+    bodyProportionsRef.current = bodyProportions;
+    // Mark all morph states dirty so updateAvatarGeometry runs next frame with new proportions
+    if (morphStateRef.current.size > 0) {
+      for (const [, mState] of morphStateRef.current) {
+        mState.dirty = true;
+      }
+    }
+  }, [bodyProportions]);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
