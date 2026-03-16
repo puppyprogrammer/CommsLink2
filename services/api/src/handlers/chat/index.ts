@@ -755,6 +755,7 @@ type AgentLike = {
   plan: string | null;
   tasks: string | null;
   max_tokens: number;
+  can_manage_agents?: boolean;
 };
 
 /**

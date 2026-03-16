@@ -15,6 +15,7 @@ type CreateAgentDTO = {
   autopilot_prompts?: string;
   nicknames?: string;
   max_tokens?: number;
+  can_manage_agents?: boolean;
 };
 
 type UpdateAgentDTO = {
