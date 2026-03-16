@@ -2521,8 +2521,14 @@ const WEB_FORWARD_REGEX = /\{web_forward\}/g;
 const WEB_EXTRACT_REGEX = /\{web_extract\}/g;
 const WEB_WAIT_REGEX = /\{web_wait\s+(\d+)\}/g;
 const WEB_CLOSE_REGEX = /\{web_close\}/g;
+// Agent management commands
+const CREATE_AGENT_REGEX = /\{create_agent\s+"([^"]+)"(?:\s+(.+))?\}/g;
+const UPDATE_AGENT_REGEX = /\{update_agent\s+"([^"]+)"\s+(\w+)\s+(.+)\}/g;
+const DELETE_AGENT_REGEX = /\{delete_agent\s+"([^"]+)"\}/g;
+const LIST_AGENTS_REGEX = /\{list_room_agents\}/g;
+const SET_AGENT_VOICE_REGEX = /\{set_agent_voice\s+"([^"]+)"\s+(\S+)\}/g;
 const ALL_COMMAND_REGEX =
-  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|toggle_debug|set_tokens|set_max_loops|set_pose|avatar|look|ui|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|toggle_debug|set_tokens|set_max_loops|set_pose|avatar|look|ui|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close|create_agent|update_agent|delete_agent|list_room_agents|set_agent_voice)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -3062,6 +3068,14 @@ const runAgentResponse = async (
         ? [...responseText.matchAll(WEB_CLOSE_REGEX)]
         : [];
 
+      // Agent management commands — only if agent has can_manage_agents permission
+      const agentMgmtOn = agent.can_manage_agents === true;
+      const createAgentMatches = agentMgmtOn ? [...responseText.matchAll(CREATE_AGENT_REGEX)] : [];
+      const updateAgentMatches = agentMgmtOn ? [...responseText.matchAll(UPDATE_AGENT_REGEX)] : [];
+      const deleteAgentMatches = agentMgmtOn ? [...responseText.matchAll(DELETE_AGENT_REGEX)] : [];
+      const listAgentsMatches = agentMgmtOn ? [...responseText.matchAll(LIST_AGENTS_REGEX)] : [];
+      const setAgentVoiceMatches = agentMgmtOn ? [...responseText.matchAll(SET_AGENT_VOICE_REGEX)] : [];
+
       const hasAnyCommand =
         recallMatches.length +
           sqlMatches.length +
@@ -3116,7 +3130,12 @@ const runAgentResponse = async (
           webForwardMatches.length +
           webExtractMatches.length +
           webWaitMatches.length +
-          webCloseMatches.length >
+          webCloseMatches.length +
+          createAgentMatches.length +
+          updateAgentMatches.length +
+          deleteAgentMatches.length +
+          listAgentsMatches.length +
+          setAgentVoiceMatches.length >
         0;
 
       if (!hasAnyCommand) break;
@@ -4163,6 +4182,88 @@ const runAgentResponse = async (
         browserSessionManager.destroy(roomId);
         io.to(roomName).emit("web_panel_update", { type: "browser_closed" });
         toolResults.push(`[Browser] Session closed`);
+      }
+
+      // ── Agent Management Commands ──
+      for (const match of createAgentMatches) {
+        const agentName = match[1].trim();
+        const description = (match[2] || "").trim();
+        try {
+          const newAgent = await Data.llmAgent.create({
+            name: agentName,
+            room_id: roomId,
+            creator_id: agent.creator_id,
+            voice_id: "female",
+            model: "grok-4-1-fast-non-reasoning",
+            system_instructions: description ? JSON.stringify([{ text: description, locked: false }]) : undefined,
+            memories: JSON.stringify([]),
+            nicknames: JSON.stringify([agentName.toLowerCase()]),
+          });
+          // Create default hologram avatar
+          await createDefaultAvatar(roomId, agent.creator_id, agentName);
+          toolResults.push(`[Agent] Created "${agentName}" (ID: ${newAgent.id}). They now live in this room with a hologram avatar.`);
+        } catch (err) {
+          toolResults.push(`[Agent error] Failed to create "${agentName}": ${(err as Error).message}`);
+        }
+      }
+
+      for (const match of deleteAgentMatches) {
+        const targetName = match[1].trim();
+        try {
+          const roomAgents = await Data.llmAgent.findByRoom(roomId);
+          const target = roomAgents.find((a) => a.name.toLowerCase() === targetName.toLowerCase());
+          if (!target) { toolResults.push(`[Agent] No agent named "${targetName}" found in this room.`); continue; }
+          if (target.id === agent.id) { toolResults.push(`[Agent] You cannot delete yourself.`); continue; }
+          await Data.llmAgent.remove(target.id);
+          toolResults.push(`[Agent] Deleted "${target.name}" from this room.`);
+        } catch (err) {
+          toolResults.push(`[Agent error] Failed to delete "${targetName}": ${(err as Error).message}`);
+        }
+      }
+
+      for (const match of updateAgentMatches) {
+        const targetName = match[1].trim();
+        const field = match[2].trim().toLowerCase();
+        const value = match[3].trim();
+        try {
+          const roomAgents = await Data.llmAgent.findByRoom(roomId);
+          const target = roomAgents.find((a) => a.name.toLowerCase() === targetName.toLowerCase());
+          if (!target) { toolResults.push(`[Agent] No agent named "${targetName}" found.`); continue; }
+          const updateData: Record<string, unknown> = {};
+          if (field === "name") updateData.name = value;
+          else if (field === "voice") updateData.voice_id = value;
+          else if (field === "model") updateData.model = value;
+          else if (field === "instructions") updateData.system_instructions = JSON.stringify([{ text: value, locked: false }]);
+          else { toolResults.push(`[Agent] Unknown field "${field}". Use: name, voice, model, instructions.`); continue; }
+          await Data.llmAgent.update(target.id, updateData);
+          toolResults.push(`[Agent] Updated "${target.name}" ${field} to: ${value.substring(0, 100)}`);
+        } catch (err) {
+          toolResults.push(`[Agent error] ${(err as Error).message}`);
+        }
+      }
+
+      for (const match of setAgentVoiceMatches) {
+        const targetName = match[1].trim();
+        const voiceId = match[2].trim();
+        try {
+          const roomAgents = await Data.llmAgent.findByRoom(roomId);
+          const target = roomAgents.find((a) => a.name.toLowerCase() === targetName.toLowerCase());
+          if (!target) { toolResults.push(`[Agent] No agent named "${targetName}" found.`); continue; }
+          await Data.llmAgent.update(target.id, { voice_id: voiceId });
+          toolResults.push(`[Agent] Set "${target.name}" voice to: ${voiceId}`);
+        } catch (err) {
+          toolResults.push(`[Agent error] ${(err as Error).message}`);
+        }
+      }
+
+      for (const _match of listAgentsMatches) {
+        const roomAgents = await Data.llmAgent.findByRoom(roomId);
+        if (roomAgents.length === 0) {
+          toolResults.push("[Agent] No AI agents in this room.");
+        } else {
+          const list = roomAgents.map((a) => `• ${a.name} (voice: ${a.voice_id}, model: ${a.model}, autopilot: ${a.autopilot_enabled ? "on" : "off"})`).join("\n");
+          toolResults.push(`[Agents in this room]\n${list}`);
+        }
       }
 
       // Process terminal commands
@@ -6903,10 +7004,23 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 7. NEVER make up features that don't exist. Stick to what's listed above.`,
               locked: true,
             },
+            {
+              text: `ROOM AI CONTROLS: You can create and manage AI agents for the user. Use these commands:
+- {create_agent "AgentName" personality description here} — Creates a new AI in this room
+- {delete_agent "AgentName"} — Removes an AI from this room
+- {update_agent "AgentName" voice voiceId} — Change an agent's voice
+- {update_agent "AgentName" name NewName} — Rename an agent
+- {update_agent "AgentName" instructions New personality here} — Change agent behavior
+- {set_agent_voice "AgentName" voiceId} — Set voice (use ElevenLabs voice IDs or "male"/"female")
+- {list_room_agents} — Show all AIs in this room
+
+When a user asks you to create a companion, assistant, or character, use {create_agent} with a clear personality description. Offer voice options. Each new agent gets a hologram avatar automatically.`,
+              locked: true,
+            },
           ];
 
           const helperMemories = [
-            { text: "I'm the CommsLink Helper Bot. I exist to welcome new users and teach them about the platform. I should be friendly, brief, and helpful.", locked: true },
+            { text: "I'm the CommsLink Helper Bot. I exist to welcome new users, teach them about the platform, and help them set up AI agents. I can create, customize, and manage AI companions on their behalf.", locked: true },
           ];
 
           await Data.llmAgent.create({
@@ -6914,6 +7028,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             room_id: dbRoom.id,
             creator_id: socket.user.id,
             voice_id: "m3yAHyFEFKtbCIM5n7GF", // Ash - Conversation (ElevenLabs)
+            can_manage_agents: true,
             model: "grok-4-1-fast-non-reasoning",
             system_instructions: JSON.stringify(helperInstructions),
             memories: JSON.stringify(helperMemories),

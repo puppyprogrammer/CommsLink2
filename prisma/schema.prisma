@@ -68,6 +68,7 @@ model room {
   cmd_audit_enabled       Boolean  @default(true)
   cmd_continue_enabled    Boolean  @default(true)
   cmd_forum_enabled       Boolean  @default(false)
+  cmd_agent_mgmt_enabled  Boolean  @default(false)
   max_loops               Int      @default(5)
   created_by          String?
   created_at      DateTime @default(now())
@@ -154,6 +155,7 @@ model llm_agent {
   tasks                String?  @db.Text
   nicknames            String?  @db.Text
   max_tokens           Int      @default(1500)
+  can_manage_agents    Boolean  @default(false)
   created_at           DateTime @default(now())
 
   creator user @relation(fields: [creator_id], references: [id])
