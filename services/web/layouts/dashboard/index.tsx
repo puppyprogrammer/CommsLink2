@@ -11,7 +11,6 @@ import { Box, AppBar, Toolbar, Typography, IconButton, Tooltip } from '@mui/mate
 
 // Material UI icons
 import ChatIcon from '@mui/icons-material/Chat';
-import ForumIcon from '@mui/icons-material/Forum';
 import PersonIcon from '@mui/icons-material/Person';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -36,7 +35,6 @@ type DashboardLayoutProps = {
 
 const navItems = [
   { label: 'Chat', href: '/chat', icon: <ChatIcon /> },
-  { label: 'Forum', href: '/forum', icon: <ForumIcon /> },
   { label: 'About', href: '/about', icon: <InfoOutlinedIcon /> },
 ];
 

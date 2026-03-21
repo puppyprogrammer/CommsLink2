@@ -28,8 +28,6 @@ model user {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  threads              thread[]
-  posts                post[]
   messages             message[]
   llm_agents           llm_agent[]
   credit_transactions  credit_transaction[]
@@ -67,7 +65,6 @@ model room {
   cmd_effort_enabled      Boolean  @default(false)
   cmd_audit_enabled       Boolean  @default(false)
   cmd_continue_enabled    Boolean  @default(false)
-  cmd_forum_enabled       Boolean  @default(false)
   cmd_agent_mgmt_enabled  Boolean  @default(false)
   cmd_intent_coherence_enabled  Boolean  @default(false)
   cmd_memory_coherence_enabled  Boolean  @default(false)
@@ -81,45 +78,9 @@ model room {
   machine_permissions machine_permission[]
   scheduled_jobs      scheduled_job[]
   members             room_member[]
-  threads             thread[]
   invites             room_invite[]
 
   @@index([name])
-}
-
-model thread {
-  id              String   @id @default(uuid())
-  room_id         String?
-  title           String
-  author_id       String
-  author_username String
-  view_count      Int      @default(0)
-  reply_count     Int      @default(0)
-  created_at      DateTime @default(now())
-  last_reply_at   DateTime @default(now())
-
-  room   room?  @relation(fields: [room_id], references: [id], onDelete: Cascade)
-  author user   @relation(fields: [author_id], references: [id])
-  posts  post[]
-
-  @@index([room_id, last_reply_at])
-  @@index([last_reply_at])
-  @@index([author_id])
-}
-
-model post {
-  id              String   @id @default(uuid())
-  thread_id       String
-  author_id       String
-  author_username String
-  content         String   @db.Text
-  created_at      DateTime @default(now())
-
-  thread thread @relation(fields: [thread_id], references: [id], onDelete: Cascade)
-  author user   @relation(fields: [author_id], references: [id])
-
-  @@index([thread_id])
-  @@index([author_id])
 }
 
 model message {

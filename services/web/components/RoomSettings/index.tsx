@@ -162,7 +162,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdEffort, setCmdEffort] = useState(false);
   const [cmdAudit, setCmdAudit] = useState(false);
   const [cmdContinue, setCmdContinue] = useState(false);
-  const [cmdForum, setCmdForum] = useState(false);
   const [cmdIntentCoherence, setCmdIntentCoherence] = useState(false);
   const [cmdMemoryCoherence, setCmdMemoryCoherence] = useState(false);
   const [maxLoops, setMaxLoops] = useState(5);
@@ -291,7 +290,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdEffort: boolean;
       cmdAudit: boolean;
       cmdContinue: boolean;
-      cmdForum: boolean;
       cmdIntentCoherence: boolean;
       cmdMemoryCoherence: boolean;
       maxLoops: number;
@@ -313,7 +311,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setCmdEffort(data.cmdEffort);
       setCmdAudit(data.cmdAudit);
       setCmdContinue(data.cmdContinue);
-      setCmdForum(data.cmdForum);
       setCmdIntentCoherence(data.cmdIntentCoherence);
       setCmdMemoryCoherence(data.cmdMemoryCoherence);
       setMaxLoops(data.maxLoops);
@@ -340,7 +337,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdEffort?: boolean;
       cmdAudit?: boolean;
       cmdContinue?: boolean;
-      cmdForum?: boolean;
       cmdIntentCoherence?: boolean;
       cmdMemoryCoherence?: boolean;
       maxLoops?: number;
@@ -361,7 +357,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       if (data.cmdEffort !== undefined) setCmdEffort(data.cmdEffort);
       if (data.cmdAudit !== undefined) setCmdAudit(data.cmdAudit);
       if (data.cmdContinue !== undefined) setCmdContinue(data.cmdContinue);
-      if (data.cmdForum !== undefined) setCmdForum(data.cmdForum);
       if (data.cmdIntentCoherence !== undefined) setCmdIntentCoherence(data.cmdIntentCoherence);
       if (data.cmdMemoryCoherence !== undefined) setCmdMemoryCoherence(data.cmdMemoryCoherence);
       if (data.maxLoops !== undefined) setMaxLoops(data.maxLoops);
@@ -1500,13 +1495,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 checked: cmdContinue,
                 key: 'cmdContinue' as const,
                 set: setCmdContinue,
-              },
-              {
-                label: 'Room Forum — AI creates threads and posts in a room-scoped forum',
-                desc: 'AI: {forum_thread title}, {forum_post threadId content}, {forum_list} | Viewable in the Forum panel',
-                checked: cmdForum,
-                key: 'cmdForum' as const,
-                set: setCmdForum,
               },
               {
                 label: 'Intent Coherence — Subconscious alignment check',

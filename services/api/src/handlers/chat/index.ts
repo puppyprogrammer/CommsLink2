@@ -21,9 +21,6 @@ import prisma from "../../../../../core/adapters/prisma";
 import dayjs from "../../../../../core/lib/dayjs";
 
 import terminalSecurity from "../../../../../core/adapters/terminalSecurity";
-import createAiThreadAction from "../../../../../core/actions/forum/createAiThreadAction";
-import postAiResponseAction from "../../../../../core/actions/forum/postAiResponseAction";
-import listRoomThreadsAction from "../../../../../core/actions/forum/listRoomThreadsAction";
 
 import type { JwtPayload } from "../../../../../core/helpers/jwt";
 import type {
@@ -1493,74 +1490,7 @@ const buildToolDefinitions = (
     });
   }
 
-  if (cmds.forum) {
-    tools.push({
-      type: "function",
-      function: {
-        name: "forum_thread",
-        description:
-          "Create a new forum thread in this room. Returns the thread ID.",
-        parameters: {
-          type: "object",
-          properties: {
-            title: {
-              type: "string",
-              description: "Thread title (3-200 chars)",
-            },
-          },
-          required: ["title"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "forum_post",
-        description:
-          "Post a reply to an existing forum thread. Use forum_list to find thread IDs first.",
-        parameters: {
-          type: "object",
-          properties: {
-            thread_id: {
-              type: "string",
-              description: "UUID of the thread to reply to",
-            },
-            content: {
-              type: "string",
-              description: "Post content (max 10000 chars)",
-            },
-          },
-          required: ["thread_id", "content"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "forum_list",
-        description: "List forum threads in this room.",
-        parameters: { type: "object", properties: {}, required: [] },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "forum_read",
-        description:
-          "Read all posts in a forum thread. Use this before replying to understand the conversation context.",
-        parameters: {
-          type: "object",
-          properties: {
-            thread_id: {
-              type: "string",
-              description: "UUID of the thread to read",
-            },
-          },
-          required: ["thread_id"],
-        },
-      },
-    });
-  }
+
 
   // Always-available utility commands
   tools.push({
@@ -1820,20 +1750,6 @@ const toolCallsToBraceFormat = (
       case "audit":
         parts.push(`{audit ${args.scope}}`);
         break;
-      case "forum_thread":
-        parts.push(`{forum_thread ${String(args.title).replace(/\n/g, " ")}}`);
-        break;
-      case "forum_post":
-        parts.push(
-          `{forum_post ${args.thread_id} ${String(args.content).replace(/\n/g, " ")}}`,
-        );
-        break;
-      case "forum_list":
-        parts.push("{forum_list}");
-        break;
-      case "forum_read":
-        parts.push(`{forum_read ${args.thread_id}}`);
-        break;
       default:
         break;
     }
@@ -1892,7 +1808,6 @@ type CommandFlags = {
   effort?: boolean;
   audit?: boolean;
   continue?: boolean;
-  forum?: boolean;
   intentCoherence?: boolean;
   memoryCoherence?: boolean;
 };
@@ -2115,8 +2030,8 @@ const buildSystemPrompt = (
         "VISUAL AWARENESS:\n" +
         "{look} - Take a screenshot of what users see in the chat page. You will receive a description of the UI, panels, etc.\n" +
         "{look focus on the terminal} - Screenshot with a specific focus prompt for the vision AI.\n" +
-        "{ui open terminal|browser|forum} - Open panels.\n" +
-        "{ui close terminal|browser|forum} - Close panels.\n" +
+        "{ui open terminal|browser} - Open panels.\n" +
+        "{ui close terminal|browser} - Close panels.\n" +
         "Use {look} after making UI changes to see the result and iterate.",
     );
   }
@@ -2443,7 +2358,7 @@ const UPDATE_TASK_REGEX = /\{update_task\s+([^|]+)\|\s*([^}]+)\}/g;
 const REMOVE_TASK_REGEX = /\{remove_task\s+([^}]+)\}/g;
 const LOOK_REGEX = /\{look(?:\s+([^}]*))?\}/g;
 const UI_COMMAND_REGEX =
-  /\{ui\s+(open|close)\s+(terminal|browser|forum)\}/gi;
+  /\{ui\s+(open|close)\s+(terminal|browser)\}/gi;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
@@ -2489,10 +2404,6 @@ const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
 const TEXT_REGEX = /\{text\s+([^}]+)\}/g;
 const TEXT_XML_REGEX = /\{text\}([\s\S]*?)\{\/text\}/g;
 const CONTINUE_REGEX = /\{continue\}/g;
-const FORUM_THREAD_REGEX = /\{forum_thread\s+([^}]+)\}/g;
-const FORUM_POST_REGEX = /\{forum_post\s+(\S+)\s+([^}]+)\}/g;
-const FORUM_LIST_REGEX = /\{forum_list\}/g;
-const FORUM_READ_REGEX = /\{forum_read\s+(\S+)\}/g;
 const WEB_GO_REGEX = /\{web_go\s+([^}]+)\}/g;
 const WEB_CLICK_REGEX = /\{web_click\s+([^}]+)\}/g;
 const WEB_TYPE_REGEX = /\{web_type\s+(\S+)\s+([^}]+)\}/g;
@@ -2509,7 +2420,7 @@ const DELETE_AGENT_REGEX = /\{delete_agent\s+"([^"]+)"\}/g;
 const LIST_AGENTS_REGEX = /\{list_room_agents\}/g;
 const SET_AGENT_VOICE_REGEX = /\{set_agent_voice\s+"([^"]+)"\s+(\S+)\}/g;
 const ALL_COMMAND_REGEX =
-  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|look|ui|think|audit|search|browse|find|screenshot|terminal|claude|say|text|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close|create_agent|update_agent|delete_agent|list_room_agents|set_agent_voice)(?:\s+.+)?\}|\{\/(?:think|say|text)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|look|ui|think|audit|search|browse|find|screenshot|terminal|claude|say|text|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close|create_agent|update_agent|delete_agent|list_room_agents|set_agent_voice)(?:\s+.+)?\}|\{\/(?:think|say|text)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -2711,7 +2622,6 @@ const runAgentResponse = async (
     const effortOn = roomRecord?.cmd_effort_enabled ?? false;
     const auditOn = roomRecord?.cmd_audit_enabled ?? false;
     const continueOn = roomRecord?.cmd_continue_enabled ?? false;
-    const forumOn = roomRecord?.cmd_forum_enabled ?? false;
     const intentCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? false;
     const memoryCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? false;
     let maxLoops = roomRecord?.max_loops ?? 5;
@@ -2767,7 +2677,6 @@ const runAgentResponse = async (
         effort: effortOn,
         audit: auditOn,
         continue: continueOn,
-        forum: forumOn,
         intentCoherence: intentCoherenceOn,
         memoryCoherence: memoryCoherenceOn,
       },
@@ -2793,7 +2702,6 @@ const runAgentResponse = async (
       effort: effortOn,
       audit: auditOn,
       continue: continueOn,
-      forum: forumOn,
       intentCoherence: intentCoherenceOn,
       memoryCoherence: memoryCoherenceOn,
     };
@@ -3006,18 +2914,6 @@ const runAgentResponse = async (
       const continueMatches = continueOn
         ? [...responseText.matchAll(CONTINUE_REGEX)]
         : [];
-      const forumThreadMatches = forumOn
-        ? [...responseText.matchAll(FORUM_THREAD_REGEX)]
-        : [];
-      const forumPostMatches = forumOn
-        ? [...responseText.matchAll(FORUM_POST_REGEX)]
-        : [];
-      const forumListMatches = forumOn
-        ? [...responseText.matchAll(FORUM_LIST_REGEX)]
-        : [];
-      const forumReadMatches = forumOn
-        ? [...responseText.matchAll(FORUM_READ_REGEX)]
-        : [];
       const webGoMatches = webOn
         ? [...responseText.matchAll(WEB_GO_REGEX)]
         : [];
@@ -3094,10 +2990,6 @@ const runAgentResponse = async (
           unbanMatches.length +
           continueMatches.length +
           setMaxLoopsMatches.length +
-          forumThreadMatches.length +
-          forumPostMatches.length +
-          forumListMatches.length +
-          forumReadMatches.length +
           webGoMatches.length +
           webClickMatches.length +
           webTypeMatches.length +
@@ -3132,8 +3024,6 @@ const runAgentResponse = async (
       for (const _m of lookMatches) allAgentCommands.push("look");
       for (const m of uiCommandMatches)
         allAgentCommands.push(`ui ${(m[1] || "").toLowerCase().trim()}`);
-      for (const _m of forumPostMatches) allAgentCommands.push("forum_post");
-      for (const _m of forumListMatches) allAgentCommands.push("forum_list");
       for (const _m of webGoMatches) allAgentCommands.push("web_go");
       trackAndDetectRepetition(agent.id, allAgentCommands);
 
@@ -4617,126 +4507,6 @@ const runAgentResponse = async (
         );
       }
 
-      // ┌──────────────────────────────────────────┐
-      // │ Forum Commands                           │
-      // └──────────────────────────────────────────┘
-      for (const match of forumThreadMatches) {
-        const title = match[1].trim();
-        if (title.length < 3 || title.length > 200) {
-          toolResults.push("Forum thread title must be 3-200 characters.");
-          continue;
-        }
-        try {
-          const thread = await createAiThreadAction(
-            roomId,
-            title,
-            agent.creator_id,
-            agent.name,
-          );
-          emitSystemMessage(
-            io,
-            roomName,
-            `[${agent.name} created forum thread: "${title}"]`,
-          );
-          io.to(roomName).emit("new_forum_thread", {
-            id: thread.id,
-            title: thread.title,
-            author_username: thread.author_username,
-            created_at: thread.created_at,
-            reply_count: 0,
-          });
-          toolResults.push(
-            `Forum thread created: "${title}" (ID: ${thread.id})`,
-          );
-        } catch (err) {
-          toolResults.push(
-            `Forum thread creation failed: ${(err as Error).message}`,
-          );
-        }
-      }
-
-      for (const match of forumPostMatches) {
-        const threadId = match[1].trim();
-        const content = match[2].trim();
-        if (!content) {
-          toolResults.push("Forum post content cannot be empty.");
-          continue;
-        }
-        try {
-          const postRecord = await postAiResponseAction(
-            threadId,
-            content.substring(0, 10000),
-            agent.creator_id,
-            agent.name,
-          );
-          emitSystemMessage(
-            io,
-            roomName,
-            `[${agent.name} posted to forum thread ${threadId.substring(0, 8)}…]`,
-          );
-          io.to(roomName).emit("new_forum_post", {
-            id: postRecord.id,
-            thread_id: threadId,
-            author_username: postRecord.author_username,
-            content: postRecord.content,
-            created_at: postRecord.created_at,
-          });
-          toolResults.push(
-            `Forum post added to thread ${threadId} (Post ID: ${postRecord.id})`,
-          );
-        } catch (err) {
-          toolResults.push(`Forum post failed: ${(err as Error).message}`);
-        }
-      }
-
-      for (const _match of forumListMatches) {
-        try {
-          const threads = await listRoomThreadsAction(roomId, 1, 20);
-          if (threads.length === 0) {
-            toolResults.push("No forum threads in this room yet.");
-          } else {
-            const listing = threads
-              .map(
-                (t) =>
-                  `• ${t.title} (ID: ${t.id}, replies: ${t.reply_count}, by ${t.author_username})`,
-              )
-              .join("\n");
-            toolResults.push(`Forum threads:\n${listing}`);
-          }
-        } catch (err) {
-          toolResults.push(`Forum list failed: ${(err as Error).message}`);
-        }
-      }
-
-      for (const match of forumReadMatches) {
-        const threadId = match[1].trim();
-        try {
-          const thread = await Data.thread.findById(threadId);
-          if (!thread) {
-            toolResults.push(`Forum thread not found: ${threadId}`);
-            continue;
-          }
-          const posts = await Data.post.findByThreadId(threadId, {
-            skip: 0,
-            take: 50,
-          });
-          if (posts.length === 0) {
-            toolResults.push(`Thread "${thread.title}" has no posts yet.`);
-          } else {
-            const postListing = posts
-              .map(
-                (p) =>
-                  `[${p.author_username} at ${p.created_at.toISOString()}]\n${p.content}`,
-              )
-              .join("\n\n---\n\n");
-            toolResults.push(
-              `Thread: "${thread.title}" (${posts.length} posts)\n\n${postListing}`,
-            );
-          }
-        } catch (err) {
-          toolResults.push(`Forum read failed: ${(err as Error).message}`);
-        }
-      }
 
       // If only self-modification commands were used (no data-fetching commands), no need to re-prompt
       const hasDataCommands =
@@ -4750,8 +4520,6 @@ const runAgentResponse = async (
         claudeMatches.length +
         lookMatches.length +
         listUsersMatches.length +
-        forumListMatches.length +
-        forumReadMatches.length +
         webGoMatches.length +
         webClickMatches.length +
         webExtractMatches.length;
@@ -6695,7 +6463,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 - Remote Terminals: Connect your computer via the terminal agent. Run commands, deploy code, and use Claude Code sessions remotely.
 - Voice Chat: Choose from browser voices (free) or premium ElevenLabs voices (costs credits). All messages can be spoken aloud.
 - Web Browsing: AI agents can search the web, browse pages, take screenshots, and extract content.
-- Forums: Each room has a built-in forum for threaded discussions.
 - Scheduling: Set reminders and recurring tasks.
 - Credits: You start with 10,000 free credits. AI features consume credits. Buy more credit packs anytime.
 - Invite System: Invite others to your room with invite links. Rooms are private by default.`,
@@ -7172,7 +6939,6 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmdEffort: false,
           cmdAudit: false,
           cmdContinue: false,
-          cmdForum: false,
           cmdIntentCoherence: false,
           cmdMemoryCoherence: false,
           maxLoops: 5,
@@ -7198,7 +6964,6 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         cmdEffort: roomRecord?.cmd_effort_enabled ?? false,
         cmdAudit: roomRecord?.cmd_audit_enabled ?? false,
         cmdContinue: roomRecord?.cmd_continue_enabled ?? false,
-        cmdForum: roomRecord?.cmd_forum_enabled ?? false,
         cmdIntentCoherence: roomRecord?.cmd_intent_coherence_enabled ?? false,
         cmdMemoryCoherence: roomRecord?.cmd_memory_coherence_enabled ?? false,
         maxLoops: roomRecord?.max_loops ?? 5,
@@ -7252,7 +7017,6 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         cmdEffort?: boolean;
         cmdAudit?: boolean;
         cmdContinue?: boolean;
-        cmdForum?: boolean;
         cmdIntentCoherence?: boolean;
         cmdMemoryCoherence?: boolean;
         maxLoops?: number;
@@ -7285,7 +7049,6 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmd_effort_enabled: data.cmdEffort,
           cmd_audit_enabled: data.cmdAudit,
           cmd_continue_enabled: data.cmdContinue,
-          cmd_forum_enabled: data.cmdForum,
           cmd_intent_coherence_enabled: data.cmdIntentCoherence,
           cmd_memory_coherence_enabled: data.cmdMemoryCoherence,
           max_loops:
@@ -7311,7 +7074,6 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmdEffort: data.cmdEffort,
           cmdAudit: data.cmdAudit,
           cmdContinue: data.cmdContinue,
-          cmdForum: data.cmdForum,
           cmdIntentCoherence: data.cmdIntentCoherence,
           cmdMemoryCoherence: data.cmdMemoryCoherence,
           maxLoops: data.maxLoops,

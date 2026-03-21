@@ -62,9 +62,7 @@ import WebBrowserPanel from '@/components/WebBrowserPanel';
 import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
 import ResizeHandle from '@/components/ResizeHandle';
-import ForumPanel from '@/components/ForumPanel';
 import TerminalIcon from '@mui/icons-material/Terminal';
-import ForumIcon from '@mui/icons-material/Forum';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 // Models
 import type { ChatMessage, Room, WatchPartyState } from '@/models/chat';
@@ -104,8 +102,6 @@ const ChatPage = () => {
   terminalPanelOpenRef.current = terminalPanelOpen;
   const [terminalWidth, setTerminalWidth] = useState(600);
   const [webPanelWidth, setWebPanelWidth] = useState(600);
-  const [forumPanelOpen, setForumPanelOpen] = useState(false);
-  const [forumPanelWidth, setForumPanelWidth] = useState(400);
   const [panelMachines, setPanelMachines] = useState<{ id: string; name: string; status: string; os?: string }[]>([]);
   const socketInstanceRef = useRef<ReturnType<typeof getSocket> | null>(null);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
@@ -373,9 +369,6 @@ const ChatPage = () => {
           break;
         case 'browser':
           setWebPanelOpen(isOpen);
-          break;
-        case 'forum':
-          setForumPanelOpen(isOpen);
           break;
       }
     });
@@ -768,14 +761,6 @@ const ChatPage = () => {
               </IconButton>
               <IconButton
                 size="small"
-                onClick={() => setForumPanelOpen((prev) => !prev)}
-                title="Room Forum"
-                sx={{ color: forumPanelOpen ? 'primary.main' : '#858585' }}
-              >
-                <ForumIcon />
-              </IconButton>
-              <IconButton
-                size="small"
                 onClick={() => setSettingsOpen((prev) => !prev)}
                 title="Voice Settings"
                 sx={{ color: settingsOpen ? 'primary.main' : '#858585' }}
@@ -1105,30 +1090,6 @@ const ChatPage = () => {
             </div>
           </>
         )}
-        {forumPanelOpen &&
-          (() => {
-            const currentRoomId = rooms.find((r) => r.name === currentRoom)?.id;
-            return currentRoomId ? (
-              <>
-                <ResizeHandle onResize={(d) => setForumPanelWidth((w) => Math.max(300, Math.min(800, w + d)))} />
-                <div
-                  style={{
-                    width: forumPanelWidth,
-                    flexShrink: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <ForumPanel
-                    roomId={currentRoomId}
-                    socket={socketInstanceRef.current}
-                    onClose={() => setForumPanelOpen(false)}
-                  />
-                </div>
-              </>
-            ) : null;
-          })()}
       </Box>
 
       <Dialog

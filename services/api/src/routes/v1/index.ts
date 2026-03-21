@@ -3,7 +3,6 @@ import type { Server } from '@hapi/hapi';
 import { authRoutes } from './auth';
 import { profileRoutes } from './profile';
 import { voiceRoutes } from './voice';
-import { forumRoutes } from './forum';
 import { adminRoutes } from './admin';
 import { versionRoutes } from './version';
 import { modelsRoutes } from './models';
@@ -22,7 +21,6 @@ const registerRoutes = (server: Server): void => {
     ...authRoutes,
     ...profileRoutes,
     ...voiceRoutes,
-    ...forumRoutes,
     ...adminRoutes,
     ...versionRoutes,
     ...modelsRoutes,
