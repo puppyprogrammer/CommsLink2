@@ -1,13 +1,13 @@
 'use client';
 
 // React modules
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 
 // Node modules
 import { useRouter, usePathname } from 'next/navigation';
 
 // Material UI components
-import { Box, AppBar, Toolbar, Typography, IconButton, Chip, Tooltip } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, IconButton, Tooltip } from '@mui/material';
 
 // Material UI icons
 import ChatIcon from '@mui/icons-material/Chat';
@@ -19,11 +19,9 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 // Libraries
 import useSession from '@/lib/session/useSession';
-import paymentApi from '@/lib/api/payment';
 
 // Components
 import ConnectionStatus from '@/components/ConnectionStatus';
-import SpendingBar from '@/components/SpendingBar';
 
 // Styles
 import classes from './Dashboard.module.scss';
@@ -46,21 +44,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
   const router = useRouter();
   const pathname = usePathname();
   const { session, isLoggedIn, isLoading } = useSession();
-  const [creditBalance, setCreditBalance] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isLoggedIn) {
       router.push('/login');
     }
   }, [isLoading, isLoggedIn, router]);
-
-  useEffect(() => {
-    if (!session?.token) return;
-    paymentApi
-      .getCreditStatus(session.token)
-      .then((status) => setCreditBalance(status.balance))
-      .catch(() => {});
-  }, [session?.token]);
 
   const handleLogout = async () => {
     await fetch('/api/logout', { method: 'POST' });
@@ -86,17 +75,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
           }}>
             CommsLink
           </Typography>
-          <SpendingBar />
           <ConnectionStatus />
-          {creditBalance !== null && (
-            <Chip
-              label={`${creditBalance.toLocaleString()} credits`}
-              size="small"
-              variant="outlined"
-              onClick={() => router.push('/credits')}
-              sx={{ mr: 1.5, cursor: 'pointer', height: 22, fontSize: '0.75rem' }}
-            />
-          )}
           <Typography variant="detailText" sx={{ mr: 1, fontSize: '0.75rem' }}>
             {session?.user.username}
           </Typography>

@@ -8160,32 +8160,6 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
     );
 
     // ┌──────────────────────────────────────────┐
-    // │ Spending Estimate                       │
-    // └──────────────────────────────────────────┘
-    socket.on("get_spending_estimate", async () => {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const byService = await Data.creditUsageLog.sumCostByServiceSince(
-        socket.user.id,
-        oneHourAgo,
-      );
-      const spending: Record<string, number> = {
-        grok: 0,
-        elevenlabs: 0,
-        claude: 0,
-        ec2: 0,
-      };
-      for (const entry of byService) {
-        if (entry.service === "grok") spending.grok = entry.total_cost_usd;
-        else if (entry.service === "elevenlabs")
-          spending.elevenlabs = entry.total_cost_usd;
-        else if (entry.service === "claude")
-          spending.claude = entry.total_cost_usd;
-        else if (entry.service === "ec2") spending.ec2 = entry.total_cost_usd;
-      }
-      socket.emit("spending_estimate", spending);
-    });
-
-    // ┌──────────────────────────────────────────┐
     // │ Screenshot response (for AI {look})     │
     // └──────────────────────────────────────────┘
     socket.on(
