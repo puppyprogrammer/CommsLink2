@@ -163,6 +163,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdAudit, setCmdAudit] = useState(true);
   const [cmdContinue, setCmdContinue] = useState(true);
   const [cmdForum, setCmdForum] = useState(false);
+  const [cmdIntentCoherence, setCmdIntentCoherence] = useState(true);
+  const [cmdMemoryCoherence, setCmdMemoryCoherence] = useState(true);
   const [maxLoops, setMaxLoops] = useState(5);
 
   // Terminal machines
@@ -290,6 +292,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdAudit: boolean;
       cmdContinue: boolean;
       cmdForum: boolean;
+      cmdIntentCoherence: boolean;
+      cmdMemoryCoherence: boolean;
       maxLoops: number;
     }) => {
       setMemoryEnabled(data.enabled);
@@ -310,6 +314,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setCmdAudit(data.cmdAudit);
       setCmdContinue(data.cmdContinue);
       setCmdForum(data.cmdForum);
+      setCmdIntentCoherence(data.cmdIntentCoherence);
+      setCmdMemoryCoherence(data.cmdMemoryCoherence);
       setMaxLoops(data.maxLoops);
     };
 
@@ -335,6 +341,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdAudit?: boolean;
       cmdContinue?: boolean;
       cmdForum?: boolean;
+      cmdIntentCoherence?: boolean;
+      cmdMemoryCoherence?: boolean;
       maxLoops?: number;
     }) => {
       if (data.cmdRecall !== undefined) setCmdRecall(data.cmdRecall);
@@ -354,6 +362,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       if (data.cmdAudit !== undefined) setCmdAudit(data.cmdAudit);
       if (data.cmdContinue !== undefined) setCmdContinue(data.cmdContinue);
       if (data.cmdForum !== undefined) setCmdForum(data.cmdForum);
+      if (data.cmdIntentCoherence !== undefined) setCmdIntentCoherence(data.cmdIntentCoherence);
+      if (data.cmdMemoryCoherence !== undefined) setCmdMemoryCoherence(data.cmdMemoryCoherence);
       if (data.maxLoops !== undefined) setMaxLoops(data.maxLoops);
     };
 
@@ -1497,6 +1507,20 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 checked: cmdForum,
                 key: 'cmdForum' as const,
                 set: setCmdForum,
+              },
+              {
+                label: 'Intent Coherence — Subconscious alignment check',
+                desc: 'Periodically evaluates whether the AI is staying on-track with its goals. Injects coherence score into prompts.',
+                checked: cmdIntentCoherence,
+                key: 'cmdIntentCoherence' as const,
+                set: setCmdIntentCoherence,
+              },
+              {
+                label: 'Memory Coherence — Subconscious memory health check',
+                desc: 'Periodically evaluates AI memory quality and consistency. Injects coherence score into prompts.',
+                checked: cmdMemoryCoherence,
+                key: 'cmdMemoryCoherence' as const,
+                set: setCmdMemoryCoherence,
               },
             ].map((cmd) => (
               <Box key={cmd.key}>

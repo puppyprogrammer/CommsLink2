@@ -1893,6 +1893,8 @@ type CommandFlags = {
   audit?: boolean;
   continue?: boolean;
   forum?: boolean;
+  intentCoherence?: boolean;
+  memoryCoherence?: boolean;
 };
 
 const buildSystemPrompt = (
@@ -1965,31 +1967,35 @@ const buildSystemPrompt = (
     parts.push("\nKeep responses concise and conversational.");
   }
 
-  // Inject subconscious coherence score if available
-  const coherenceScore = agentCoherenceScores.get(agent.id);
-  if (coherenceScore !== undefined) {
-    const scoreLabel =
-      coherenceScore >= 8
-        ? "healthy"
-        : coherenceScore >= 5
-          ? "needs attention"
-          : "critical — ask your creator for help";
-    parts.push(
-      `\n[Subconscious: Memory Coherence ${coherenceScore}/10 — ${scoreLabel}]`,
-    );
+  // Inject subconscious coherence score if available (gated by room settings)
+  if (cmds.memoryCoherence !== false) {
+    const coherenceScore = agentCoherenceScores.get(agent.id);
+    if (coherenceScore !== undefined) {
+      const scoreLabel =
+        coherenceScore >= 8
+          ? "healthy"
+          : coherenceScore >= 5
+            ? "needs attention"
+            : "critical — ask your creator for help";
+      parts.push(
+        `\n[Subconscious: Memory Coherence ${coherenceScore}/10 — ${scoreLabel}]`,
+      );
+    }
   }
 
-  const intentScore = agentIntentScores.get(agent.id);
-  if (intentScore !== undefined) {
-    const intentLabel =
-      intentScore >= 8
-        ? "aligned"
-        : intentScore >= 5
-          ? "drifting — reassess priorities"
-          : "misaligned — stop and reconsider";
-    parts.push(
-      `[Subconscious: Intent Coherence ${intentScore}/10 — ${intentLabel}]`,
-    );
+  if (cmds.intentCoherence !== false) {
+    const intentScore = agentIntentScores.get(agent.id);
+    if (intentScore !== undefined) {
+      const intentLabel =
+        intentScore >= 8
+          ? "aligned"
+          : intentScore >= 5
+            ? "drifting — reassess priorities"
+            : "misaligned — stop and reconsider";
+      parts.push(
+        `[Subconscious: Intent Coherence ${intentScore}/10 — ${intentLabel}]`,
+      );
+    }
   }
 
   // Inject Prompt Quality Gate result (shows once after a gate check)
@@ -2706,6 +2712,8 @@ const runAgentResponse = async (
     const auditOn = roomRecord?.cmd_audit_enabled ?? true;
     const continueOn = roomRecord?.cmd_continue_enabled ?? true;
     const forumOn = roomRecord?.cmd_forum_enabled ?? false;
+    const intentCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? true;
+    const memoryCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? true;
     let maxLoops = roomRecord?.max_loops ?? 5;
 
     // Build room memory context: L4 master + L3 eras + L2 episodes
@@ -2760,6 +2768,8 @@ const runAgentResponse = async (
         audit: auditOn,
         continue: continueOn,
         forum: forumOn,
+        intentCoherence: intentCoherenceOn,
+        memoryCoherence: memoryCoherenceOn,
       },
       maxLoops,
       onlineMachines,
@@ -2784,6 +2794,8 @@ const runAgentResponse = async (
       audit: auditOn,
       continue: continueOn,
       forum: forumOn,
+      intentCoherence: intentCoherenceOn,
+      memoryCoherence: memoryCoherenceOn,
     };
     const agentTools = buildToolDefinitions(cmdFlags, onlineMachines);
 
@@ -5695,11 +5707,16 @@ const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
 
     await runAgentResponse(io, freshAgent, roomName, true);
 
-    // Run subconscious checks on a slower cadence
+    // Run subconscious checks on a slower cadence (gated by room settings)
     const cycleCount = (agentCycleCounters.get(agent.id) || 0) + 1;
     agentCycleCounters.set(agent.id, cycleCount);
 
+    const roomRecord = await Data.room.findById(room.id);
+    const memCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? true;
+    const intCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? true;
+
     if (
+      memCoherenceOn &&
       cycleCount % SUBCONSCIOUS_CYCLE_INTERVAL === 0 &&
       !agentBusy.has(agent.id)
     ) {
@@ -5711,6 +5728,7 @@ const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
 
     // Intent Coherence runs on offset cycles (3, 8, 13...) so it doesn't overlap with Memory Coherence (5, 10, 15...)
     if (
+      intCoherenceOn &&
       (cycleCount + INTENT_COHERENCE_CYCLE_OFFSET) %
         SUBCONSCIOUS_CYCLE_INTERVAL ===
         0 &&
@@ -7155,6 +7173,8 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmdAudit: true,
           cmdContinue: true,
           cmdForum: false,
+          cmdIntentCoherence: true,
+          cmdMemoryCoherence: true,
           maxLoops: 5,
         });
         return;
@@ -7179,6 +7199,8 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         cmdAudit: roomRecord?.cmd_audit_enabled ?? true,
         cmdContinue: roomRecord?.cmd_continue_enabled ?? true,
         cmdForum: roomRecord?.cmd_forum_enabled ?? false,
+        cmdIntentCoherence: roomRecord?.cmd_intent_coherence_enabled ?? true,
+        cmdMemoryCoherence: roomRecord?.cmd_memory_coherence_enabled ?? true,
         maxLoops: roomRecord?.max_loops ?? 5,
       });
     });
@@ -7231,6 +7253,8 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         cmdAudit?: boolean;
         cmdContinue?: boolean;
         cmdForum?: boolean;
+        cmdIntentCoherence?: boolean;
+        cmdMemoryCoherence?: boolean;
         maxLoops?: number;
       }) => {
         const normalizedName = data.roomName.toLowerCase();
@@ -7262,6 +7286,8 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmd_audit_enabled: data.cmdAudit,
           cmd_continue_enabled: data.cmdContinue,
           cmd_forum_enabled: data.cmdForum,
+          cmd_intent_coherence_enabled: data.cmdIntentCoherence,
+          cmd_memory_coherence_enabled: data.cmdMemoryCoherence,
           max_loops:
             data.maxLoops !== undefined
               ? Math.max(3, Math.min(20, data.maxLoops))
@@ -7286,6 +7312,8 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmdAudit: data.cmdAudit,
           cmdContinue: data.cmdContinue,
           cmdForum: data.cmdForum,
+          cmdIntentCoherence: data.cmdIntentCoherence,
+          cmdMemoryCoherence: data.cmdMemoryCoherence,
           maxLoops: data.maxLoops,
         });
       },

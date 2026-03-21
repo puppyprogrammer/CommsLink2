@@ -69,6 +69,8 @@ model room {
   cmd_continue_enabled    Boolean  @default(true)
   cmd_forum_enabled       Boolean  @default(false)
   cmd_agent_mgmt_enabled  Boolean  @default(false)
+  cmd_intent_coherence_enabled  Boolean  @default(true)
+  cmd_memory_coherence_enabled  Boolean  @default(true)
   max_loops               Int      @default(5)
   created_by          String?
   created_at      DateTime @default(now())
