@@ -231,7 +231,6 @@ const describeImage = async (
           content:
             'You are a visual observer for an AI agent. Describe what you see concisely but thoroughly. ' +
             'Focus on UI elements, layout, colors, content, and any visual issues. ' +
-            'If you see a 3D hologram/avatar, describe its pose, proportions, and visual quality. ' +
             'Be specific about positions (left, right, center), colors, and text you can read.',
         },
         {

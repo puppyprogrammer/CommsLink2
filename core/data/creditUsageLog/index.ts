@@ -19,12 +19,12 @@ const create = async (data: CreateUsageLogDTO): Promise<credit_usage_log> =>
 
 const findByUser = async (
   userId: string,
-  limit = 50,
+  limit?: number,
 ): Promise<credit_usage_log[]> =>
   prisma.credit_usage_log.findMany({
     where: { user_id: userId },
     orderBy: { created_at: 'desc' },
-    take: limit,
+    ...(limit ? { take: limit } : {}),
   });
 
 const sumByUserSince = async (

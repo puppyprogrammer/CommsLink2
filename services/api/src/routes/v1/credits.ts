@@ -24,7 +24,7 @@ const creditRoutes: ServerRoute[] = [
     handler: async (request: Request, h: ResponseToolkit) =>
       tracer.trace('CONTROLLER.CREDITS.USAGE', async () => {
         const credentials = request.auth.credentials as unknown as AuthCredentials;
-        return Data.creditUsageLog.findByUser(credentials.id, 50);
+        return Data.creditUsageLog.findByUser(credentials.id);
       }),
   },
   {

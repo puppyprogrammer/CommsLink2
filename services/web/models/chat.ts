@@ -14,6 +14,7 @@ export type ChatMessage = {
   pending?: boolean;
   nonce?: string;
   isSystem?: boolean;
+  noVoice?: boolean;
   imageUrl?: string;
   collapsible?: string;
   systemType?: string;

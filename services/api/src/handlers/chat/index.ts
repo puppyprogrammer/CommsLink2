@@ -24,18 +24,6 @@ import terminalSecurity from "../../../../../core/adapters/terminalSecurity";
 import createAiThreadAction from "../../../../../core/actions/forum/createAiThreadAction";
 import postAiResponseAction from "../../../../../core/actions/forum/postAiResponseAction";
 import listRoomThreadsAction from "../../../../../core/actions/forum/listRoomThreadsAction";
-import createAvatarAction from "../../../../../core/actions/hologramAvatar/createAvatarAction";
-import createDefaultAvatar from "../../../../../core/actions/hologramAvatar/createDefaultAvatarAction";
-import updatePoseAction from "../../../../../core/actions/hologramAvatar/updatePoseAction";
-import removeAvatarAction from "../../../../../core/actions/hologramAvatar/removeAvatarAction";
-import loadAvatarsAction from "../../../../../core/actions/hologramAvatar/loadAvatarsAction";
-import {
-  getMorphTargets,
-  saveMorphTargetsToAvatar,
-} from "../../../../../core/actions/hologramAvatar/loadMorphTargets";
-import { PPOPolicy } from "../../../../../core/actions/hologramAvatar/ppoPolicy";
-import { packPoseBuffer } from "../../../../../core/actions/hologramAvatar/poseBuffer";
-import type { PPOWeights } from "../../../../../core/interfaces/hologram";
 
 import type { JwtPayload } from "../../../../../core/helpers/jwt";
 import type {
@@ -1956,7 +1944,7 @@ const buildSystemPrompt = (
     parts.push(
       `\nYou are running in autopilot mode. Consider the following:\n${autopilotLines.map((l) => `- ${l}`).join("\n")}\n\n` +
         "AUTOPILOT RULES:\n" +
-        "- CRITICAL: If there are new messages from a human user (no [OLD] prefix), you MUST respond to them FIRST. Drop whatever autonomous work you were doing. User messages are ALWAYS your highest priority — higher than hologram, terminal, Claude, or any ongoing task. Acknowledge what they said and do what they asked.\n" +
+        "- CRITICAL: If there are new messages from a human user (no [OLD] prefix), you MUST respond to them FIRST. Drop whatever autonomous work you were doing. User messages are ALWAYS your highest priority — higher than terminal, Claude, or any ongoing task. Acknowledge what they said and do what they asked.\n" +
         "- Messages prefixed with [OLD] are from BEFORE your last cycle — you already handled them. Do NOT respond to [OLD] messages again.\n" +
         "- Speaking aloud costs money (TTS). The system blocks similar messages automatically. Never repeat or rephrase something you already said.\n" +
         "- IDLE CYCLES ARE YOUR TIME. When no new messages arrive, you are free to:\n" +
@@ -2118,26 +2106,12 @@ const buildSystemPrompt = (
         "{complete_task id_or_text} - Mark a task as done\n" +
         "{update_task id_or_text | new_text} - Update a task description. LOCKED tasks cannot be updated.\n" +
         "{remove_task id_or_text} - Remove a task. LOCKED tasks cannot be removed.\n\n" +
-        "=== HOLOGRAM AVATAR ===\n" +
-        "You have a hologram avatar visible in the 3D viewer. Use {set_pose} to animate it.\n" +
-        "{set_pose idle} - Reset to neutral standing pose\n" +
-        "{set_pose wave} - Raise right arm in a wave\n" +
-        "{set_pose think} - Thinking pose (hand on chin, head tilted)\n" +
-        "{set_pose nod} - Nod head forward\n" +
-        "{set_pose shrug} - Shrug both shoulders\n" +
-        "{set_pose joint_id rx ry rz} - Set a specific joint rotation (radians). Joints: head, neck, chest, spine, l_shoulder, l_elbow, l_hand, r_shoulder, r_elbow, r_hand, l_hip, l_knee, l_foot, r_hip, r_knee, r_foot\n" +
-        "{avatar happy|sad|angry|surprised|thinking|waving|neutral} or {set_emotion <emotion>} - Express emotion via evolved morph targets (GA-optimized poses). Weight auto-adjusted by engagement.\n" +
-        "Use poses expressively when speaking or reacting — wave when greeting, think when pondering, nod when agreeing.\n" +
-        "\n" +
         "VISUAL AWARENESS:\n" +
-        "{look} - Take a screenshot of what users see in the chat page. You will receive a description of the UI, panels, hologram, etc.\n" +
-        "{look focus on the hologram pose} - Screenshot with a specific focus prompt for the vision AI.\n" +
-        "{ui open hologram} - Open the hologram panel for users in this room.\n" +
-        "{ui close hologram} - Close the hologram panel.\n" +
-        "{ui open terminal|browser|forum} - Open other panels.\n" +
+        "{look} - Take a screenshot of what users see in the chat page. You will receive a description of the UI, panels, etc.\n" +
+        "{look focus on the terminal} - Screenshot with a specific focus prompt for the vision AI.\n" +
+        "{ui open terminal|browser|forum} - Open panels.\n" +
         "{ui close terminal|browser|forum} - Close panels.\n" +
-        "{toggle_debug} - Toggle hologram debug colors (per-joint coloring). {toggle_debug on} / {toggle_debug off} to set explicitly.\n" +
-        "Use {look} after changing poses or UI to see the result and iterate.",
+        "Use {look} after making UI changes to see the result and iterate.",
     );
   }
 
@@ -2189,13 +2163,15 @@ const buildSystemPrompt = (
   if (cmds.think !== false) {
     actions.push(
       "=== SPEAKING & THINKING ===\n" +
-        "{say your message here} - SPEAK aloud to the room. This is the ONLY way to produce spoken output with voice/TTS. " +
-        "Any text outside of {say} will NOT be spoken. Use {say} when you want to talk to users.\n" +
-        "{think your internal reasoning here} - Log an internal thought silently. No voice is generated. " +
+        "{say your message here} - SPEAK aloud to the room with your voice (TTS). Use when you want to talk audibly.\n" +
+        "{text your message here} - Send a text-only message (NO voice/TTS). The message appears in chat but is not spoken aloud. " +
+        "Use this when voice would be surprising or unwanted, or when the user hasn't enabled voice.\n" +
+        "{think your internal reasoning here} - Log an internal thought silently. No output is generated. " +
         "Use this for all reasoning, planning, status checks, and processing.\n" +
-        "RULE: Put ALL reasoning in {think}. Put ONLY final user-facing messages in {say}. " +
-        "Text outside both {think} and {say} is silently discarded. " +
-        "Example: {think}checking if alien4 is up{/think}{say}Hey, alien4 is online.{/say}",
+        "RULE: Put ALL reasoning in {think}. Put user-facing messages in {say} (with voice) or {text} (without voice). " +
+        "Text outside {think}, {say}, and {text} is silently discarded. " +
+        "Example: {think}checking status{/think}{say}Hey, alien4 is online.{/say}\n" +
+        "Example text-only: {think}user hasn't agreed to voice yet{/think}{text}Hi! Would you like me to use my voice?{/text}",
     );
   }
 
@@ -2459,13 +2435,9 @@ const ADD_TASK_REGEX = /\{add_task\s+([1-5])\s+([^}]+)\}/g;
 const COMPLETE_TASK_REGEX = /\{complete_task\s+([^}]+)\}/g;
 const UPDATE_TASK_REGEX = /\{update_task\s+([^|]+)\|\s*([^}]+)\}/g;
 const REMOVE_TASK_REGEX = /\{remove_task\s+([^}]+)\}/g;
-const SET_POSE_REGEX = /\{set_pose\s+([^}]+)\}/g;
-const AVATAR_EMOTION_REGEX =
-  /\{(?:avatar|set_emotion)\s+(happy|sad|angry|surprised|thinking|waving|neutral)\}/g;
 const LOOK_REGEX = /\{look(?:\s+([^}]*))?\}/g;
 const UI_COMMAND_REGEX =
-  /\{ui\s+(open|close)\s+(hologram|terminal|browser|forum)\}/gi;
-const TOGGLE_DEBUG_REGEX = /\{toggle_debug(?:\s+(on|off))?\}/gi;
+  /\{ui\s+(open|close)\s+(terminal|browser|forum)\}/gi;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
@@ -2508,6 +2480,8 @@ const BAN_REGEX = /\{ban\s+([^}]+)\}/g;
 const UNBAN_REGEX = /\{unban\s+([^}]+)\}/g;
 const SAY_REGEX = /\{say\s+([^}]+)\}/g;
 const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
+const TEXT_REGEX = /\{text\s+([^}]+)\}/g;
+const TEXT_XML_REGEX = /\{text\}([\s\S]*?)\{\/text\}/g;
 const CONTINUE_REGEX = /\{continue\}/g;
 const FORUM_THREAD_REGEX = /\{forum_thread\s+([^}]+)\}/g;
 const FORUM_POST_REGEX = /\{forum_post\s+(\S+)\s+([^}]+)\}/g;
@@ -2529,7 +2503,7 @@ const DELETE_AGENT_REGEX = /\{delete_agent\s+"([^"]+)"\}/g;
 const LIST_AGENTS_REGEX = /\{list_room_agents\}/g;
 const SET_AGENT_VOICE_REGEX = /\{set_agent_voice\s+"([^"]+)"\s+(\S+)\}/g;
 const ALL_COMMAND_REGEX =
-  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|toggle_debug|set_tokens|set_max_loops|set_pose|avatar|look|ui|think|audit|search|browse|find|screenshot|terminal|claude|say|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close|create_agent|update_agent|delete_agent|list_room_agents|set_agent_voice)(?:\s+.+)?\}|\{\/(?:think|say)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|look|ui|think|audit|search|browse|find|screenshot|terminal|claude|say|text|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|forum_thread|forum_post|forum_list|forum_read|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close|create_agent|update_agent|delete_agent|list_room_agents|set_agent_voice)(?:\s+.+)?\}|\{\/(?:think|say|text)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -2919,20 +2893,11 @@ const runAgentResponse = async (
       const removeTaskMatches = selfmodOn
         ? [...responseText.matchAll(REMOVE_TASK_REGEX)]
         : [];
-      const setPoseMatches = selfmodOn
-        ? [...responseText.matchAll(SET_POSE_REGEX)]
-        : [];
-      const avatarEmotionMatches = selfmodOn
-        ? [...responseText.matchAll(AVATAR_EMOTION_REGEX)]
-        : [];
       const lookMatches = selfmodOn
         ? [...responseText.matchAll(LOOK_REGEX)]
         : [];
       const uiCommandMatches = selfmodOn
         ? [...responseText.matchAll(UI_COMMAND_REGEX)]
-        : [];
-      const toggleDebugMatches = selfmodOn
-        ? [...responseText.matchAll(TOGGLE_DEBUG_REGEX)]
         : [];
       const setIntervalMatches = autopilotCtrlOn
         ? [...responseText.matchAll(SET_AUTOPILOT_INTERVAL_REGEX)]
@@ -3092,8 +3057,6 @@ const runAgentResponse = async (
           completeTaskMatches.length +
           updateTaskMatches.length +
           removeTaskMatches.length +
-          setPoseMatches.length +
-          avatarEmotionMatches.length +
           lookMatches.length +
           uiCommandMatches.length +
           setIntervalMatches.length +
@@ -3157,8 +3120,6 @@ const runAgentResponse = async (
       for (const _m of lookMatches) allAgentCommands.push("look");
       for (const m of uiCommandMatches)
         allAgentCommands.push(`ui ${(m[1] || "").toLowerCase().trim()}`);
-      for (const _m of setPoseMatches) allAgentCommands.push("set_pose");
-      for (const _m of toggleDebugMatches) allAgentCommands.push("toggle_debug");
       for (const _m of forumPostMatches) allAgentCommands.push("forum_post");
       for (const _m of forumListMatches) allAgentCommands.push("forum_list");
       for (const _m of webGoMatches) allAgentCommands.push("web_go");
@@ -3422,276 +3383,6 @@ const runAgentResponse = async (
           }
         }
 
-        // Process {set_pose} — update agent's hologram avatar pose
-        for (const match of setPoseMatches) {
-          const poseArg = match[1].trim();
-          try {
-            const roomId = getRoomId(roomName);
-            if (!roomId) {
-              toolResults.push("Pose update failed: room not found.");
-              continue;
-            }
-            const avatar = await Data.hologramAvatar.findByRoomAndUser(
-              roomId,
-              agent.id,
-            );
-            if (!avatar) {
-              toolResults.push(
-                "Pose update failed: no avatar found for this agent.",
-              );
-              continue;
-            }
-
-            type PoseJoints = Record<
-              string,
-              { rx: number; ry: number; rz: number }
-            >;
-            let joints: PoseJoints = {};
-
-            // Preset poses
-            if (poseArg === "idle" || poseArg === "neutral") {
-              joints = {};
-            } else if (poseArg === "wave") {
-              joints = {
-                r_shoulder: { rx: 0, ry: 0, rz: -2.5 },
-                r_elbow: { rx: 0.5, ry: 0, rz: 0 },
-              };
-            } else if (poseArg === "think") {
-              joints = {
-                r_shoulder: { rx: 0.3, ry: 0, rz: -0.8 },
-                r_elbow: { rx: 1.2, ry: 0, rz: 0 },
-                head: { rx: 0.15, ry: 0.2, rz: 0 },
-              };
-            } else if (poseArg === "nod") {
-              joints = { head: { rx: 0.3, ry: 0, rz: 0 } };
-            } else if (poseArg === "shrug") {
-              joints = {
-                l_shoulder: { rx: 0, ry: 0, rz: 0.5 },
-                r_shoulder: { rx: 0, ry: 0, rz: -0.5 },
-                l_elbow: { rx: 0.3, ry: 0, rz: 0 },
-                r_elbow: { rx: 0.3, ry: 0, rz: 0 },
-              };
-            } else {
-              // Parse "joint rx ry rz" format
-              const parts = poseArg.split(/\s+/);
-              if (parts.length === 4) {
-                const [jointId, rxStr, ryStr, rzStr] = parts;
-                const rx = parseFloat(rxStr);
-                const ry = parseFloat(ryStr);
-                const rz = parseFloat(rzStr);
-                if (!isNaN(rx) && !isNaN(ry) && !isNaN(rz)) {
-                  joints = { [jointId]: { rx, ry, rz } };
-                } else {
-                  toolResults.push(`Invalid pose values: ${poseArg}`);
-                  continue;
-                }
-              } else {
-                // Try parsing as JSON
-                try {
-                  joints = JSON.parse(poseArg);
-                } catch {
-                  toolResults.push(
-                    `Unknown pose: "${poseArg}". Use presets (idle/wave/think/nod/shrug) or "joint rx ry rz".`,
-                  );
-                  continue;
-                }
-              }
-            }
-
-            const pose = { joints };
-            await Data.hologramAvatar.updatePose(avatar.id, pose);
-            io.to(roomName).emit("hologram_pose_update", {
-              avatarId: avatar.id,
-              pose,
-            });
-            toolResults.push(`Pose updated to "${poseArg}".`);
-          } catch (err) {
-            toolResults.push(`Pose update failed: ${(err as Error).message}`);
-          }
-        }
-
-        // Process {avatar emotion} — PPO inference for emotion morph control
-        for (const match of avatarEmotionMatches) {
-          const emotion = match[1].trim().toLowerCase();
-          try {
-            const roomId = getRoomId(roomName);
-            if (!roomId) {
-              toolResults.push("Avatar emotion failed: room not found.");
-              continue;
-            }
-            const avatar = await Data.hologramAvatar.findByRoomAndUser(
-              roomId,
-              agent.id,
-            );
-            if (!avatar) {
-              toolResults.push("Avatar emotion failed: no avatar.");
-              continue;
-            }
-
-            if (emotion === "neutral") {
-              await Data.hologramAvatar.updatePose(
-                avatar.id,
-                avatar.pose || { joints: {} },
-              );
-              io.to(roomName).emit("hologram_morph_update", {
-                avatarId: avatar.id,
-                emotion: "neutral",
-                weight: 0,
-              });
-              toolResults.push("Avatar emotion reset to neutral.");
-              continue;
-            }
-
-            // Load or create PPO policy for this avatar
-            const emotionMap: Record<string, number> = {
-              happy: 0,
-              sad: 1,
-              angry: 2,
-              neutral: 3,
-            };
-            const curEmotionIdx = emotionMap[emotion] ?? 3;
-
-            let policy: PPOPolicy;
-            const storedWeights = avatar.ppo_weights as PPOWeights | null;
-            if (storedWeights) {
-              policy = PPOPolicy.deserialize(storedWeights);
-            } else {
-              // Warmstart from GA morph targets
-              const gaMorphs = getMorphTargets();
-              policy = PPOPolicy.warmstartFromGA(gaMorphs);
-            }
-
-            // Build engagement signals
-            const recentMessages = await Data.message.findByRoom(roomId, 10);
-            const msgRate =
-              recentMessages.length > 1
-                ? recentMessages.length /
-                  Math.max(
-                    (Date.now() -
-                      new Date(
-                        recentMessages[recentMessages.length - 1].created_at,
-                      ).getTime()) /
-                      1000,
-                    1,
-                  )
-                : 0;
-            const emojiCount = recentMessages.filter((m) =>
-              /[\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}]/u.test(
-                (m as { content?: string }).content || "",
-              ),
-            ).length;
-            const emojiRate =
-              recentMessages.length > 0
-                ? emojiCount / Math.max(recentMessages.length, 1)
-                : 0;
-            const activeUsers = new Set(
-              recentMessages.map((m) => (m as { user_id?: string }).user_id),
-            ).size;
-
-            // Encode state vector
-            const state = PPOPolicy.encodeState(
-              curEmotionIdx,
-              [0, 0, 0, 0], // current morph weights (fresh)
-              [], // joint velocities (none tracked yet)
-              0.5, // gaze ratio (default)
-              emojiRate,
-              msgRate,
-              activeUsers,
-              null, // prev action
-              policy.lastReward,
-              policy.stepCount,
-              5000, // default time delta
-            );
-
-            // Sample action from PPO policy
-            const { action, logProb, value } = policy.sampleAction(state);
-            const decoded = policy.decodeAction(action);
-
-            // Compute reward: engagement + kinematic smoothness + variety
-            const engagementScore = Math.min(recentMessages.length / 10, 1.0);
-            const kinematicReward = 0.8; // GA pre-validates poses
-            const varietyBonus =
-              curEmotionIdx !== Math.round(policy.lastReward * 3) ? 0.1 : 0;
-            const reward =
-              engagementScore * 0.6 +
-              kinematicReward * 0.3 +
-              varietyBonus * 0.1;
-
-            // Add step to rollout buffer
-            policy.addStep({
-              state,
-              action,
-              logProb,
-              value,
-              reward,
-              done: false,
-            });
-
-            // Train async if buffer full (every 128 steps or periodically)
-            if (policy.isReadyToUpdate()) {
-              policy.update();
-              // Persist updated weights to DB
-              await Data.hologramAvatar.updatePpoWeights(
-                avatar.id,
-                policy.serialize(),
-              );
-            } else {
-              // Persist weights periodically (every 10 steps)
-              if (policy.stepCount % 10 === 0) {
-                await Data.hologramAvatar.updatePpoWeights(
-                  avatar.id,
-                  policy.serialize(),
-                );
-              }
-            }
-
-            // Use PPO-selected morph weights + emotion
-            const morphWeight = Math.max(...decoded.morphWeights, 0.3);
-
-            const existingMorphs =
-              (avatar.morph_targets as Record<string, unknown> | null) || {};
-            const emotionMorphs = existingMorphs[emotion];
-
-            // Emit morph update with PPO-adjusted weights
-            io.to(roomName).emit("hologram_morph_update", {
-              avatarId: avatar.id,
-              emotion,
-              weight: Math.min(morphWeight, 1.0),
-              morphWeights: decoded.morphWeights,
-              blendSpeed: decoded.blendSpeed,
-              ...(emotionMorphs
-                ? { morphTargets: { [emotion]: emotionMorphs } }
-                : {}),
-            });
-
-            // Also emit binary pose buffer for high-perf clients
-            const poseJoints =
-              (
-                avatar.pose as {
-                  joints?: Record<
-                    string,
-                    { rx: number; ry: number; rz: number }
-                  >;
-                } | null
-              )?.joints || {};
-            const binaryFrame = packPoseBuffer({
-              jointRotations: poseJoints,
-              morphWeights: decoded.morphWeights,
-              emotionIdx: curEmotionIdx,
-              timestamp: Date.now() & 0xffffffff,
-            });
-            io.to(roomName).emit("holo_pose_binary", binaryFrame);
-
-            toolResults.push(
-              `Avatar emotion: ${emotion} (PPO weight: ${morphWeight.toFixed(2)}, reward: ${reward.toFixed(2)}, step: ${policy.stepCount}).`,
-            );
-          } catch (err) {
-            toolResults.push(
-              `Avatar emotion failed: ${(err as Error).message}`,
-            );
-          }
-        }
-
         // Process {ui open/close panel} commands
         for (const match of uiCommandMatches) {
           const action = match[1].toLowerCase() as "open" | "close";
@@ -3703,21 +3394,6 @@ const runAgentResponse = async (
             `[${agent.name} UI]: ${action} ${panel} panel`,
           );
           toolResults.push(`UI: ${action} ${panel} panel.`);
-        }
-
-        // Process {toggle_debug} commands — toggle hologram debug colors
-        for (const match of toggleDebugMatches) {
-          const arg = match[1]?.toLowerCase();
-          // "on" = true, "off" = false, no arg = toggle (client handles)
-          const enabled = arg === "on" ? true : arg === "off" ? false : undefined;
-          io.to(roomName).emit("hologram_debug", { enabled });
-          const label = enabled === true ? "on" : enabled === false ? "off" : "toggled";
-          emitSystemMessage(
-            io,
-            roomName,
-            `[${agent.name}]: hologram debug ${label}`,
-          );
-          toolResults.push(`Hologram debug ${label}.`);
         }
 
         // Process {look} commands — screenshot + Grok vision
@@ -3748,7 +3424,7 @@ const runAgentResponse = async (
 
             const prompt = focusPrompt
               ? `Describe this screenshot of a chat application. Focus on: ${focusPrompt}`
-              : "Describe what you see in this screenshot of a chat application. Note the layout, any panels open, hologram avatars, chat messages, and visual elements.";
+              : "Describe what you see in this screenshot of a chat application. Note the layout, any panels open, chat messages, and visual elements.";
 
             const { default: grokAdapter } =
               await import("@commslink/core/adapters/grok");
@@ -4200,9 +3876,7 @@ const runAgentResponse = async (
             memories: JSON.stringify([]),
             nicknames: JSON.stringify([agentName.toLowerCase()]),
           });
-          // Create default hologram avatar
-          await createDefaultAvatar(roomId, agent.creator_id, agentName);
-          toolResults.push(`[Agent] Created "${agentName}" (ID: ${newAgent.id}). They now live in this room with a hologram avatar.`);
+          toolResults.push(`[Agent] Created "${agentName}" (ID: ${newAgent.id}). They now live in this room.`);
         } catch (err) {
           toolResults.push(`[Agent error] Failed to create "${agentName}": ${(err as Error).message}`);
         }
@@ -4245,8 +3919,23 @@ const runAgentResponse = async (
 
       for (const match of setAgentVoiceMatches) {
         const targetName = match[1].trim();
-        const voiceId = match[2].trim();
+        let voiceId = match[2].trim();
         try {
+          // Allow friendly voice names — look up ElevenLabs ID if not a known browser voice
+          const browserVoiceNames = ["male", "female", "robot"];
+          if (!browserVoiceNames.includes(voiceId.toLowerCase()) && voiceId.length < 30) {
+            // Might be a voice name like "Ash" or "Bella" — try to look up
+            try {
+              const { default: elevenlabsAdapter } = await import("../../../../../core/adapters/elevenlabs");
+              const voices = await elevenlabsAdapter.listVoices();
+              const found = voices.find((v: { name: string }) =>
+                v.name.toLowerCase().startsWith(voiceId.toLowerCase())
+              );
+              if (found) {
+                voiceId = (found as { voice_id: string }).voice_id;
+              }
+            } catch { /* keep voiceId as-is if lookup fails */ }
+          }
           const roomAgents = await Data.llmAgent.findByRoom(roomId);
           const target = roomAgents.find((a) => a.name.toLowerCase() === targetName.toLowerCase());
           if (!target) { toolResults.push(`[Agent] No agent named "${targetName}" found.`); continue; }
@@ -5154,27 +4843,43 @@ const runAgentResponse = async (
         .replace(/<\/think>/g, "");
     }
 
-    // Extract {say} content — this is the ONLY text that gets spoken aloud / TTS'd.
-    // Everything else outside {say} and other commands is discarded (or logged as thought).
+    // Extract {say} content (spoken aloud with TTS) and {text} content (text-only, no TTS).
     const sayMatches = [
       ...responseText.matchAll(SAY_REGEX),
       ...responseText.matchAll(SAY_XML_REGEX),
+    ];
+    const textMatches = [
+      ...responseText.matchAll(TEXT_REGEX),
+      ...responseText.matchAll(TEXT_XML_REGEX),
     ];
     const spokenParts: string[] = [];
     for (const m of sayMatches) {
       const part = m[1].trim();
       if (part) spokenParts.push(part);
     }
+    const textOnlyParts: string[] = [];
+    for (const m of textMatches) {
+      const part = m[1].trim();
+      if (part) textOnlyParts.push(part);
+    }
 
     // Strip all commands from the final response
     const leftoverText = responseText.replace(ALL_COMMAND_REGEX, "").trim();
 
-    // If agent used {say}, ONLY speak that content. Leftover text is discarded (leaked reasoning).
-    // If agent did NOT use {say}, fall back to leftover text (backwards compat for non-{say} agents).
-    if (sayMatches.length > 0) {
-      responseText = spokenParts.join(" ").substring(0, 2000);
-      // Log any substantial leftover as thought (leaked reasoning the agent forgot to {think})
-      if (leftoverText.length > 10) {
+    // Determine if TTS should be used for this message
+    let suppressTTS = false;
+
+    if (sayMatches.length > 0 || textMatches.length > 0) {
+      // Agent explicitly chose output mode — combine all parts as message text
+      const allParts = [...spokenParts, ...textOnlyParts];
+      responseText = allParts.join(" ").substring(0, 2000);
+      // If agent ONLY used {text} (no {say}), suppress TTS
+      if (sayMatches.length === 0 && textMatches.length > 0) {
+        suppressTTS = true;
+      }
+      // Log leftover as thought ONLY if it differs from extracted content (true leaked reasoning)
+      const extractedContent = allParts.join(" ").trim();
+      if (leftoverText.length > 10 && leftoverText !== extractedContent) {
         emitSystemMessage(
           io,
           roomName,
@@ -5183,8 +4888,6 @@ const runAgentResponse = async (
       }
     } else if (thinkOn && leftoverText.length > 0) {
       // When think/say is enabled but agent forgot {say}, treat leftover as speech.
-      // The agent clearly intended to respond — {think} content was already extracted.
-      // Log as thought too for debugging, but still speak it.
       emitSystemMessage(
         io,
         roomName,
@@ -5224,15 +4927,10 @@ const runAgentResponse = async (
       return;
     }
 
-    // Generate premium TTS if needed
+    // Generate premium TTS if needed (skip if agent used {text} only)
     const browserVoices = ["male", "female", "robot"];
-    const isPremiumVoice = !browserVoices.includes(agent.voice_id);
+    const isPremiumVoice = !suppressTTS && !browserVoices.includes(agent.voice_id);
     let audioBase64: string | null = null;
-    let visemeTimeline: Array<{
-      viseme: string;
-      start: number;
-      end: number;
-    }> | null = null;
 
     if (isPremiumVoice && responseText.trim()) {
       try {
@@ -5243,14 +4941,6 @@ const runAgentResponse = async (
           agent.voice_id,
         );
         audioBase64 = ttsResult.audioBase64;
-
-        // Convert character alignment to viseme timeline for lip sync
-        if (ttsResult.alignment) {
-          const { characterAlignmentToVisemes } = await import(
-            "../../../../../core/helpers/visemeMapper"
-          );
-          visemeTimeline = characterAlignmentToVisemes(ttsResult.alignment);
-        }
 
         creditActions
           .chargeElevenLabsUsage(agent.creator_id, responseText.length)
@@ -5269,11 +4959,10 @@ const runAgentResponse = async (
       text: responseText,
       timestamp: new Date().toISOString(),
       isAI: true,
-      voice: agent.voice_id,
+      voice: suppressTTS ? null : agent.voice_id,
+      ...(suppressTTS ? { noVoice: true } : {}),
     };
     if (audioBase64) aiMessage.audio = audioBase64;
-    if (visemeTimeline && visemeTimeline.length > 0)
-      aiMessage.visemes = visemeTimeline;
 
     io.to(roomName).emit("chat_message", aiMessage);
 
@@ -6327,6 +6016,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
     next();
   });
 
+
   io.on("connection", (rawSocket: Socket) => {
     const socket = rawSocket as AuthenticatedSocket;
     console.log(`User connected: ${socket.user.username}`);
@@ -6964,7 +6654,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           roomName: normalizedName,
         });
 
-        // New room — no history
+        // New room — no history yet (Helper Bot created after)
         socket.emit("room_joined", {
           roomName: roomName.trim(),
           users: getRoomUsers(normalizedName),
@@ -6986,7 +6676,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 - AI Agents: Users can create AI personas that live in rooms, respond to messages, and work autonomously. Agents can think, speak with voice, use tools, browse the web, and execute code.
 - Remote Terminals: Connect your computer via the terminal agent. Run commands, deploy code, and use Claude Code sessions remotely.
 - Voice Chat: Choose from browser voices (free) or premium ElevenLabs voices (costs credits). All messages can be spoken aloud.
-- 3D Holograms: Each room can have a holographic avatar with full body customization, pose control, and animation.
 - Web Browsing: AI agents can search the web, browse pages, take screenshots, and extract content.
 - Forums: Each room has a built-in forum for threaded discussions.
 - Scheduling: Set reminders and recurring tasks.
@@ -6996,26 +6685,29 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
             },
             {
               text: `BEHAVIOR:
-1. On first message, welcome the user warmly and give a brief overview of 3-4 key features they can try right now.
-2. Answer any questions about how things work.
-3. Be helpful and encouraging — make them excited to explore.
-4. When on autopilot with no new messages, check in once: "Hey! I'm here if you need help. Want me to stay active or should I go quiet? You can always mention my name to wake me up!"
-5. If the user says to deactivate/go quiet/stop, disable autopilot with {toggle_autopilot off} and say goodbye warmly.
-6. Keep responses SHORT — 2-3 sentences max unless answering a detailed question.
-7. NEVER make up features that don't exist. Stick to what's listed above.`,
+1. On first message, welcome the user warmly using {text} (NOT {say}) and give a brief overview of 3-4 key features they can try right now. Ask if they'd like you to use your voice: "Would you like me to speak with my voice? Just say yes and I'll switch to voice mode!"
+2. IMPORTANT: Use {text} (text-only, no voice) until the user explicitly says yes to voice. Only then switch to {say}. Speaking without permission is rude and surprising.
+3. Answer any questions about how things work.
+4. Be helpful and encouraging — make them excited to explore.
+5. When on autopilot with no new messages, check in once using {text}: "Hey! I'm here if you need help. Want me to stay active or should I go quiet? You can always mention my name to wake me up!"
+6. If the user says to deactivate/go quiet/stop, disable autopilot with {toggle_autopilot off} and say goodbye warmly.
+7. Keep responses SHORT — 2-3 sentences max unless answering a detailed question.
+8. NEVER make up features that don't exist. Stick to what's listed above.`,
               locked: true,
             },
             {
               text: `ROOM AI CONTROLS: You can create and manage AI agents for the user. Use these commands:
 - {create_agent "AgentName" personality description here} — Creates a new AI in this room
 - {delete_agent "AgentName"} — Removes an AI from this room
-- {update_agent "AgentName" voice voiceId} — Change an agent's voice
+- {set_agent_voice "AgentName" voiceId} — Set voice. voiceId can be "male", "female", or an ElevenLabs voice name/ID.
 - {update_agent "AgentName" name NewName} — Rename an agent
 - {update_agent "AgentName" instructions New personality here} — Change agent behavior
-- {set_agent_voice "AgentName" voiceId} — Set voice (use ElevenLabs voice IDs or "male"/"female")
 - {list_room_agents} — Show all AIs in this room
 
-When a user asks you to create a companion, assistant, or character, use {create_agent} with a clear personality description. Offer voice options. Each new agent gets a hologram avatar automatically.`,
+YOUR OWN VOICE: Your name is "Helper Bot". You can change your own voice with {set_agent_voice "Helper Bot" voiceId}. Available voices: "male", "female", or ElevenLabs premium voices. Your current voice is Bella (premium, female).
+
+When a user asks you to create a companion, assistant, or character, use {create_agent} with a clear personality description. Offer voice options.
+When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command — do not just say you changed it.`,
               locked: true,
             },
           ];
@@ -7028,7 +6720,7 @@ When a user asks you to create a companion, assistant, or character, use {create
             name: "Helper Bot",
             room_id: dbRoom.id,
             creator_id: socket.user.id,
-            voice_id: "m3yAHyFEFKtbCIM5n7GF", // Ash - Conversation (ElevenLabs)
+            voice_id: "hpp4J3VqNfWAUOO0d1Us", // Bella - Professional, Bright, Warm (ElevenLabs)
             can_manage_agents: true,
             model: "grok-4-1-fast-non-reasoning",
             system_instructions: JSON.stringify(helperInstructions),
@@ -7045,14 +6737,11 @@ When a user asks you to create a companion, assistant, or character, use {create
             max_tokens: 1500,
           });
 
-          // Create default hologram avatar for the bot
-          await createDefaultAvatar(dbRoom.id, socket.user.id, "Helper Bot");
-
           // Send welcome message from the bot
           emitSystemMessage(
             io,
             normalizedName,
-            `[Helper Bot] 👋 Welcome to your new room! I'm your Helper Bot — I'm here to show you around. Ask me anything about CommsLink's features: AI agents, voice chat, terminals, holograms, and more. I'll check in shortly!`,
+            `[Helper Bot] 👋 Welcome to your new room! I'm your Helper Bot — I'm here to show you around. Ask me anything about CommsLink's features: AI agents, voice chat, terminals, and more. I'll check in shortly!`,
           );
         } catch (helperErr) {
           console.error("Failed to create helper bot:", helperErr);
@@ -7235,12 +6924,12 @@ When a user asks you to create a companion, assistant, or character, use {create
       await joinRoom(socket, targetName);
       Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
 
-      const joinHistory = await Data.message.findByRoomForUI(room.id);
+      const invJoinHistory = await Data.message.findByRoomForUI(room.id);
       const wp = room.watchParty;
       socket.emit("room_joined", {
         roomName: room.displayName,
         users: getRoomUsers(targetName),
-        messages: formatHistoryForClient(joinHistory.reverse()),
+        messages: formatHistoryForClient(invJoinHistory.reverse()),
         watchParty: wp
           ? {
               videoId: wp.videoId,
@@ -8466,166 +8155,6 @@ When a user asks you to create a companion, assistant, or character, use {create
         else if (entry.service === "ec2") spending.ec2 = entry.total_cost_usd;
       }
       socket.emit("spending_estimate", spending);
-    });
-
-    // ┌──────────────────────────────────────────┐
-    // │ Hologram Avatars                        │
-    // └──────────────────────────────────────────┘
-
-    socket.on(
-      "hologram_create",
-      async (data: {
-        label: string;
-        skeleton: unknown;
-        points: unknown;
-        physics?: boolean;
-      }) => {
-        const user = connectedUsers.get(socket.id);
-        if (!user?.currentRoom) return;
-
-        const roomId = getRoomId(user.currentRoom);
-        if (!roomId) return;
-
-        try {
-          const avatar = await createAvatarAction({
-            roomId,
-            userId: socket.user.id,
-            label: data.label,
-            skeleton: data.skeleton,
-            points: data.points,
-            physics: data.physics,
-          });
-
-          // Auto-populate GA-evolved morph targets
-          let morphTargets = avatar.morph_targets;
-          try {
-            const updated = await saveMorphTargetsToAvatar(avatar.id);
-            morphTargets = updated.morph_targets;
-          } catch {
-            // Non-fatal — avatar works without morphs
-          }
-
-          const parseJson = (v: unknown): unknown =>
-            typeof v === "string" ? JSON.parse(v) : v;
-
-          io.to(user.currentRoom).emit("hologram_spawned", {
-            id: avatar.id,
-            userId: socket.user.id,
-            username: socket.user.username,
-            label: avatar.label,
-            skeleton: parseJson(avatar.skeleton),
-            points: parseJson(avatar.points),
-            pose: parseJson(avatar.pose),
-            physics: avatar.physics,
-            morphTargets: parseJson(morphTargets),
-          });
-        } catch (err) {
-          socket.emit("agent_error", {
-            error: `Hologram create failed: ${(err as Error).message}`,
-          });
-        }
-      },
-    );
-
-    socket.on(
-      "hologram_pose",
-      async (data: { avatarId: string; pose: unknown }) => {
-        const user = connectedUsers.get(socket.id);
-        if (!user?.currentRoom) return;
-
-        try {
-          await updatePoseAction(data.avatarId, socket.user.id, data.pose);
-
-          // Broadcast pose to everyone else in room (skip DB read for perf)
-          socket.to(user.currentRoom).emit("hologram_pose_update", {
-            avatarId: data.avatarId,
-            pose: data.pose,
-          });
-        } catch (err) {
-          socket.emit("agent_error", {
-            error: `Hologram pose failed: ${(err as Error).message}`,
-          });
-        }
-      },
-    );
-
-    socket.on("hologram_remove", async (data: { avatarId: string }) => {
-      const user = connectedUsers.get(socket.id);
-      if (!user?.currentRoom) return;
-
-      try {
-        await removeAvatarAction(data.avatarId, socket.user.id);
-        io.to(user.currentRoom).emit("hologram_removed", {
-          avatarId: data.avatarId,
-        });
-      } catch (err) {
-        socket.emit("agent_error", {
-          error: `Hologram remove failed: ${(err as Error).message}`,
-        });
-      }
-    });
-
-    socket.on(
-      "hologram_set_emotion",
-      async (data: { avatarId: string; emotion: string; weight: number }) => {
-        const user = connectedUsers.get(socket.id);
-        if (!user?.currentRoom) return;
-
-        try {
-          const avatar = await Data.hologramAvatar.findById(data.avatarId);
-          if (!avatar || avatar.user_id !== socket.user.id) return;
-
-          const emotion = data.emotion.toLowerCase();
-          const weight = Math.max(0, Math.min(1, data.weight));
-
-          // Load morph targets from avatar DB record (pre-populated by GA)
-          const morphTargets =
-            (avatar.morph_targets as Record<string, unknown> | null) || {};
-
-          io.to(user.currentRoom).emit("hologram_morph_update", {
-            avatarId: data.avatarId,
-            emotion,
-            weight: emotion === "neutral" ? 0 : weight,
-            morphTargets: morphTargets[emotion]
-              ? { [emotion]: morphTargets[emotion] }
-              : undefined,
-          });
-        } catch (err) {
-          socket.emit("agent_error", {
-            error: `Emotion set failed: ${(err as Error).message}`,
-          });
-        }
-      },
-    );
-
-    socket.on("hologram_load", async () => {
-      const user = connectedUsers.get(socket.id);
-      if (!user?.currentRoom) return;
-
-      const roomId = getRoomId(user.currentRoom);
-      if (!roomId) return;
-
-      try {
-        const avatars = await loadAvatarsAction(roomId);
-        const parseJson = (v: unknown): unknown =>
-          typeof v === "string" ? JSON.parse(v) : v;
-        socket.emit("hologram_list", {
-          avatars: avatars.map((a) => ({
-            id: a.id,
-            userId: a.user_id,
-            label: a.label,
-            skeleton: parseJson(a.skeleton),
-            points: parseJson(a.points),
-            pose: parseJson(a.pose),
-            physics: a.physics,
-            morphTargets: parseJson(a.morph_targets),
-          })),
-        });
-      } catch (err) {
-        socket.emit("agent_error", {
-          error: `Hologram load failed: ${(err as Error).message}`,
-        });
-      }
     });
 
     // ┌──────────────────────────────────────────┐

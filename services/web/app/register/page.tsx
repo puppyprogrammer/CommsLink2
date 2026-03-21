@@ -25,7 +25,6 @@ const features = [
   { emoji: '🤖', label: 'AI Agents' },
   { emoji: '🎙️', label: 'Voice Chat' },
   { emoji: '💻', label: 'Remote Terminals' },
-  { emoji: '👾', label: '3D Holograms' },
   { emoji: '🔍', label: 'AI Search' },
   { emoji: '📋', label: 'Forums' },
 ];

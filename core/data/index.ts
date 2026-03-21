@@ -18,9 +18,8 @@ import roomInvite from './roomInvite';
 import paymentTransaction from './paymentTransaction';
 import watchlistItem from './watchlistItem';
 import panelLog from './panelLog';
-import hologramAvatar from './hologramAvatar';
 import agentTemplate from './agentTemplate';
 
-const Data = { user, room, thread, post, message, dailyStats, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, scheduledJob, claudeLog, roomMember, roomInvite, paymentTransaction, watchlistItem, panelLog, hologramAvatar, agentTemplate };
+const Data = { user, room, thread, post, message, dailyStats, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, scheduledJob, claudeLog, roomMember, roomInvite, paymentTransaction, watchlistItem, panelLog, agentTemplate };
 
 export default Data;
