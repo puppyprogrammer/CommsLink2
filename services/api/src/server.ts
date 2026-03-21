@@ -6,7 +6,6 @@ import { Server as SocketServer } from 'socket.io';
 
 import registerAuthStrategy from '../../../core/lib/hapi/auth';
 import Data from '../../../core/data';
-import dayjs from '../../../core/lib/dayjs';
 
 import { registerRoutes } from './routes/v1';
 import { registerSocketHandlers } from './handlers/chat';
@@ -53,15 +52,6 @@ const createServer = async (): Promise<Hapi.Server> => {
     handler: { directory: { path: '/app/uploads', listing: false } },
   });
 
-  // ┌──────────────────────────────────────────┐
-  // │ Visit Tracking                           │
-  // └──────────────────────────────────────────┘
-  server.ext('onPreHandler', async (request, h) => {
-    if (request.path === '/') {
-      Data.dailyStats.incrementVisits(dayjs().format('YYYY-MM-DD')).catch(console.error);
-    }
-    return h.continue;
-  });
 
   // ┌──────────────────────────────────────────┐
   // │ Socket.IO                                │

@@ -23,21 +23,12 @@ type ConnectedUser = {
   currentRoom: string;
 };
 
-type WatchPartyState = {
-  videoId: string;
-  state: 'playing' | 'paused';
-  currentTime: number;
-  lastUpdated: number;
-  startedBy: string;
-};
-
 type ActiveRoom = {
   id: string;
   users: Set<string>;
   passwordHash: string | null;
   displayName: string;
   createdBy: string | null;
-  watchParty: WatchPartyState | null;
 };
 
-export type { CreateRoomDTO, RoomListItem, ConnectedUser, ActiveRoom, WatchPartyState };
+export type { CreateRoomDTO, RoomListItem, ConnectedUser, ActiveRoom };

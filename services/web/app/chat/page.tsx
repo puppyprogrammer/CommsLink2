@@ -49,23 +49,17 @@ import { useToast } from '@/lib/state/ToastContext';
 // Components
 import SettingsPanel from '@/components/SettingsPanel';
 import RoomSettings from '@/components/RoomSettings';
-import YouTubePlayer from '@/components/YouTubePlayer';
-import ScreenSharePlayer from '@/components/ScreenSharePlayer';
 import ChatInput from '@/components/ChatInput';
 import MessageContent from '@/components/MessageContent';
 import StopCircleIcon from '@mui/icons-material/StopCircle';
-import ScreenShareIcon from '@mui/icons-material/ScreenShare';
-import LanguageIcon from '@mui/icons-material/Language';
 
 import html2canvas from 'html2canvas';
-import WebBrowserPanel from '@/components/WebBrowserPanel';
-import type { WebPanelData } from '@/components/WebBrowserPanel';
 import TerminalPanel from '@/components/TerminalPanel';
 import ResizeHandle from '@/components/ResizeHandle';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 // Models
-import type { ChatMessage, Room, WatchPartyState } from '@/models/chat';
+import type { ChatMessage, Room } from '@/models/chat';
 
 // Styles
 import classes from './Chat.module.scss';
@@ -90,18 +84,12 @@ const ChatPage = () => {
   const [roomError, setRoomError] = useState('');
   const [roomSettingsOpen, setRoomSettingsOpen] = useState(false);
   const [roomSettingsTarget, setRoomSettingsTarget] = useState<string>('');
-  const [watchParty, setWatchParty] = useState<WatchPartyState | null>(null);
-  const [screenShare, setScreenShare] = useState<{ sharerId: string; sharerUsername: string } | null>(null);
-  const [isScreenSharer, setIsScreenSharer] = useState(false);
-  const [webPanelOpen, setWebPanelOpen] = useState(false);
-  const [webPanelData, setWebPanelData] = useState<WebPanelData | null>(null);
   const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
   const [terminalNotifications, setTerminalNotifications] = useState(0);
   const [terminalTab, setTerminalTab] = useState<'terminal' | 'claude'>('claude');
   const terminalPanelOpenRef = useRef(terminalPanelOpen);
   terminalPanelOpenRef.current = terminalPanelOpen;
   const [terminalWidth, setTerminalWidth] = useState(600);
-  const [webPanelWidth, setWebPanelWidth] = useState(600);
   const [panelMachines, setPanelMachines] = useState<{ id: string; name: string; status: string; os?: string }[]>([]);
   const socketInstanceRef = useRef<ReturnType<typeof getSocket> | null>(null);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
@@ -214,15 +202,11 @@ const ChatPage = () => {
         roomName: string;
         users: { userId: string; username: string }[];
         messages?: ChatMessage[];
-        watchParty?: WatchPartyState | null;
         avatars?: { id: string; userId: string; label: string; skeleton: unknown[]; points: unknown[]; pose: unknown; physics: boolean; morphTargets?: unknown }[];
       }) => {
         setCurrentRoomDisplay(data.roomName);
         setCurrentRoom(data.roomName.toLowerCase());
         setMessages(Array.isArray(data.messages) ? data.messages : []);
-        setWatchParty(data.watchParty || null);
-        setScreenShare(null);
-        setIsScreenSharer(false);
         setPasswordDialogOpen(false);
         setRoomPassword('');
         setRoomError('');
@@ -256,28 +240,6 @@ const ChatPage = () => {
       toast(data.error);
     });
 
-    socket.on('watch_party_start', (data: { videoId: string }) => {
-      setWatchParty({ videoId: data.videoId, state: 'playing', currentTime: 0 });
-    });
-
-    socket.on('watch_party_sync', (data: WatchPartyState) => {
-      setWatchParty(data);
-    });
-
-    socket.on('watch_party_end', () => {
-      setWatchParty(null);
-    });
-
-    socket.on('screen_share_start', (data: { sharerId: string; sharerUsername: string }) => {
-      setScreenShare({ sharerId: data.sharerId, sharerUsername: data.sharerUsername });
-      setIsScreenSharer(false);
-    });
-
-    socket.on('screen_share_stop', () => {
-      setScreenShare(null);
-      setIsScreenSharer(false);
-    });
-
     // Voice streaming: play audio chunks in order
     socket.on('voice_audio', (data: { sessionId: string; chunkIndex: number; audio: string; speakerId: string }) => {
       // Don't play back your own voice
@@ -288,14 +250,6 @@ const ChatPage = () => {
     socket.on('voice_stream_end', (data: { sessionId: string }) => {
       // Session will drain naturally; clear after a delay
       setTimeout(() => audioQueue.clearSession(data.sessionId), 30000);
-    });
-
-    // Web browser panel updates from AI
-    socket.on('web_panel_update', (data: WebPanelData) => {
-      setWebPanelData(data);
-      if (data.type !== 'browser_closed') {
-        setWebPanelOpen(true);
-      }
     });
 
     // Fetch machines for terminal panel
@@ -366,9 +320,6 @@ const ChatPage = () => {
       switch (data.panel) {
         case 'terminal':
           setTerminalPanelOpen(isOpen);
-          break;
-        case 'browser':
-          setWebPanelOpen(isOpen);
           break;
       }
     });
@@ -635,38 +586,6 @@ const ChatPage = () => {
     setRoomSettingsOpen(true);
   };
 
-  const handleWatchPartyPlay = useCallback(
-    (time: number) => {
-      if (!session?.token) return;
-      getSocket(session.token).emit('watch_party_action', { action: 'play', currentTime: time });
-    },
-    [session?.token],
-  );
-
-  const handleWatchPartyPause = useCallback(
-    (time: number) => {
-      if (!session?.token) return;
-      getSocket(session.token).emit('watch_party_action', { action: 'pause', currentTime: time });
-    },
-    [session?.token],
-  );
-
-  const handleWatchPartyEnd = useCallback(() => {
-    if (!session?.token) return;
-    getSocket(session.token).emit('watch_party_end');
-  }, [session?.token]);
-
-  const handleStartScreenShare = useCallback(() => {
-    if (!session?.token || !session?.user) return;
-    setScreenShare({ sharerId: session.user.id, sharerUsername: session.user.username });
-    setIsScreenSharer(true);
-  }, [session?.token, session?.user]);
-
-  const handleScreenShareEnd = useCallback(() => {
-    setScreenShare(null);
-    setIsScreenSharer(false);
-  }, []);
-
   return (
     <DashboardLayout
       onChatClick={() => {
@@ -753,14 +672,6 @@ const ChatPage = () => {
               </IconButton>
               <IconButton
                 size="small"
-                onClick={() => setWebPanelOpen((prev) => !prev)}
-                title="Web Browser"
-                sx={{ color: webPanelOpen ? 'primary.main' : '#858585' }}
-              >
-                <LanguageIcon />
-              </IconButton>
-              <IconButton
-                size="small"
                 onClick={() => setSettingsOpen((prev) => !prev)}
                 title="Voice Settings"
                 sx={{ color: settingsOpen ? 'primary.main' : '#858585' }}
@@ -769,26 +680,6 @@ const ChatPage = () => {
               </IconButton>
             </Box>
           </Box>
-          {watchParty && (
-            <YouTubePlayer
-              videoId={watchParty.videoId}
-              state={watchParty.state}
-              currentTime={watchParty.currentTime}
-              onPlay={handleWatchPartyPlay}
-              onPause={handleWatchPartyPause}
-              onEnd={handleWatchPartyEnd}
-            />
-          )}
-          {screenShare && session?.token && session?.user && (
-            <ScreenSharePlayer
-              sharerId={screenShare.sharerId}
-              sharerUsername={screenShare.sharerUsername}
-              socket={getSocket(session.token)}
-              userId={session.user.id}
-              onEnd={handleScreenShareEnd}
-              isSharer={isScreenSharer}
-            />
-          )}
           <Box className={classes.messages}>
             {messages.map((msg, i) => {
               const displayName = msg.sender || msg.username || 'Unknown';
@@ -844,22 +735,7 @@ const ChatPage = () => {
                         >
                           {msg.collapsible} ▸
                         </summary>
-                        {msg.collapsible === 'Watchlist' ? (
-                          <Box
-                            sx={{
-                              mt: 0.5,
-                              p: 1,
-                              borderRadius: 1,
-                              backgroundColor: 'rgba(255,255,255,0.03)',
-                              fontSize: '0.8rem',
-                              maxHeight: '400px',
-                              overflow: 'auto',
-                            }}
-                          >
-                            <MessageContent text={displayText} />
-                          </Box>
-                        ) : (
-                          <Typography
+                        <Typography
                             component="pre"
                             sx={{
                               fontStyle: 'italic',
@@ -891,7 +767,6 @@ const ChatPage = () => {
                           >
                             {displayText}
                           </Typography>
-                        )}
                       </details>
                     </Box>
                   );
@@ -1040,9 +915,6 @@ const ChatPage = () => {
                 >
                   <NotificationsActiveIcon sx={{ fontSize: 18 }} />
                 </IconButton>
-                <IconButton size="small" onClick={handleStartScreenShare} disabled={!!screenShare} title="Share Screen">
-                  <ScreenShareIcon sx={{ fontSize: 18 }} />
-                </IconButton>
               </>
             }
           />
@@ -1066,26 +938,6 @@ const ChatPage = () => {
                 machines={panelMachines}
                 onClose={() => setTerminalPanelOpen(false)}
                 initialTab={terminalTab}
-              />
-            </div>
-          </>
-        )}
-        {webPanelOpen && (
-          <>
-            <ResizeHandle onResize={(d) => setWebPanelWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
-            <div
-              style={{
-                width: webPanelWidth,
-                flexShrink: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              <WebBrowserPanel
-                data={webPanelData}
-                onClose={() => setWebPanelOpen(false)}
-                socket={socketInstanceRef.current}
               />
             </div>
           </>

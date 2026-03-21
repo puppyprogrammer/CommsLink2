@@ -13,10 +13,6 @@ import grokAdapter, {
 } from "../../../../../core/adapters/grok";
 import voiceQueue from "../../../../../core/adapters/redis/voiceQueue";
 import summarizeAction from "../../../../../core/actions/memory/summarizeAction";
-import watchlistActions from "../../../../../core/actions/watchlist";
-import webAdapter, {
-  browserSessionManager,
-} from "../../../../../core/adapters/web";
 import prisma from "../../../../../core/adapters/prisma";
 import dayjs from "../../../../../core/lib/dayjs";
 
@@ -424,18 +420,10 @@ const sendToFallbackRoom = async (
       const roomId = getRoomId(fallbackName);
       if (roomId) {
         const history = await Data.message.findByRoomForUI(roomId);
-        const wp = activeRooms.get(fallbackName)?.watchParty;
         targetSocket.emit("room_joined", {
           roomName: room?.displayName || fallbackName,
           users: getRoomUsers(fallbackName),
           messages: formatHistoryForClient(history.reverse()),
-          watchParty: wp
-            ? {
-                videoId: wp.videoId,
-                state: wp.state,
-                currentTime: getEffectiveTime(wp),
-              }
-            : null,
         });
       }
       return;
@@ -533,23 +521,6 @@ const joinRoom = async (
   return true;
 };
 
-// ┌──────────────────────────────────────────┐
-// │ YouTube / Watch Party Helpers           │
-// └──────────────────────────────────────────┘
-
-const YOUTUBE_REGEX =
-  /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/;
-
-const extractYouTubeId = (text: string): string | null => {
-  const match = text.match(YOUTUBE_REGEX);
-  return match ? match[1] : null;
-};
-
-const formatTime = (seconds: number): string => {
-  const m = Math.floor(seconds / 60);
-  const s = String(Math.floor(seconds % 60)).padStart(2, "0");
-  return `${m}:${s}`;
-};
 
 /** Format DB message records for the client, adding isSystem flag for system messages. */
 const formatHistoryForClient = (
@@ -599,17 +570,6 @@ const emitSystemMessage = (
   }
 };
 
-const getEffectiveTime = (wp: {
-  state: string;
-  currentTime: number;
-  lastUpdated: number;
-}): number => {
-  if (wp.state === "playing") {
-    return wp.currentTime + (Date.now() - wp.lastUpdated) / 1000;
-  }
-  return wp.currentTime;
-};
-
 // ┌──────────────────────────────────────────┐
 // │ Room Persistence                        │
 // └──────────────────────────────────────────┘
@@ -625,7 +585,6 @@ const loadPersistedRooms = async (): Promise<void> => {
         passwordHash: room.password_hash,
         displayName: room.display_name,
         createdBy: room.created_by,
-        watchParty: null,
       });
     }
   }
@@ -852,184 +811,6 @@ const buildToolDefinitions = (
     });
   }
 
-  if (cmds.web) {
-    tools.push({
-      type: "function",
-      function: {
-        name: "search",
-        description: "Search the web via Brave search.",
-        parameters: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "Search query" },
-          },
-          required: ["query"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "browse",
-        description: "Open a web page and extract its text content.",
-        parameters: {
-          type: "object",
-          properties: { url: { type: "string", description: "URL to browse" } },
-          required: ["url"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "screenshot",
-        description: "Take a visual screenshot of a web page.",
-        parameters: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "URL to screenshot" },
-          },
-          required: ["url"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "find",
-        description:
-          "Search within the currently loaded page for specific text.",
-        parameters: {
-          type: "object",
-          properties: {
-            text: {
-              type: "string",
-              description: "Text to search for on the page",
-            },
-          },
-          required: ["text"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_go",
-        description:
-          "Navigate the persistent browser to a URL. The user can see the browser live.",
-        parameters: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "URL to navigate to" },
-          },
-          required: ["url"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_click",
-        description: "Click an element by visible text or CSS selector.",
-        parameters: {
-          type: "object",
-          properties: {
-            target: {
-              type: "string",
-              description: "Text content or CSS selector of element to click",
-            },
-          },
-          required: ["target"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_type",
-        description: "Type text into an input field.",
-        parameters: {
-          type: "object",
-          properties: {
-            selector: {
-              type: "string",
-              description: "CSS selector of the input field",
-            },
-            text: { type: "string", description: "Text to type" },
-          },
-          required: ["selector", "text"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_scroll",
-        description: "Scroll the page up or down.",
-        parameters: {
-          type: "object",
-          properties: {
-            direction: {
-              type: "string",
-              enum: ["up", "down"],
-              description: "Scroll direction",
-            },
-          },
-          required: ["direction"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_back",
-        description: "Go back in browser history.",
-        parameters: { type: "object", properties: {} },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_forward",
-        description: "Go forward in browser history.",
-        parameters: { type: "object", properties: {} },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_extract",
-        description:
-          "Extract readable text and links from the current page for analysis.",
-        parameters: { type: "object", properties: {} },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_wait",
-        description: "Wait for page content to load (max 10 seconds).",
-        parameters: {
-          type: "object",
-          properties: {
-            seconds: {
-              type: "number",
-              description: "Seconds to wait (max 10)",
-            },
-          },
-          required: ["seconds"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "web_close",
-        description: "Close the browser session.",
-        parameters: { type: "object", properties: {} },
-      },
-    });
-  }
 
   if (cmds.selfmod !== false) {
     tools.push({
@@ -1325,71 +1106,6 @@ const buildToolDefinitions = (
     });
   }
 
-  if (cmds.schedule !== false) {
-    tools.push({
-      type: "function",
-      function: {
-        name: "schedule",
-        description: "Schedule a one-time reminder.",
-        parameters: {
-          type: "object",
-          properties: {
-            time: {
-              type: "string",
-              description: "ISO datetime: YYYY-MM-DDTHH:mm",
-            },
-            message: { type: "string", description: "Reminder message" },
-          },
-          required: ["time", "message"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "schedule_recurring",
-        description: "Schedule a recurring reminder.",
-        parameters: {
-          type: "object",
-          properties: {
-            time: { type: "string", description: "Time in HH:mm format" },
-            frequency: {
-              type: "string",
-              enum: ["daily", "weekly", "weekdays", "monthly"],
-              description: "Recurrence pattern",
-            },
-            message: { type: "string", description: "Reminder message" },
-          },
-          required: ["time", "frequency", "message"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "list_schedules",
-        description: "List all active schedules.",
-        parameters: { type: "object", properties: {}, required: [] },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "cancel_schedule",
-        description: "Cancel schedules whose message contains the search text.",
-        parameters: {
-          type: "object",
-          properties: {
-            search: {
-              type: "string",
-              description: "Text to match in schedule messages",
-            },
-          },
-          required: ["search"],
-        },
-      },
-    });
-  }
 
   if (cmds.continue !== false) {
     tools.push({
@@ -1606,45 +1322,6 @@ const toolCallsToBraceFormat = (
         );
         break;
       }
-      case "search":
-        parts.push(`{search ${args.query}}`);
-        break;
-      case "browse":
-        parts.push(`{browse ${args.url}}`);
-        break;
-      case "screenshot":
-        parts.push(`{screenshot ${args.url}}`);
-        break;
-      case "find":
-        parts.push(`{find ${args.text}}`);
-        break;
-      case "web_go":
-        parts.push(`{web_go ${args.url}}`);
-        break;
-      case "web_click":
-        parts.push(`{web_click ${args.target}}`);
-        break;
-      case "web_type":
-        parts.push(`{web_type ${args.selector} ${args.text}}`);
-        break;
-      case "web_scroll":
-        parts.push(`{web_scroll ${args.direction}}`);
-        break;
-      case "web_back":
-        parts.push(`{web_back}`);
-        break;
-      case "web_forward":
-        parts.push(`{web_forward}`);
-        break;
-      case "web_extract":
-        parts.push(`{web_extract}`);
-        break;
-      case "web_wait":
-        parts.push(`{web_wait ${args.seconds}}`);
-        break;
-      case "web_close":
-        parts.push(`{web_close}`);
-        break;
       case "alarm":
         parts.push(`{alarm ${args.username} ${args.message}}`);
         break;
@@ -1715,20 +1392,6 @@ const toolCallsToBraceFormat = (
       case "sql":
         parts.push(`{sql ${args.query}}`);
         break;
-      case "schedule":
-        parts.push(`{schedule ${args.time} ${args.message}}`);
-        break;
-      case "schedule_recurring":
-        parts.push(
-          `{schedule_recurring ${args.time} ${args.frequency} ${args.message}}`,
-        );
-        break;
-      case "list_schedules":
-        parts.push("{list_schedules}");
-        break;
-      case "cancel_schedule":
-        parts.push(`{cancel_schedule ${args.search}}`);
-        break;
       case "continue_loop":
         parts.push("{continue}");
         break;
@@ -1798,10 +1461,8 @@ type CommandFlags = {
   memory?: boolean;
   selfmod?: boolean;
   autopilotCtrl?: boolean;
-  web?: boolean;
   terminal?: boolean;
   claude?: boolean;
-  schedule?: boolean;
   tokens?: boolean;
   moderation?: boolean;
   think?: boolean;
@@ -2127,29 +1788,6 @@ const buildSystemPrompt = (
     );
   }
 
-  // Web browsing commands (conditional)
-  if (cmds.web) {
-    actions.push(
-      "=== WEB BROWSING ===\n" +
-        "IMPORTANT: Commands use curly braces with the content inside. Do NOT use XML/HTML tags.\n" +
-        "{search your query here} - Search the web via Brave (text results). Example: {search latest AI news 2026}\n" +
-        "\n--- Persistent Browser (user can see this live) ---\n" +
-        "{web_go https://example.com} - Navigate browser to URL (auto-screenshots to user)\n" +
-        "{web_click Sign In} - Click element by visible text or CSS selector\n" +
-        "{web_type #email hello@test.com} - Type text into an input field (CSS selector then text)\n" +
-        "{web_scroll down} - Scroll page up or down\n" +
-        "{web_back} / {web_forward} - Browser history navigation\n" +
-        "{web_extract} - Read page text + links for analysis (returns content to you)\n" +
-        "{web_wait 3} - Wait for page to load (max 10s)\n" +
-        "{web_close} - Close the browser session\n" +
-        "The user can see the browser in real-time as you navigate. Prefer {web_go} over {browse} for interactive browsing.\n" +
-        "\n--- Legacy (still available) ---\n" +
-        "{browse url} - Fetch static page text (no JS rendering)\n" +
-        "{screenshot url} - One-shot screenshot (opens fresh browser)\n" +
-        "{find text} - Search within last {browse} result",
-    );
-  }
-
   // Terminal commands (conditional)
   if (cmds.terminal) {
     const machineList =
@@ -2167,20 +1805,6 @@ const buildSystemPrompt = (
     );
   }
 
-  // Scheduling commands (conditional)
-  if (cmds.schedule !== false) {
-    actions.push(
-      "=== SCHEDULING & REMINDERS ===\n" +
-        "You can schedule reminders that will fire at a specific time and prompt you to deliver the message.\n\n" +
-        "{schedule YYYY-MM-DDTHH:mm message} - Schedule a one-time reminder. Example: {schedule 2026-03-11T08:00 Wake up! Time to start your day.}\n" +
-        "{schedule_recurring HH:mm daily|weekly|weekdays|monthly message} - Schedule a recurring reminder. Example: {schedule_recurring 08:00 daily Good morning! Time for your daily standup.}\n" +
-        "{list_schedules} - List all your active schedules\n" +
-        "{cancel_schedule search text} - Cancel schedules whose message contains the search text\n\n" +
-        "When users ask you to remind them of something or set an alarm/timer, use these commands. " +
-        'Parse natural language like "remind me at 8am tomorrow" into the correct datetime format (UTC). ' +
-        "The current UTC time is shown at the top of this prompt — use it to calculate future times.",
-    );
-  }
 
   // Alarm & Volume commands (always available)
   actions.push(
@@ -2358,7 +1982,7 @@ const UPDATE_TASK_REGEX = /\{update_task\s+([^|]+)\|\s*([^}]+)\}/g;
 const REMOVE_TASK_REGEX = /\{remove_task\s+([^}]+)\}/g;
 const LOOK_REGEX = /\{look(?:\s+([^}]*))?\}/g;
 const UI_COMMAND_REGEX =
-  /\{ui\s+(open|close)\s+(terminal|browser)\}/gi;
+  /\{ui\s+(open|close)\s+(terminal)\}/gi;
 const SET_AUTOPILOT_INTERVAL_REGEX = /\{set_autopilot_interval\s+(\d+)\}/g;
 const TOGGLE_AUTOPILOT_REGEX = /\{toggle_autopilot\s+(on|off)\}/gi;
 const SET_TOKENS_REGEX = /\{set_tokens\s+(\d+)\}/g;
@@ -2369,30 +1993,14 @@ const THINK_REGEX = /\{think\s+([^}]+)\}/g;
 const THINK_XML_REGEX = /\{think\}([\s\S]*?)\{\/think\}/g;
 const THINK_HTML_REGEX = /<think>([\s\S]*?)<\/think>/g;
 const AUDIT_REGEX = /\{audit\s+(\S+)\}/g;
-const SEARCH_REGEX = /\{search\s+([^}]+)\}/g;
-const BROWSE_REGEX = /\{browse\s+([^}]+)\}/g;
-const FIND_REGEX = /\{find\s+([^}]+)\}/g;
-const SCREENSHOT_REGEX = /\{screenshot\s+([^}]+)\}/g;
 const TERMINAL_REGEX = /\{terminal\s+(\S+)\s+([^}]+)\}/g;
 // Greedy match per line: captures everything up to the last } on each line.
 // Handles prompts containing } chars (JSON, regex, code) without swallowing across commands.
 const CLAUDE_REGEX = /\{claude(!?)\s+(\S+)\s+(.+)\}/g;
 const CLAUDE_XML_REGEX =
   /<claude\s+(?:approved=["']true["']\s*)?(?:machine=["']([^"']+)["']\s*)?(?:prompt=["']([^"']+)["'][^>]*)?\/?>/gi;
-// XML-format fallbacks (Grok models often use XML tool-call style)
-const SEARCH_XML_REGEX = /<search(?:\s[^>]*)?>([^<]+)<\/search>/gi;
-const BROWSE_XML_REGEX = /<browse\s+(?:url=["']([^"']+)["'][^>]*)?\/?>/gi;
-const FIND_XML_REGEX = /<find(?:\s[^>]*)?>([^<]+)<\/find>/gi;
-const SCREENSHOT_XML_REGEX =
-  /<screenshot\s+(?:url=["']([^"']+)["'][^>]*)?\/?>/gi;
 const TERMINAL_XML_REGEX =
   /<terminal\s+(?:machine=["']([^"']+)["']\s*)?(?:command=["']([^"']+)["'][^>]*)?\/?>/gi;
-const SCHEDULE_REGEX =
-  /\{schedule\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)\s+([^}]+)\}/g;
-const SCHEDULE_RECURRING_REGEX =
-  /\{schedule_recurring\s+(\d{2}:\d{2})\s+(daily|weekly|weekdays|monthly)\s+([^}]+)\}/gi;
-const LIST_SCHEDULES_REGEX = /\{list_schedules\}/g;
-const CANCEL_SCHEDULE_REGEX = /\{cancel_schedule\s+([^}]+)\}/g;
 const ALARM_REGEX = /\{alarm\s+(\S+)\s+([^}]+)\}/g;
 const VOLUME_REGEX = /\{volume\s+([\d.]+)\}/g;
 const LIST_USERS_REGEX = /\{list_users\}/g;
@@ -2404,15 +2012,6 @@ const SAY_XML_REGEX = /\{say\}([\s\S]*?)\{\/say\}/g;
 const TEXT_REGEX = /\{text\s+([^}]+)\}/g;
 const TEXT_XML_REGEX = /\{text\}([\s\S]*?)\{\/text\}/g;
 const CONTINUE_REGEX = /\{continue\}/g;
-const WEB_GO_REGEX = /\{web_go\s+([^}]+)\}/g;
-const WEB_CLICK_REGEX = /\{web_click\s+([^}]+)\}/g;
-const WEB_TYPE_REGEX = /\{web_type\s+(\S+)\s+([^}]+)\}/g;
-const WEB_SCROLL_REGEX = /\{web_scroll\s+(up|down)\}/gi;
-const WEB_BACK_REGEX = /\{web_back\}/g;
-const WEB_FORWARD_REGEX = /\{web_forward\}/g;
-const WEB_EXTRACT_REGEX = /\{web_extract\}/g;
-const WEB_WAIT_REGEX = /\{web_wait\s+(\d+)\}/g;
-const WEB_CLOSE_REGEX = /\{web_close\}/g;
 // Agent management commands
 const CREATE_AGENT_REGEX = /\{create_agent\s+"([^"]+)"(?:\s+(.+))?\}/g;
 const UPDATE_AGENT_REGEX = /\{update_agent\s+"([^"]+)"\s+(\w+)\s+(.+)\}/g;
@@ -2420,7 +2019,7 @@ const DELETE_AGENT_REGEX = /\{delete_agent\s+"([^"]+)"\}/g;
 const LIST_AGENTS_REGEX = /\{list_room_agents\}/g;
 const SET_AGENT_VOICE_REGEX = /\{set_agent_voice\s+"([^"]+)"\s+(\S+)\}/g;
 const ALL_COMMAND_REGEX =
-  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|look|ui|think|audit|search|browse|find|screenshot|terminal|claude|say|text|schedule|schedule_recurring|list_schedules|cancel_schedule|alarm|volume|list_users|kick|ban|unban|continue|web_go|web_click|web_type|web_scroll|web_back|web_forward|web_extract|web_wait|web_close|create_agent|update_agent|delete_agent|list_room_agents|set_agent_voice)(?:\s+.+)?\}|\{\/(?:think|say|text)\}|<(?:think|search|browse|find|screenshot|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|search|browse|find|screenshot|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
+  /(?:\{(?:recall|sql|add_memory|remove_memory|add_instruction|remove_instruction|add_autopilot|remove_autopilot|set_plan|clear_plan|add_task|complete_task|update_task|remove_task|set_autopilot_interval|toggle_autopilot|set_tokens|set_max_loops|look|ui|think|audit|terminal|claude|say|text|alarm|volume|list_users|kick|ban|unban|continue|create_agent|update_agent|delete_agent|list_room_agents|set_agent_voice)(?:\s+.+)?\}|\{\/(?:think|say|text)\}|<(?:think|terminal|claude)[^>]*>(?:[\s\S]*?<\/(?:think|terminal|claude)>)?|<xai:function_call>[\s\S]*?<\/xai:function_call>)/g;
 const MAX_RECALL_LOOPS = 20;
 const MAX_MENTION_DEPTH = 5;
 
@@ -2612,10 +2211,8 @@ const runAgentResponse = async (
     const memCmdOn = memoryOn && (roomRecord?.cmd_memory_enabled ?? true);
     const selfmodOn = roomRecord?.cmd_selfmod_enabled ?? true;
     const autopilotCtrlOn = roomRecord?.cmd_autopilot_enabled ?? true;
-    const webOn = roomRecord?.cmd_web_enabled ?? true;
     const terminalOn = roomRecord?.cmd_terminal_enabled ?? false;
     const claudeOn = roomRecord?.cmd_claude_enabled ?? false;
-    const scheduleOn = roomRecord?.cmd_schedule_enabled ?? true;
     const tokensOn = roomRecord?.cmd_tokens_enabled ?? false;
     const moderationOn = roomRecord?.cmd_moderation_enabled ?? false;
     const thinkOn = roomRecord?.cmd_think_enabled ?? false;
@@ -2667,10 +2264,8 @@ const runAgentResponse = async (
         memory: memCmdOn,
         selfmod: selfmodOn,
         autopilotCtrl: autopilotCtrlOn,
-        web: webOn,
         terminal: terminalOn,
         claude: claudeOn,
-        schedule: scheduleOn,
         tokens: tokensOn,
         moderation: moderationOn,
         think: thinkOn,
@@ -2692,10 +2287,8 @@ const runAgentResponse = async (
       memory: memCmdOn,
       selfmod: selfmodOn,
       autopilotCtrl: autopilotCtrlOn,
-      web: webOn,
       terminal: terminalOn,
       claude: claudeOn,
-      schedule: scheduleOn,
       tokens: tokensOn,
       moderation: moderationOn,
       think: thinkOn,
@@ -2769,8 +2362,6 @@ const runAgentResponse = async (
     let loopCount = 0;
     // Re-fetch agent for self-modification (need mutable copy of current state)
     let currentAgent = await Data.llmAgent.findById(agent.id);
-    // Track last fetched page content for {find} command
-    let lastPageText = "";
 
     while (loopCount < maxLoops) {
       const recallMatches = recallOn
@@ -2832,30 +2423,6 @@ const runAgentResponse = async (
         ? [...responseText.matchAll(SET_MAX_LOOPS_REGEX)]
         : [];
       const setEffortMatches: RegExpMatchArray[] = [];
-      const searchMatches = webOn
-        ? [
-            ...responseText.matchAll(SEARCH_REGEX),
-            ...responseText.matchAll(SEARCH_XML_REGEX),
-          ]
-        : [];
-      const browseMatches = webOn
-        ? [
-            ...responseText.matchAll(BROWSE_REGEX),
-            ...responseText.matchAll(BROWSE_XML_REGEX),
-          ]
-        : [];
-      const findMatches = webOn
-        ? [
-            ...responseText.matchAll(FIND_REGEX),
-            ...responseText.matchAll(FIND_XML_REGEX),
-          ]
-        : [];
-      const screenshotMatches = webOn
-        ? [
-            ...responseText.matchAll(SCREENSHOT_REGEX),
-            ...responseText.matchAll(SCREENSHOT_XML_REGEX),
-          ]
-        : [];
       const terminalMatches = terminalOn
         ? [
             ...responseText.matchAll(TERMINAL_REGEX),
@@ -2887,18 +2454,6 @@ const runAgentResponse = async (
       const auditMatches = auditOn
         ? [...responseText.matchAll(AUDIT_REGEX)]
         : [];
-      const scheduleMatches = scheduleOn
-        ? [...responseText.matchAll(SCHEDULE_REGEX)]
-        : [];
-      const scheduleRecurMatches = scheduleOn
-        ? [...responseText.matchAll(SCHEDULE_RECURRING_REGEX)]
-        : [];
-      const listScheduleMatches = scheduleOn
-        ? [...responseText.matchAll(LIST_SCHEDULES_REGEX)]
-        : [];
-      const cancelScheduleMatches = scheduleOn
-        ? [...responseText.matchAll(CANCEL_SCHEDULE_REGEX)]
-        : [];
       const alarmMatches = [...responseText.matchAll(ALARM_REGEX)];
       const volumeMatches = [...responseText.matchAll(VOLUME_REGEX)];
       const listUsersMatches = [...responseText.matchAll(LIST_USERS_REGEX)];
@@ -2914,34 +2469,6 @@ const runAgentResponse = async (
       const continueMatches = continueOn
         ? [...responseText.matchAll(CONTINUE_REGEX)]
         : [];
-      const webGoMatches = webOn
-        ? [...responseText.matchAll(WEB_GO_REGEX)]
-        : [];
-      const webClickMatches = webOn
-        ? [...responseText.matchAll(WEB_CLICK_REGEX)]
-        : [];
-      const webTypeMatches = webOn
-        ? [...responseText.matchAll(WEB_TYPE_REGEX)]
-        : [];
-      const webScrollMatches = webOn
-        ? [...responseText.matchAll(WEB_SCROLL_REGEX)]
-        : [];
-      const webBackMatches = webOn
-        ? [...responseText.matchAll(WEB_BACK_REGEX)]
-        : [];
-      const webForwardMatches = webOn
-        ? [...responseText.matchAll(WEB_FORWARD_REGEX)]
-        : [];
-      const webExtractMatches = webOn
-        ? [...responseText.matchAll(WEB_EXTRACT_REGEX)]
-        : [];
-      const webWaitMatches = webOn
-        ? [...responseText.matchAll(WEB_WAIT_REGEX)]
-        : [];
-      const webCloseMatches = webOn
-        ? [...responseText.matchAll(WEB_CLOSE_REGEX)]
-        : [];
-
       // Agent management commands — only if agent has can_manage_agents permission
       const agentMgmtOn = agent.can_manage_agents === true;
       const createAgentMatches = agentMgmtOn ? [...responseText.matchAll(CREATE_AGENT_REGEX)] : [];
@@ -2971,17 +2498,9 @@ const runAgentResponse = async (
           toggleAutoMatches.length +
           setTokensMatches.length +
           setEffortMatches.length +
-          searchMatches.length +
-          browseMatches.length +
-          findMatches.length +
-          screenshotMatches.length +
           terminalMatches.length +
           claudeMatches.length +
           auditMatches.length +
-          scheduleMatches.length +
-          scheduleRecurMatches.length +
-          listScheduleMatches.length +
-          cancelScheduleMatches.length +
           alarmMatches.length +
           volumeMatches.length +
           listUsersMatches.length +
@@ -2990,15 +2509,6 @@ const runAgentResponse = async (
           unbanMatches.length +
           continueMatches.length +
           setMaxLoopsMatches.length +
-          webGoMatches.length +
-          webClickMatches.length +
-          webTypeMatches.length +
-          webScrollMatches.length +
-          webBackMatches.length +
-          webForwardMatches.length +
-          webExtractMatches.length +
-          webWaitMatches.length +
-          webCloseMatches.length +
           createAgentMatches.length +
           updateAgentMatches.length +
           deleteAgentMatches.length +
@@ -3019,12 +2529,9 @@ const runAgentResponse = async (
         allAgentCommands.push(
           `claude ${(m[2] || m[1] || "").toLowerCase().trim()}`,
         );
-      for (const _m of searchMatches) allAgentCommands.push("search");
-      for (const _m of browseMatches) allAgentCommands.push("browse");
       for (const _m of lookMatches) allAgentCommands.push("look");
       for (const m of uiCommandMatches)
         allAgentCommands.push(`ui ${(m[1] || "").toLowerCase().trim()}`);
-      for (const _m of webGoMatches) allAgentCommands.push("web_go");
       trackAndDetectRepetition(agent.id, allAgentCommands);
 
       const toolResults: string[] = [];
@@ -3455,8 +2962,7 @@ const runAgentResponse = async (
         // If no expensive commands, decay back to 800
         const usedExpensiveCommand =
           terminalMatches.length > 0 ||
-          claudeMatches.length > 0 ||
-          searchMatches.length > 0;
+          claudeMatches.length > 0;
         const currentTokens =
           currentAgent?.max_tokens || agent.max_tokens || 2000;
         if (
@@ -3524,243 +3030,6 @@ const runAgentResponse = async (
         emitSystemMessage(io, roomName, query, `${agent.name} — SQL Query`);
         const result = await executeSafeQuery(roomId, query);
         toolResults.push(`[SQL result]: ${result}`);
-      }
-
-      // Process web commands
-      for (const match of searchMatches) {
-        const query = match[1].trim();
-        emitSystemMessage(
-          io,
-          roomName,
-          `[${agent.name} searching: "${query}"]`,
-        );
-        try {
-          const results = await webAdapter.search(query);
-          const formatted = results
-            .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
-            .join("\n\n");
-          toolResults.push(`[Search results for "${query}"]:\n${formatted}`);
-          // Send results to panel
-          io.to(roomName).emit("web_panel_update", {
-            type: "search",
-            query,
-            results,
-          });
-        } catch (err) {
-          toolResults.push(`[Search error]: ${(err as Error).message}`);
-        }
-      }
-
-      for (const match of browseMatches) {
-        const url = match[1].trim();
-        emitSystemMessage(io, roomName, `[${agent.name} browsing: ${url}]`);
-        try {
-          const page = await webAdapter.fetchPage(url);
-          lastPageText = page.text;
-          const linkList =
-            page.links.length > 0
-              ? "\n\nLinks on page:\n" +
-                page.links
-                  .map((l) => `[${l.index}] ${l.text} → ${l.href}`)
-                  .join("\n")
-              : "";
-          toolResults.push(
-            `[Page: ${page.title}]\n${page.text.substring(0, 4000)}${linkList}`,
-          );
-          // Send page to panel
-          io.to(roomName).emit("web_panel_update", {
-            type: "page",
-            url: page.url,
-            title: page.title,
-            text: page.text,
-            links: page.links,
-          });
-        } catch (err) {
-          toolResults.push(`[Browse error]: ${(err as Error).message}`);
-        }
-      }
-
-      for (const match of findMatches) {
-        const query = match[1].trim();
-        if (!lastPageText) {
-          toolResults.push(
-            `[Find error]: No page loaded. Use {browse url} first.`,
-          );
-          continue;
-        }
-        const found = webAdapter.findInPage(lastPageText, query);
-        if (found.length === 0) {
-          toolResults.push(
-            `[Find "${query}"]: No matches found on the current page.`,
-          );
-        } else {
-          toolResults.push(
-            `[Find "${query}"]: ${found.length} match(es):\n${found.join("\n---\n")}`,
-          );
-        }
-      }
-
-      for (const match of screenshotMatches) {
-        const url = match[1].trim();
-        emitSystemMessage(
-          io,
-          roomName,
-          `[${agent.name} capturing screenshot: ${url}]`,
-        );
-        try {
-          const base64 = await webAdapter.screenshotPage(url);
-          toolResults.push(`[Screenshot captured for ${url}]`);
-          io.to(roomName).emit("web_panel_update", {
-            type: "screenshot",
-            url,
-            imageBase64: base64,
-          });
-        } catch (err) {
-          toolResults.push(`[Screenshot error]: ${(err as Error).message}`);
-        }
-      }
-
-      // Process persistent browser commands
-      const emitBrowserUpdate = async (
-        session: Awaited<ReturnType<typeof browserSessionManager.getOrCreate>>,
-      ) => {
-        try {
-          const imgBase64 = await session.screenshot();
-          const currentUrl = session.getUrl();
-          const title = await session.getTitle();
-          io.to(roomName).emit("web_panel_update", {
-            type: "browser",
-            url: currentUrl,
-            title,
-            imageBase64: imgBase64,
-          });
-        } catch {
-          /* screenshot failed, non-critical */
-        }
-      };
-
-      for (const match of webGoMatches) {
-        const url = match[1].trim();
-        emitSystemMessage(
-          io,
-          roomName,
-          `[${agent.name} navigating to: ${url}]`,
-        );
-        try {
-          const session = await browserSessionManager.getOrCreate(roomId);
-          await session.navigate(url);
-          await emitBrowserUpdate(session);
-          toolResults.push(`[Browser] Navigated to ${url}`);
-        } catch (err) {
-          toolResults.push(`[Browser error]: ${(err as Error).message}`);
-        }
-      }
-
-      for (const match of webClickMatches) {
-        const target = match[1].trim();
-        emitSystemMessage(io, roomName, `[${agent.name} clicking: ${target}]`);
-        try {
-          const session = await browserSessionManager.getOrCreate(roomId);
-          const result = await session.click(target);
-          await emitBrowserUpdate(session);
-          toolResults.push(`[Browser] ${result}`);
-        } catch (err) {
-          toolResults.push(`[Browser click error]: ${(err as Error).message}`);
-        }
-      }
-
-      for (const match of webTypeMatches) {
-        const selector = match[1].trim();
-        const text = match[2].trim();
-        emitSystemMessage(
-          io,
-          roomName,
-          `[${agent.name} typing into ${selector}]`,
-        );
-        try {
-          const session = await browserSessionManager.getOrCreate(roomId);
-          await session.type(selector, text);
-          await emitBrowserUpdate(session);
-          toolResults.push(`[Browser] Typed "${text}" into ${selector}`);
-        } catch (err) {
-          toolResults.push(`[Browser type error]: ${(err as Error).message}`);
-        }
-      }
-
-      for (const match of webScrollMatches) {
-        const direction = match[1].trim().toLowerCase() as "up" | "down";
-        try {
-          const session = await browserSessionManager.getOrCreate(roomId);
-          await session.scroll(direction);
-          await emitBrowserUpdate(session);
-          toolResults.push(`[Browser] Scrolled ${direction}`);
-        } catch (err) {
-          toolResults.push(`[Browser scroll error]: ${(err as Error).message}`);
-        }
-      }
-
-      for (const _match of webBackMatches) {
-        try {
-          const session = await browserSessionManager.getOrCreate(roomId);
-          await session.back();
-          await emitBrowserUpdate(session);
-          toolResults.push(`[Browser] Went back`);
-        } catch (err) {
-          toolResults.push(`[Browser back error]: ${(err as Error).message}`);
-        }
-      }
-
-      for (const _match of webForwardMatches) {
-        try {
-          const session = await browserSessionManager.getOrCreate(roomId);
-          await session.forward();
-          await emitBrowserUpdate(session);
-          toolResults.push(`[Browser] Went forward`);
-        } catch (err) {
-          toolResults.push(
-            `[Browser forward error]: ${(err as Error).message}`,
-          );
-        }
-      }
-
-      for (const _match of webExtractMatches) {
-        try {
-          const session = await browserSessionManager.getOrCreate(roomId);
-          const pageContent = await session.extract();
-          const linkList =
-            pageContent.links.length > 0
-              ? "\n\nLinks on page:\n" +
-                pageContent.links
-                  .map((l) => `[${l.index}] ${l.text} → ${l.href}`)
-                  .join("\n")
-              : "";
-          toolResults.push(
-            `[Page: ${pageContent.title}]\n${pageContent.text.substring(0, 4000)}${linkList}`,
-          );
-          await emitBrowserUpdate(session);
-        } catch (err) {
-          toolResults.push(
-            `[Browser extract error]: ${(err as Error).message}`,
-          );
-        }
-      }
-
-      for (const match of webWaitMatches) {
-        const seconds = Math.min(parseInt(match[1], 10) || 3, 10);
-        try {
-          const session = await browserSessionManager.getOrCreate(roomId);
-          await session.wait(seconds);
-          await emitBrowserUpdate(session);
-          toolResults.push(`[Browser] Waited ${seconds}s`);
-        } catch (err) {
-          toolResults.push(`[Browser wait error]: ${(err as Error).message}`);
-        }
-      }
-
-      for (const _match of webCloseMatches) {
-        browserSessionManager.destroy(roomId);
-        io.to(roomName).emit("web_panel_update", { type: "browser_closed" });
-        toolResults.push(`[Browser] Session closed`);
       }
 
       // ── Agent Management Commands ──
@@ -4272,91 +3541,6 @@ const runAgentResponse = async (
         }
       }
 
-      // Process schedule commands
-      for (const match of scheduleMatches) {
-        const dateStr = match[1];
-        const message = match[2].trim();
-        const runAt = new Date(dateStr);
-        if (isNaN(runAt.getTime()) || runAt <= new Date()) {
-          toolResults.push(
-            `[Schedule error]: Invalid or past date "${dateStr}".`,
-          );
-          continue;
-        }
-        await Data.scheduledJob.create({
-          agent_id: agent.id,
-          room_id: roomId,
-          creator_id: agent.creator_id,
-          message,
-          run_at: runAt,
-        });
-        emitSystemMessage(
-          io,
-          roomName,
-          `[${agent.name} scheduled: "${message}" at ${dayjs(runAt).format("YYYY-MM-DD HH:mm")} UTC]`,
-        );
-        toolResults.push(
-          `Scheduled "${message}" for ${dayjs(runAt).format("YYYY-MM-DD HH:mm")} UTC.`,
-        );
-      }
-
-      for (const match of scheduleRecurMatches) {
-        const time = match[1];
-        const freq = match[2].toLowerCase();
-        const message = match[3].trim();
-        const [hh, mm] = time.split(":").map(Number);
-        let nextRun = dayjs().hour(hh).minute(mm).second(0);
-        if (nextRun.isBefore(dayjs())) nextRun = nextRun.add(1, "day");
-        await Data.scheduledJob.create({
-          agent_id: agent.id,
-          room_id: roomId,
-          creator_id: agent.creator_id,
-          message,
-          run_at: nextRun.toDate(),
-          recurrence: freq,
-          recur_time: time,
-        });
-        emitSystemMessage(
-          io,
-          roomName,
-          `[${agent.name} scheduled recurring (${freq}): "${message}" at ${time} UTC]`,
-        );
-        toolResults.push(
-          `Recurring schedule created: "${message}" ${freq} at ${time} UTC.`,
-        );
-      }
-
-      for (const _match of listScheduleMatches) {
-        const jobs = await Data.scheduledJob.findActiveByAgent(agent.id);
-        if (jobs.length === 0) {
-          toolResults.push("No active schedules.");
-        } else {
-          const list = jobs
-            .map(
-              (j, i) =>
-                `${i + 1}. "${j.message}" — ${j.recurrence ? `${j.recurrence} at ${j.recur_time}` : dayjs(j.run_at).format("YYYY-MM-DD HH:mm")} UTC [id:${j.id.slice(0, 8)}]`,
-            )
-            .join("\n");
-          toolResults.push(`Active schedules:\n${list}`);
-        }
-      }
-
-      for (const match of cancelScheduleMatches) {
-        const search = match[1].trim();
-        const count = await Data.scheduledJob.cancelByAgentAndMessage(
-          agent.id,
-          search,
-        );
-        emitSystemMessage(
-          io,
-          roomName,
-          `[${agent.name} cancelled ${count} schedule(s) matching "${search}"]`,
-        );
-        toolResults.push(
-          `Cancelled ${count} schedule(s) matching "${search}".`,
-        );
-      }
-
       // Alarm command — emit alarm event to a specific user
       for (const match of alarmMatches) {
         const targetUsername = match[1].trim();
@@ -4512,17 +3696,10 @@ const runAgentResponse = async (
       const hasDataCommands =
         recallMatches.length +
         sqlMatches.length +
-        searchMatches.length +
-        browseMatches.length +
-        findMatches.length +
-        screenshotMatches.length +
         terminalMatches.length +
         claudeMatches.length +
         lookMatches.length +
-        listUsersMatches.length +
-        webGoMatches.length +
-        webClickMatches.length +
-        webExtractMatches.length;
+        listUsersMatches.length;
       if (hasDataCommands === 0) break;
 
       // Re-prompt with tool results — strip commands from prior response so agent doesn't repeat them
@@ -5582,100 +4759,6 @@ const startDormantAgentChecker = (io: SocketServer): void => {
 };
 
 // ┌──────────────────────────────────────────┐
-// │ Schedule Job Runner                     │
-// └──────────────────────────────────────────┘
-
-const computeNextRun = (recurrence: string, recurTime: string): Date => {
-  const [hh, mm] = recurTime.split(":").map(Number);
-  let next = dayjs().hour(hh).minute(mm).second(0);
-
-  switch (recurrence) {
-    case "daily":
-      next = next.add(1, "day");
-      break;
-    case "weekly":
-      next = next.add(1, "week");
-      break;
-    case "weekdays":
-      next = next.add(1, "day");
-      while (next.day() === 0 || next.day() === 6) next = next.add(1, "day");
-      break;
-    case "monthly":
-      next = next.add(1, "month");
-      break;
-  }
-  return next.toDate();
-};
-
-const startScheduleRunner = (io: SocketServer): void => {
-  console.log("[Scheduler] Starting job runner (every 15s)");
-
-  setInterval(async () => {
-    try {
-      const dueJobs = await Data.scheduledJob.findDueJobs(new Date());
-      for (const job of dueJobs) {
-        const agent = await Data.llmAgent.findById(job.agent_id);
-        if (!agent) {
-          await Data.scheduledJob.update(job.id, { status: "cancelled" });
-          continue;
-        }
-
-        const roomEntry = Array.from(activeRooms.entries()).find(
-          ([, r]) => r.id === job.room_id,
-        );
-        if (!roomEntry) continue;
-        const [roomName] = roomEntry;
-
-        // Advance recurring jobs or mark one-time as fired
-        if (job.recurrence && job.recur_time) {
-          const nextRun = computeNextRun(job.recurrence, job.recur_time);
-          await Data.scheduledJob.update(job.id, {
-            run_at: nextRun,
-            last_fired_at: new Date(),
-          });
-        } else {
-          await Data.scheduledJob.update(job.id, {
-            status: "fired",
-            last_fired_at: new Date(),
-          });
-        }
-
-        // Inject reminder as a message so the agent sees it in context
-        await Data.message.create({
-          content: `[SCHEDULED REMINDER]: ${job.message}`,
-          type: "text",
-          room_id: job.room_id,
-          username: "System",
-        });
-
-        emitSystemMessage(
-          io,
-          roomName,
-          `[Reminder for ${agent.name}: ${job.message}]`,
-        );
-
-        // Fire alarm sound for the user who created the schedule
-        for (const [socketId, user] of connectedUsers.entries()) {
-          if (user.userId === job.creator_id && user.currentRoom === roomName) {
-            io.to(socketId).emit("trigger_alarm", {
-              message: job.message,
-              agentName: agent.name,
-            });
-          }
-        }
-
-        // Trigger agent to respond to the reminder
-        runAgentResponse(io, agent, roomName, false).catch((err) =>
-          console.error(`[Scheduler] Agent response error:`, err),
-        );
-      }
-    } catch (err) {
-      console.error("[Scheduler] Error:", err);
-    }
-  }, 15_000);
-};
-
-// ┌──────────────────────────────────────────┐
 // │ Socket Registration                     │
 // └──────────────────────────────────────────┘
 
@@ -5699,9 +4782,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
   // Start dormant agent checker (lets disabled agents self-activate)
   startDormantAgentChecker(io);
-
-  // Start scheduled job runner
-  startScheduleRunner(io);
 
   // ── Post-deploy: System announcement + Kara health check ──
   const DEPLOY_VERSION =
@@ -5872,18 +4952,10 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       const roomId = getRoomId(targetRoom);
       if (roomId) {
         const history = await Data.message.findByRoomForUI(roomId);
-        const wp = activeRooms.get(targetRoom)?.watchParty;
         socket.emit("room_joined", {
           roomName: room?.displayName || targetRoom,
           users: getRoomUsers(targetRoom),
           messages: formatHistoryForClient(history.reverse()),
-          watchParty: wp
-            ? {
-                videoId: wp.videoId,
-                state: wp.state,
-                currentTime: getEffectiveTime(wp),
-              }
-            : null,
         });
       }
     };
@@ -6015,65 +5087,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           return;
         }
 
-        // /watchlist [add URL | list [watched|unwatched] | remove ID | watch ID | unwatch ID | summarize ID | recommend]
-        const watchlistCmd = text.match(/^\/watchlist(?:\s+(.*))?$/i);
-        if (watchlistCmd) {
-          const args = (watchlistCmd[1] || "").trim();
-          const parts = args.split(/\s+/);
-          const sub = parts[0]?.toLowerCase() || "list";
-          const param = parts.slice(1).join(" ");
-
-          try {
-            let result: string;
-
-            if (sub === "add" && param) {
-              result = await watchlistActions.addToWatchlist(
-                socket.user.id,
-                param,
-              );
-            } else if (sub === "list" || !args) {
-              result = await watchlistActions.listWatchlist(
-                socket.user.id,
-                param || undefined,
-              );
-            } else if (sub === "remove" && param) {
-              result = await watchlistActions.removeFromWatchlist(
-                socket.user.id,
-                param,
-              );
-            } else if (sub === "watch" && param) {
-              result = await watchlistActions.markWatched(
-                socket.user.id,
-                param,
-              );
-            } else if (sub === "unwatch" && param) {
-              result = await watchlistActions.markUnwatched(
-                socket.user.id,
-                param,
-              );
-            } else if (sub === "summarize" && param) {
-              result = await watchlistActions.summarizeVideo(
-                socket.user.id,
-                param,
-              );
-            } else if (sub === "recommend") {
-              result = await watchlistActions.recommendVideos(socket.user.id);
-            } else {
-              result =
-                "**Usage:** `/watchlist add <URL>` | `list [watched|unwatched]` | `remove <ID>` | `watch <ID>` | `unwatch <ID>` | `summarize <ID>` ⭐ | `recommend` ⭐";
-            }
-
-            emitSystemMessage(io, user.currentRoom, result, "Watchlist");
-          } catch (err) {
-            console.error("[Watchlist] Error:", err);
-            emitSystemMessage(
-              io,
-              user.currentRoom,
-              `[Watchlist] Error: ${(err as Error).message}`,
-            );
-          }
-          return;
-        }
       }
 
       const message = broadcastMessageAction(socket.user.username, data);
@@ -6091,34 +5104,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       // Track when user last spoke (for Social Awareness subconscious)
       userLastSpoke.set(`${roomId}:${socket.user.id}`, Date.now());
-
-      Data.dailyStats
-        .incrementMessages(dayjs().format("YYYY-MM-DD"))
-        .catch(console.error);
-
-      // Check for YouTube URL — start watch party
-      const videoId = extractYouTubeId(data.text);
-      if (videoId) {
-        const currentRoom = activeRooms.get(user.currentRoom);
-        if (currentRoom) {
-          currentRoom.watchParty = {
-            videoId,
-            state: "playing",
-            currentTime: 0,
-            lastUpdated: Date.now(),
-            startedBy: socket.user.username,
-          };
-          io.to(user.currentRoom).emit("watch_party_start", {
-            videoId,
-            startedBy: socket.user.username,
-          });
-          emitSystemMessage(
-            io,
-            user.currentRoom,
-            `${socket.user.username} started a watch party`,
-          );
-        }
-      }
 
       // Check if message mentions an AI agent (by name or nickname)
       const agents = await Data.llmAgent.findByRoom(roomId);
@@ -6179,151 +5164,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           })
           .catch(console.error);
       }
-    });
-
-    // ┌──────────────────────────────────────────┐
-    // │ Watch Party                             │
-    // └──────────────────────────────────────────┘
-    socket.on(
-      "watch_party_action",
-      (data: { action: "play" | "pause" | "seek"; currentTime: number }) => {
-        const user = connectedUsers.get(socket.id);
-        if (!user?.currentRoom) return;
-
-        const room = activeRooms.get(user.currentRoom);
-        if (!room?.watchParty) return;
-
-        room.watchParty.currentTime = data.currentTime;
-        room.watchParty.lastUpdated = Date.now();
-
-        if (data.action === "play") {
-          room.watchParty.state = "playing";
-          emitSystemMessage(
-            io,
-            user.currentRoom,
-            `${socket.user.username} resumed at ${formatTime(data.currentTime)}`,
-          );
-        } else if (data.action === "pause") {
-          room.watchParty.state = "paused";
-          emitSystemMessage(
-            io,
-            user.currentRoom,
-            `${socket.user.username} paused at ${formatTime(data.currentTime)}`,
-          );
-        }
-
-        io.to(user.currentRoom).emit("watch_party_sync", {
-          videoId: room.watchParty.videoId,
-          state: room.watchParty.state,
-          currentTime: data.currentTime,
-        });
-      },
-    );
-
-    // ┌──────────────────────────────────────────┐
-    // │ Screen Share (WebRTC Signaling)         │
-    // └──────────────────────────────────────────┘
-    socket.on("screen_share_start", () => {
-      const user = connectedUsers.get(socket.id);
-      if (!user?.currentRoom) return;
-
-      socket.to(user.currentRoom).emit("screen_share_start", {
-        sharerId: socket.user.id,
-        sharerUsername: socket.user.username,
-      });
-      emitSystemMessage(
-        io,
-        user.currentRoom,
-        `${socket.user.username} started sharing their screen`,
-      );
-    });
-
-    socket.on("screen_share_stop", () => {
-      const user = connectedUsers.get(socket.id);
-      if (!user?.currentRoom) return;
-
-      socket.to(user.currentRoom).emit("screen_share_stop", {
-        sharerId: socket.user.id,
-      });
-      emitSystemMessage(
-        io,
-        user.currentRoom,
-        `${socket.user.username} stopped sharing their screen`,
-      );
-    });
-
-    socket.on("join_screen_share", (data: { sharerId: string }) => {
-      // Viewer wants to join — tell the sharer to create a peer connection
-      const sharerUser = findByUserId(data.sharerId);
-      if (!sharerUser) return;
-      const sharerSocket = io.sockets.sockets.get(sharerUser.socketId);
-      if (sharerSocket) {
-        sharerSocket.emit("screen_share_viewer_joined", {
-          viewerId: socket.user.id,
-          viewerUsername: socket.user.username,
-        });
-      }
-    });
-
-    socket.on(
-      "webrtc_offer",
-      (data: { targetUserId: string; offer: Record<string, unknown> }) => {
-        const target = findByUserId(data.targetUserId);
-        if (!target) return;
-        const targetSocket = io.sockets.sockets.get(target.socketId);
-        if (targetSocket) {
-          targetSocket.emit("webrtc_offer", {
-            fromUserId: socket.user.id,
-            offer: data.offer,
-          });
-        }
-      },
-    );
-
-    socket.on(
-      "webrtc_answer",
-      (data: { targetUserId: string; answer: Record<string, unknown> }) => {
-        const target = findByUserId(data.targetUserId);
-        if (!target) return;
-        const targetSocket = io.sockets.sockets.get(target.socketId);
-        if (targetSocket) {
-          targetSocket.emit("webrtc_answer", {
-            fromUserId: socket.user.id,
-            answer: data.answer,
-          });
-        }
-      },
-    );
-
-    socket.on(
-      "webrtc_ice_candidate",
-      (data: { targetUserId: string; candidate: Record<string, unknown> }) => {
-        const target = findByUserId(data.targetUserId);
-        if (!target) return;
-        const targetSocket = io.sockets.sockets.get(target.socketId);
-        if (targetSocket) {
-          targetSocket.emit("webrtc_ice_candidate", {
-            fromUserId: socket.user.id,
-            candidate: data.candidate,
-          });
-        }
-      },
-    );
-
-    socket.on("watch_party_end", () => {
-      const user = connectedUsers.get(socket.id);
-      if (!user?.currentRoom) return;
-
-      const room = activeRooms.get(user.currentRoom);
-      if (!room?.watchParty) return;
-
-      room.watchParty = null;
-      io.to(user.currentRoom).emit("watch_party_end", {});
-      emitSystemMessage(
-        io,
-        user.currentRoom,
-        `${socket.user.username} ended the watch party`,
-      );
     });
 
     // ┌──────────────────────────────────────────┐
@@ -6422,7 +5262,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           passwordHash,
           displayName: roomName.trim(),
           createdBy: socket.user.id,
-          watchParty: null,
         });
 
         // Auto-add creator as member
@@ -6445,7 +5284,6 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           roomName: roomName.trim(),
           users: getRoomUsers(normalizedName),
           messages: [],
-          watchParty: null,
         });
 
         broadcastRoomListUpdate(io).catch(console.error);
@@ -6598,18 +5436,10 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
 
         const joinHistory = await Data.message.findByRoomForUI(room.id);
-        const jwp = room.watchParty;
         socket.emit("room_joined", {
           roomName: room.displayName,
           users: getRoomUsers(normalizedName),
           messages: formatHistoryForClient(joinHistory.reverse()),
-          watchParty: jwp
-            ? {
-                videoId: jwp.videoId,
-                state: jwp.state,
-                currentTime: getEffectiveTime(jwp),
-              }
-            : null,
         });
 
         broadcastRoomListUpdate(io).catch(console.error);
@@ -6710,18 +5540,10 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
       Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
 
       const invJoinHistory = await Data.message.findByRoomForUI(room.id);
-      const wp = room.watchParty;
       socket.emit("room_joined", {
         roomName: room.displayName,
         users: getRoomUsers(targetName),
         messages: formatHistoryForClient(invJoinHistory.reverse()),
-        watchParty: wp
-          ? {
-              videoId: wp.videoId,
-              state: wp.state,
-              currentTime: getEffectiveTime(wp),
-            }
-          : null,
       });
 
       broadcastRoomListUpdate(io).catch(console.error);
@@ -6757,18 +5579,10 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
       Data.user.updateLastRoom(socket.user.id, room.id).catch(console.error);
 
       const switchHistory = await Data.message.findByRoomForUI(room.id);
-      const swp = room.watchParty;
       socket.emit("room_joined", {
         roomName: room.displayName,
         users: getRoomUsers(normalizedName),
         messages: formatHistoryForClient(switchHistory.reverse()),
-        watchParty: swp
-          ? {
-              videoId: swp.videoId,
-              state: swp.state,
-              currentTime: getEffectiveTime(swp),
-            }
-          : null,
       });
 
       broadcastRoomListUpdate(io).catch(console.error);
@@ -6928,11 +5742,9 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmdMemory: true,
           cmdSelfmod: true,
           cmdAutopilot: true,
-          cmdWeb: true,
           cmdMentions: true,
           cmdTerminal: false,
           cmdClaude: false,
-          cmdSchedule: false,
           cmdTokens: false,
           cmdModeration: false,
           cmdThink: false,
@@ -6953,11 +5765,9 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         cmdMemory: roomRecord?.cmd_memory_enabled ?? true,
         cmdSelfmod: roomRecord?.cmd_selfmod_enabled ?? true,
         cmdAutopilot: roomRecord?.cmd_autopilot_enabled ?? true,
-        cmdWeb: roomRecord?.cmd_web_enabled ?? true,
         cmdMentions: roomRecord?.cmd_mentions_enabled ?? true,
         cmdTerminal: roomRecord?.cmd_terminal_enabled ?? false,
         cmdClaude: roomRecord?.cmd_claude_enabled ?? false,
-        cmdSchedule: roomRecord?.cmd_schedule_enabled ?? false,
         cmdTokens: roomRecord?.cmd_tokens_enabled ?? false,
         cmdModeration: roomRecord?.cmd_moderation_enabled ?? false,
         cmdThink: roomRecord?.cmd_think_enabled ?? false,
@@ -7006,11 +5816,9 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         cmdMemory?: boolean;
         cmdSelfmod?: boolean;
         cmdAutopilot?: boolean;
-        cmdWeb?: boolean;
         cmdMentions?: boolean;
         cmdTerminal?: boolean;
         cmdClaude?: boolean;
-        cmdSchedule?: boolean;
         cmdTokens?: boolean;
         cmdModeration?: boolean;
         cmdThink?: boolean;
@@ -7038,11 +5846,9 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmd_memory_enabled: data.cmdMemory,
           cmd_selfmod_enabled: data.cmdSelfmod,
           cmd_autopilot_enabled: data.cmdAutopilot,
-          cmd_web_enabled: data.cmdWeb,
           cmd_mentions_enabled: data.cmdMentions,
           cmd_terminal_enabled: data.cmdTerminal,
           cmd_claude_enabled: data.cmdClaude,
-          cmd_schedule_enabled: data.cmdSchedule,
           cmd_tokens_enabled: data.cmdTokens,
           cmd_moderation_enabled: data.cmdModeration,
           cmd_think_enabled: data.cmdThink,
@@ -7063,11 +5869,9 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
           cmdMemory: data.cmdMemory,
           cmdSelfmod: data.cmdSelfmod,
           cmdAutopilot: data.cmdAutopilot,
-          cmdWeb: data.cmdWeb,
           cmdMentions: data.cmdMentions,
           cmdTerminal: data.cmdTerminal,
           cmdClaude: data.cmdClaude,
-          cmdSchedule: data.cmdSchedule,
           cmdTokens: data.cmdTokens,
           cmdModeration: data.cmdModeration,
           cmdThink: data.cmdThink,
@@ -7935,53 +6739,6 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         }
       },
     );
-
-    // ┌──────────────────────────────────────────┐
-    // │ Persistent Browser (user controls)      │
-    // └──────────────────────────────────────────┘
-    socket.on("web_navigate", async (data: { url: string }) => {
-      const user = connectedUsers.get(socket.id);
-      if (!user?.currentRoom) return;
-      const navRoomId = getRoomId(user.currentRoom);
-      if (!navRoomId) return;
-      try {
-        const session = await browserSessionManager.getOrCreate(navRoomId);
-        if (data.url === "BACK") {
-          await session.back();
-        } else if (data.url === "FORWARD") {
-          await session.forward();
-        } else {
-          await session.navigate(data.url);
-        }
-        const imgBase64 = await session.screenshot();
-        const title = await session.getTitle();
-        io.to(user.currentRoom).emit("web_panel_update", {
-          type: "browser",
-          url: session.getUrl(),
-          title,
-          imageBase64: imgBase64,
-        });
-      } catch (err) {
-        socket.emit("web_panel_update", {
-          type: "browser",
-          url: data.url,
-          title: "Error",
-          imageBase64: "",
-        });
-        console.error("[WebNavigate] Error:", (err as Error).message);
-      }
-    });
-
-    socket.on("web_close_session", () => {
-      const user = connectedUsers.get(socket.id);
-      if (!user?.currentRoom) return;
-      const closeRoomId = getRoomId(user.currentRoom);
-      if (!closeRoomId) return;
-      browserSessionManager.destroy(closeRoomId);
-      io.to(user.currentRoom).emit("web_panel_update", {
-        type: "browser_closed",
-      });
-    });
 
     // ┌──────────────────────────────────────────┐
     // │ Disconnect                              │

@@ -33,10 +33,8 @@ model user {
   credit_transactions  credit_transaction[]
   credit_usage_logs    credit_usage_log[]
   machines             machine[]
-  scheduled_jobs       scheduled_job[]
   room_memberships         room_member[]
   payment_transactions     payment_transaction[]
-  watchlist_items          watchlist_item[]
 
   @@index([stripe_customer_id])
   @@index([username])
@@ -54,11 +52,9 @@ model room {
   cmd_memory_enabled      Boolean  @default(true)
   cmd_selfmod_enabled     Boolean  @default(true)
   cmd_autopilot_enabled   Boolean  @default(true)
-  cmd_web_enabled         Boolean  @default(true)
   cmd_mentions_enabled    Boolean  @default(true)
   cmd_terminal_enabled    Boolean  @default(false)
   cmd_claude_enabled      Boolean  @default(false)
-  cmd_schedule_enabled    Boolean  @default(false)
   cmd_tokens_enabled      Boolean  @default(false)
   cmd_moderation_enabled  Boolean  @default(false)
   cmd_think_enabled       Boolean  @default(false)
@@ -76,7 +72,6 @@ model room {
   llm_agents          llm_agent[]
   memory_summaries    memory_summary[]
   machine_permissions machine_permission[]
-  scheduled_jobs      scheduled_job[]
   members             room_member[]
   invites             room_invite[]
 
@@ -122,39 +117,9 @@ model llm_agent {
 
   creator user @relation(fields: [creator_id], references: [id])
   room    room @relation(fields: [room_id], references: [id], onDelete: Cascade)
-  scheduled_jobs scheduled_job[]
 
   @@index([room_id])
   @@index([creator_id])
-}
-
-model scheduled_job {
-  id             String    @id @default(uuid())
-  agent_id       String
-  room_id        String
-  creator_id     String
-  message        String    @db.Text
-  run_at         DateTime
-  recurrence     String?
-  recur_time     String?
-  recur_weekday  Int?
-  status         String    @default("active")
-  last_fired_at  DateTime?
-  created_at     DateTime  @default(now())
-
-  agent   llm_agent @relation(fields: [agent_id], references: [id], onDelete: Cascade)
-  room    room      @relation(fields: [room_id], references: [id], onDelete: Cascade)
-  creator user      @relation(fields: [creator_id], references: [id])
-
-  @@index([agent_id, status])
-  @@index([room_id, status])
-  @@index([status, run_at])
-}
-
-model daily_stats {
-  date          String @id
-  visits        Int    @default(0)
-  messages_sent Int    @default(0)
 }
 
 model credit_transaction {
@@ -311,30 +276,6 @@ model panel_log {
   created_at DateTime @default(now())
 
   @@index([room_id, tab, created_at])
-}
-
-enum WatchStatus {
-  UNWATCHED
-  WATCHED
-}
-
-model watchlist_item {
-  id        String      @id @default(uuid())
-  user_id   String
-  video_id  String      @unique
-  title     String?
-  channel   String?
-  thumbnail String?
-  duration  String?
-  status    WatchStatus @default(UNWATCHED)
-  added_at  DateTime    @default(now())
-  updated_at DateTime   @updatedAt
-
-  user user @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@map("watchlist_items")
-  @@index([user_id])
-  @@index([status])
 }
 
 model room_invite {

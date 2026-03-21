@@ -15,7 +15,7 @@ const HomePage = () => {
 
   useEffect(() => {
     if (!isLoading) {
-      router.replace(isLoggedIn ? '/chat' : '/about');
+      router.replace(isLoggedIn ? '/chat' : '/login');
     }
   }, [isLoading, isLoggedIn, router]);
 

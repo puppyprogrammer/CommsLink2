@@ -20,12 +20,6 @@ export type ChatMessage = {
   systemType?: string;
 };
 
-export type WatchPartyState = {
-  videoId: string;
-  state: 'playing' | 'paused';
-  currentTime: number;
-};
-
 export type Room = {
   id: string;
   name: string;

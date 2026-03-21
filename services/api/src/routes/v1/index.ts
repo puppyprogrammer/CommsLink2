@@ -8,7 +8,6 @@ import { versionRoutes } from './version';
 import { modelsRoutes } from './models';
 import { uploadRoutes } from './upload';
 import { terminalRoutes } from './terminal';
-import { watchlistRoutes } from './watchlist';
 import { agentTemplateRoutes } from './agentTemplate';
 
 /**
@@ -26,7 +25,6 @@ const registerRoutes = (server: Server): void => {
     ...modelsRoutes,
     ...uploadRoutes,
     ...terminalRoutes,
-    ...watchlistRoutes,
     ...agentTemplateRoutes,
   ]);
 };

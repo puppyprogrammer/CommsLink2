@@ -151,11 +151,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdMemory, setCmdMemory] = useState(true);
   const [cmdSelfmod, setCmdSelfmod] = useState(true);
   const [cmdAutopilot, setCmdAutopilot] = useState(true);
-  const [cmdWeb, setCmdWeb] = useState(true);
   const [cmdMentions, setCmdMentions] = useState(true);
   const [cmdTerminal, setCmdTerminal] = useState(false);
   const [cmdClaude, setCmdClaude] = useState(false);
-  const [cmdSchedule, setCmdSchedule] = useState(false);
   const [cmdTokens, setCmdTokens] = useState(false);
   const [cmdModeration, setCmdModeration] = useState(false);
   const [cmdThink, setCmdThink] = useState(false);
@@ -279,11 +277,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdMemory: boolean;
       cmdSelfmod: boolean;
       cmdAutopilot: boolean;
-      cmdWeb: boolean;
       cmdMentions: boolean;
       cmdTerminal: boolean;
       cmdClaude: boolean;
-      cmdSchedule: boolean;
       cmdTokens: boolean;
       cmdModeration: boolean;
       cmdThink: boolean;
@@ -300,11 +296,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       setCmdMemory(data.cmdMemory);
       setCmdSelfmod(data.cmdSelfmod);
       setCmdAutopilot(data.cmdAutopilot);
-      setCmdWeb(data.cmdWeb);
       setCmdMentions(data.cmdMentions);
       setCmdTerminal(data.cmdTerminal);
       setCmdClaude(data.cmdClaude);
-      setCmdSchedule(data.cmdSchedule);
       setCmdTokens(data.cmdTokens);
       setCmdModeration(data.cmdModeration);
       setCmdThink(data.cmdThink);
@@ -326,11 +320,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       cmdMemory?: boolean;
       cmdSelfmod?: boolean;
       cmdAutopilot?: boolean;
-      cmdWeb?: boolean;
       cmdMentions?: boolean;
       cmdTerminal?: boolean;
       cmdClaude?: boolean;
-      cmdSchedule?: boolean;
       cmdTokens?: boolean;
       cmdModeration?: boolean;
       cmdThink?: boolean;
@@ -346,13 +338,11 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       if (data.cmdMemory !== undefined) setCmdMemory(data.cmdMemory);
       if (data.cmdSelfmod !== undefined) setCmdSelfmod(data.cmdSelfmod);
       if (data.cmdAutopilot !== undefined) setCmdAutopilot(data.cmdAutopilot);
-      if (data.cmdWeb !== undefined) setCmdWeb(data.cmdWeb);
       if (data.cmdMentions !== undefined) setCmdMentions(data.cmdMentions);
       if (data.cmdTerminal !== undefined) setCmdTerminal(data.cmdTerminal);
       if (data.cmdTokens !== undefined) setCmdTokens(data.cmdTokens);
       if (data.cmdModeration !== undefined) setCmdModeration(data.cmdModeration);
       if (data.cmdClaude !== undefined) setCmdClaude(data.cmdClaude);
-      if (data.cmdSchedule !== undefined) setCmdSchedule(data.cmdSchedule);
       if (data.cmdThink !== undefined) setCmdThink(data.cmdThink);
       if (data.cmdEffort !== undefined) setCmdEffort(data.cmdEffort);
       if (data.cmdAudit !== undefined) setCmdAudit(data.cmdAudit);
@@ -1420,13 +1410,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 set: setCmdAutopilot,
               },
               {
-                label: 'Web Browsing — Search, browse pages, find text',
-                desc: 'AI: {search query}, {browse url}, {find text}',
-                checked: cmdWeb,
-                key: 'cmdWeb' as const,
-                set: setCmdWeb,
-              },
-              {
                 label: 'AI Mentions — Agents respond to each other',
                 desc: 'When an agent mentions another agent by name, that agent responds (max 5 exchanges)',
                 checked: cmdMentions,
@@ -1446,13 +1429,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 checked: cmdClaude,
                 key: 'cmdClaude' as const,
                 set: setCmdClaude,
-              },
-              {
-                label: 'Scheduling — Set reminders and recurring tasks',
-                desc: 'AI: {schedule YYYY-MM-DD HH:mm message}, {schedule_recurring daily|weekly|weekdays|monthly HH:mm message}',
-                checked: cmdSchedule,
-                key: 'cmdSchedule' as const,
-                set: setCmdSchedule,
               },
               {
                 label: 'Token Budget — AI adjusts own response length',
