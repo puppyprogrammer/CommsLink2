@@ -2705,15 +2705,15 @@ const runAgentResponse = async (
     const terminalOn = roomRecord?.cmd_terminal_enabled ?? false;
     const claudeOn = roomRecord?.cmd_claude_enabled ?? false;
     const scheduleOn = roomRecord?.cmd_schedule_enabled ?? true;
-    const tokensOn = roomRecord?.cmd_tokens_enabled ?? true;
+    const tokensOn = roomRecord?.cmd_tokens_enabled ?? false;
     const moderationOn = roomRecord?.cmd_moderation_enabled ?? false;
-    const thinkOn = roomRecord?.cmd_think_enabled ?? true;
-    const effortOn = roomRecord?.cmd_effort_enabled ?? true;
-    const auditOn = roomRecord?.cmd_audit_enabled ?? true;
-    const continueOn = roomRecord?.cmd_continue_enabled ?? true;
+    const thinkOn = roomRecord?.cmd_think_enabled ?? false;
+    const effortOn = roomRecord?.cmd_effort_enabled ?? false;
+    const auditOn = roomRecord?.cmd_audit_enabled ?? false;
+    const continueOn = roomRecord?.cmd_continue_enabled ?? false;
     const forumOn = roomRecord?.cmd_forum_enabled ?? false;
-    const intentCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? true;
-    const memoryCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? true;
+    const intentCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? false;
+    const memoryCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? false;
     let maxLoops = roomRecord?.max_loops ?? 5;
 
     // Build room memory context: L4 master + L3 eras + L2 episodes
@@ -5712,8 +5712,8 @@ const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
     agentCycleCounters.set(agent.id, cycleCount);
 
     const roomRecord = await Data.room.findById(room.id);
-    const memCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? true;
-    const intCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? true;
+    const memCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? false;
+    const intCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? false;
 
     if (
       memCoherenceOn &&
@@ -7166,15 +7166,15 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
           cmdTerminal: false,
           cmdClaude: false,
           cmdSchedule: false,
-          cmdTokens: true,
+          cmdTokens: false,
           cmdModeration: false,
-          cmdThink: true,
-          cmdEffort: true,
-          cmdAudit: true,
-          cmdContinue: true,
+          cmdThink: false,
+          cmdEffort: false,
+          cmdAudit: false,
+          cmdContinue: false,
           cmdForum: false,
-          cmdIntentCoherence: true,
-          cmdMemoryCoherence: true,
+          cmdIntentCoherence: false,
+          cmdMemoryCoherence: false,
           maxLoops: 5,
         });
         return;
@@ -7192,15 +7192,15 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
         cmdTerminal: roomRecord?.cmd_terminal_enabled ?? false,
         cmdClaude: roomRecord?.cmd_claude_enabled ?? false,
         cmdSchedule: roomRecord?.cmd_schedule_enabled ?? false,
-        cmdTokens: roomRecord?.cmd_tokens_enabled ?? true,
+        cmdTokens: roomRecord?.cmd_tokens_enabled ?? false,
         cmdModeration: roomRecord?.cmd_moderation_enabled ?? false,
-        cmdThink: roomRecord?.cmd_think_enabled ?? true,
-        cmdEffort: roomRecord?.cmd_effort_enabled ?? true,
-        cmdAudit: roomRecord?.cmd_audit_enabled ?? true,
-        cmdContinue: roomRecord?.cmd_continue_enabled ?? true,
+        cmdThink: roomRecord?.cmd_think_enabled ?? false,
+        cmdEffort: roomRecord?.cmd_effort_enabled ?? false,
+        cmdAudit: roomRecord?.cmd_audit_enabled ?? false,
+        cmdContinue: roomRecord?.cmd_continue_enabled ?? false,
         cmdForum: roomRecord?.cmd_forum_enabled ?? false,
-        cmdIntentCoherence: roomRecord?.cmd_intent_coherence_enabled ?? true,
-        cmdMemoryCoherence: roomRecord?.cmd_memory_coherence_enabled ?? true,
+        cmdIntentCoherence: roomRecord?.cmd_intent_coherence_enabled ?? false,
+        cmdMemoryCoherence: roomRecord?.cmd_memory_coherence_enabled ?? false,
         maxLoops: roomRecord?.max_loops ?? 5,
       });
     });

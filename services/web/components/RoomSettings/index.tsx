@@ -156,15 +156,15 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdTerminal, setCmdTerminal] = useState(false);
   const [cmdClaude, setCmdClaude] = useState(false);
   const [cmdSchedule, setCmdSchedule] = useState(false);
-  const [cmdTokens, setCmdTokens] = useState(true);
+  const [cmdTokens, setCmdTokens] = useState(false);
   const [cmdModeration, setCmdModeration] = useState(false);
-  const [cmdThink, setCmdThink] = useState(true);
-  const [cmdEffort, setCmdEffort] = useState(true);
-  const [cmdAudit, setCmdAudit] = useState(true);
-  const [cmdContinue, setCmdContinue] = useState(true);
+  const [cmdThink, setCmdThink] = useState(false);
+  const [cmdEffort, setCmdEffort] = useState(false);
+  const [cmdAudit, setCmdAudit] = useState(false);
+  const [cmdContinue, setCmdContinue] = useState(false);
   const [cmdForum, setCmdForum] = useState(false);
-  const [cmdIntentCoherence, setCmdIntentCoherence] = useState(true);
-  const [cmdMemoryCoherence, setCmdMemoryCoherence] = useState(true);
+  const [cmdIntentCoherence, setCmdIntentCoherence] = useState(false);
+  const [cmdMemoryCoherence, setCmdMemoryCoherence] = useState(false);
   const [maxLoops, setMaxLoops] = useState(5);
 
   // Terminal machines
