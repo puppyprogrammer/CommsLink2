@@ -1063,7 +1063,7 @@ const ChatPage = () => {
           />
         </Box>
 
-        {settingsOpen && <SettingsPanel />}
+        {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
         {terminalPanelOpen && (
           <>
             <ResizeHandle onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))} />

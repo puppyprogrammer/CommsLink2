@@ -14,7 +14,9 @@ import {
   Button,
   Divider,
   CircularProgress,
+  IconButton,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 
 import useSession from '@/lib/session/useSession';
 import { usePreferences } from '@/lib/state/PreferencesContext';
@@ -30,7 +32,11 @@ const BROWSER_VOICES = [
 
 type ElevenLabsVoice = { voice_id: string; name: string };
 
-const SettingsPanel: React.FC = () => {
+type SettingsPanelProps = {
+  onClose?: () => void;
+};
+
+const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const { session } = useSession();
   const { preferences, updatePreference, isSaving } = usePreferences();
   const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
@@ -94,7 +100,14 @@ const SettingsPanel: React.FC = () => {
         <Typography variant="h6" color="primary">
           Settings
         </Typography>
-        {isSaving && <CircularProgress size={16} />}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 'auto' }}>
+          {isSaving && <CircularProgress size={16} />}
+          {onClose && (
+            <IconButton size="small" onClick={onClose} title="Close" sx={{ color: '#888' }}>
+              <CloseIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          )}
+        </Box>
       </Box>
       <Divider />
 
