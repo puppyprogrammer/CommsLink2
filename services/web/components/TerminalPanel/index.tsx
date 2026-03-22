@@ -36,9 +36,11 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab,
   const { session } = useSession();
   const [tab, setTab] = useState<'terminal' | 'claude'>(initialTab || 'claude');
   const [mobileAgentRunning, setMobileAgentRunning] = useState(false);
+  const [showMobilePrompt, setShowMobilePrompt] = useState(false);
 
-  // Check if running inside native app
+  // Check if running inside native app or on a mobile browser
   const isNativeApp = typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).__nativeTerminalAgent;
+  const isMobileBrowser = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && !isNativeApp;
 
   const toggleMobileAgent = useCallback(() => {
     const native = (window as unknown as Record<string, unknown>).__nativeTerminalAgent as { start: (url: string, token: string, name: string) => void; stop: () => void } | undefined;
@@ -259,44 +261,72 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab,
             {isCreator ? (
               <>
                 <div className={styles.onboardingTitle}>Connect a Machine</div>
-                <div className={styles.onboardingDesc}>
-                  Download the CommsLink agent and run it on any machine to control it from here.
-                </div>
-                <div className={styles.downloadButtons}>
-                  <a href="/api/v1/terminal/download/win" className={styles.downloadBtn}>
-                    <span>&#9881;</span> Windows
-                  </a>
-                  <a href="/api/v1/terminal/download/linux" className={styles.downloadBtn}>
-                    <span>&#128039;</span> Linux
-                  </a>
-                  <a href="/api/v1/terminal/download/macos" className={styles.downloadBtn}>
-                    <span>&#63743;</span> macOS
-                  </a>
-                </div>
+
+                {/* Native app: show Share Phone button prominently */}
                 {isNativeApp && (
-                  <button
-                    className={`${styles.downloadBtn} ${mobileAgentRunning ? styles.downloadBtnActive : ''}`}
-                    onClick={toggleMobileAgent}
-                    style={{ marginTop: 4, width: '100%', justifyContent: 'center' }}
-                  >
-                    {mobileAgentRunning ? '&#9724; Stop Sharing This Phone' : '&#128241; Share This Phone as Terminal'}
-                  </button>
+                  <>
+                    <div className={styles.onboardingDesc}>
+                      Share this phone as a terminal, or download the agent for a desktop machine.
+                    </div>
+                    <button
+                      className={`${styles.downloadBtn} ${mobileAgentRunning ? styles.downloadBtnActive : ''}`}
+                      onClick={toggleMobileAgent}
+                      style={{ marginTop: 4, width: '100%', justifyContent: 'center', padding: '0.6rem 1rem', fontSize: '0.85rem' }}
+                    >
+                      {mobileAgentRunning ? '\u25FC Stop Sharing This Phone' : '\uD83D\uDCF1 Share This Phone as Terminal'}
+                    </button>
+                    <div className={styles.downloadButtons}>
+                      <a href="/api/v1/terminal/download/win" className={styles.downloadBtn}><span>&#9881;</span> Windows</a>
+                      <a href="/api/v1/terminal/download/linux" className={styles.downloadBtn}><span>&#128039;</span> Linux</a>
+                      <a href="/api/v1/terminal/download/macos" className={styles.downloadBtn}><span>&#63743;</span> macOS</a>
+                    </div>
+                  </>
                 )}
-                <div className={styles.onboardingSteps}>
-                  {isNativeApp ? (
-                    <>
-                      <div><span className={styles.stepNum}>1</span> Tap &quot;Share This Phone&quot; above to connect</div>
-                      <div><span className={styles.stepNum}>2</span> AI agents can now run commands on this device</div>
-                      <div><span className={styles.stepNum}>3</span> Or download the agent for a desktop machine below</div>
-                    </>
-                  ) : (
-                    <>
+
+                {/* Mobile browser (not native app): prompt to get the app */}
+                {isMobileBrowser && (
+                  <>
+                    <div className={styles.onboardingDesc}>
+                      Control machines remotely with AI agents. Get the CommsLink app to share your phone as a terminal too.
+                    </div>
+                    <div className={styles.downloadButtons}>
+                      <button className={styles.downloadBtn} onClick={() => setShowMobilePrompt(true)} style={{ fontSize: '0.85rem', padding: '0.6rem 1rem' }}>
+                        &#128241; Get the Mobile App
+                      </button>
+                    </div>
+                    {showMobilePrompt && (
+                      <div className={styles.onboardingDesc} style={{ marginTop: 8, padding: '0.75rem', background: 'rgba(77,216,208,0.06)', borderRadius: 8, border: '1px solid rgba(77,216,208,0.15)' }}>
+                        The CommsLink Android app lets you share your phone as a terminal that AI agents can control.
+                        Ask your room admin for the install link, or visit <strong>commslink.net</strong> on desktop to download the agent for your computer.
+                      </div>
+                    )}
+                    <div className={styles.onboardingSteps}>
+                      <div><span className={styles.stepNum}>1</span> Install the CommsLink Android app</div>
+                      <div><span className={styles.stepNum}>2</span> Open a room and tap &quot;Share This Phone&quot;</div>
+                      <div><span className={styles.stepNum}>3</span> AI agents can now run commands on your device</div>
+                    </div>
+                  </>
+                )}
+
+                {/* Desktop browser: show download buttons */}
+                {!isNativeApp && !isMobileBrowser && (
+                  <>
+                    <div className={styles.onboardingDesc}>
+                      Download the CommsLink agent and run it on any machine to control it from here.
+                      You can also connect your Android phone using the CommsLink mobile app.
+                    </div>
+                    <div className={styles.downloadButtons}>
+                      <a href="/api/v1/terminal/download/win" className={styles.downloadBtn}><span>&#9881;</span> Windows</a>
+                      <a href="/api/v1/terminal/download/linux" className={styles.downloadBtn}><span>&#128039;</span> Linux</a>
+                      <a href="/api/v1/terminal/download/macos" className={styles.downloadBtn}><span>&#63743;</span> macOS</a>
+                    </div>
+                    <div className={styles.onboardingSteps}>
                       <div><span className={styles.stepNum}>1</span> Download the agent for your OS</div>
                       <div><span className={styles.stepNum}>2</span> Open Room Settings and click &quot;Set Up New Terminal&quot;</div>
                       <div><span className={styles.stepNum}>3</span> Run the agent with the setup code provided</div>
-                    </>
-                  )}
-                </div>
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <>
