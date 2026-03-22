@@ -71,6 +71,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
           }}>
             CommsLink
           </Typography>
+          <Box sx={{ flex: 1 }} />
           <ConnectionStatus />
           <Typography variant="detailText" sx={{ mr: 1, fontSize: '0.75rem' }}>
             {session?.user.username}
