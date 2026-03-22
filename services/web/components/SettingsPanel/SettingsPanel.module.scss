@@ -31,10 +31,15 @@
 @media (max-width: 600px) {
   .root {
     position: fixed;
-    top: 36px;
+    top: calc(36px + env(safe-area-inset-top, 0px));
     right: 0;
     bottom: 0;
     width: 100%;
     z-index: 1100;
+    background-color: $background-paper;
+  }
+
+  .section {
+    padding: 0.75rem 0.75rem;
   }
 }

@@ -903,18 +903,6 @@ const ChatPage = () => {
                 >
                   {isListening ? <MicOffIcon sx={{ fontSize: 18 }} /> : <MicIcon sx={{ fontSize: 18 }} />}
                 </IconButton>
-                <IconButton
-                  size="small"
-                  color="warning"
-                  onClick={() => {
-                    if (!session?.token) return;
-                    const socket = getSocket(session.token);
-                    socket.emit('room_alarm', { roomName: currentRoom });
-                  }}
-                  title="Sound Alarm"
-                >
-                  <NotificationsActiveIcon sx={{ fontSize: 18 }} />
-                </IconButton>
               </>
             }
           />
