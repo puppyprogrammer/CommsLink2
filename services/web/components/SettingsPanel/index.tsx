@@ -59,8 +59,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 'auto' }}>
           {isSaving && <CircularProgress size={16} />}
           {onClose && (
-            <IconButton size="small" onClick={onClose} title="Close" sx={{ color: '#888' }}>
-              <CloseIcon sx={{ fontSize: 18 }} />
+            <IconButton size="small" onClick={onClose} title="Close" sx={{ color: '#f44', '&:hover': { color: '#f66', bgcolor: 'rgba(255,68,68,0.1)' } }}>
+              <CloseIcon sx={{ fontSize: 22 }} />
             </IconButton>
           )}
         </Box>

@@ -1044,8 +1044,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
         }}>
           {roomName}
         </Typography>
-        <IconButton size="small" onClick={onClose} sx={{ color: '#556b82' }}>
-          <CloseIcon sx={{ fontSize: 16 }} />
+        <IconButton size="small" onClick={onClose} sx={{ color: '#f44', '&:hover': { color: '#f66', bgcolor: 'rgba(255,68,68,0.1)' } }}>
+          <CloseIcon sx={{ fontSize: 22 }} />
         </IconButton>
       </DialogTitle>
       <DialogContent sx={{ px: { xs: 1.5, sm: 2.5 }, py: { xs: 1, sm: 1.5 } }}>

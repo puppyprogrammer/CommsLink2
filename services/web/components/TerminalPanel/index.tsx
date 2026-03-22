@@ -226,8 +226,8 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab 
           <DeleteSweepIcon sx={{ fontSize: 16, color: '#8b949e' }} />
         </IconButton>
 
-        <IconButton size="small" onClick={onClose} sx={{ flexShrink: 0 }}>
-          <CloseIcon sx={{ fontSize: 16, color: '#8b949e' }} />
+        <IconButton size="small" onClick={onClose} sx={{ flexShrink: 0, color: '#f44', '&:hover': { color: '#f66', bgcolor: 'rgba(255,68,68,0.1)' } }}>
+          <CloseIcon sx={{ fontSize: 22 }} />
         </IconButton>
       </div>
 
