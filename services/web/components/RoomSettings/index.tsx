@@ -45,6 +45,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import useSession from '@/lib/session/useSession';
 import { getSocket } from '@/lib/socket';
 import { useToast } from '@/lib/state/ToastContext';
+import { usePreferences } from '@/lib/state/PreferencesContext';
 import apiClient from '@/lib/api/client';
 import voiceApi from '@/lib/api/voice';
 import config from '@/settings/config.json';
@@ -133,6 +134,7 @@ const serializeList = (list: ListItem[]): string | undefined => {
 const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, canManageRoom, onDeleteRoom }) => {
   const { session } = useSession();
   const { toast } = useToast();
+  const { preferences, updatePreference } = usePreferences();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [error, setError] = useState('');
   const [inviteLink, setInviteLink] = useState('');
@@ -1010,6 +1012,22 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             {error}
           </Alert>
         )}
+
+        {/* ── Voice Settings ──────────────────────────── */}
+        <Box sx={{ mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={preferences.hear_own_voice}
+                onChange={(e) => updatePreference('hear_own_voice', e.target.checked)}
+                size="small"
+              />
+            }
+            label={<Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Hear my own voice</Typography>}
+          />
+        </Box>
+
+        <Divider sx={{ mb: 2 }} />
 
         {/* ── Remote Terminals ─────────────────────────── */}
         <Box sx={{ mb: 2 }}>

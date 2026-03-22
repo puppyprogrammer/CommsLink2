@@ -25,7 +25,6 @@ import SendIcon from '@mui/icons-material/Send';
 import MicIcon from '@mui/icons-material/Mic';
 import MicOffIcon from '@mui/icons-material/MicOff';
 import AddIcon from '@mui/icons-material/Add';
-import SettingsIcon from '@mui/icons-material/Settings';
 import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import Alert from '@mui/material/Alert';
@@ -49,7 +48,6 @@ import voiceApi from '@/lib/api/voice';
 import { useToast } from '@/lib/state/ToastContext';
 
 // Components
-import SettingsPanel from '@/components/SettingsPanel';
 import RoomSettings from '@/components/RoomSettings';
 import ChatInput from '@/components/ChatInput';
 import MessageContent from '@/components/MessageContent';
@@ -79,7 +77,6 @@ const ChatPage = () => {
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomPassword, setNewRoomPassword] = useState('');
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [pendingRoom, setPendingRoom] = useState<string>('');
   const [roomPassword, setRoomPassword] = useState('');
@@ -699,14 +696,6 @@ const ChatPage = () => {
                   <TerminalIcon />
                 </Badge>
               </IconButton>
-              <IconButton
-                size="small"
-                onClick={() => setSettingsOpen((prev) => !prev)}
-                title="Voice Settings"
-                sx={{ color: settingsOpen ? 'primary.main' : '#858585' }}
-              >
-                <SettingsIcon />
-              </IconButton>
             </Box>
           </Box>
           <Box className={classes.messages}>
@@ -1016,7 +1005,6 @@ const ChatPage = () => {
           />
         </Box>
 
-        {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
         {terminalPanelOpen && (
           <>
             <ResizeHandle onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
