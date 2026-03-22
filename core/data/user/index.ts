@@ -55,15 +55,23 @@ const updateLastRoom = async (id: string, roomId: string | null): Promise<user> 
 
 /** Hard-delete a user and all associated data. */
 const deleteAccount = async (id: string): Promise<void> => {
+  // Look up username for claude_log cleanup
+  const user = await prisma.user.findUnique({ where: { id } });
+  const username = user?.username || '';
+
+  // Get rooms created by this user for panel_log and memory cleanup
+  const ownedRooms = await prisma.room.findMany({ where: { created_by: id }, select: { id: true } });
+  const ownedRoomIds = ownedRooms.map((r) => r.id);
+
   await prisma.$transaction([
     prisma.credit_usage_log.deleteMany({ where: { user_id: id } }),
     prisma.credit_transaction.deleteMany({ where: { user_id: id } }),
     prisma.payment_transaction.deleteMany({ where: { user_id: id } }),
     prisma.machine_permission.deleteMany({ where: { machine: { owner_id: id } } }),
     prisma.machine.deleteMany({ where: { owner_id: id } }),
-    prisma.claude_log.deleteMany({ where: { user_id: id } }),
-    prisma.panel_log.deleteMany({ where: { user_id: id } }),
-    prisma.memory_summary.deleteMany({ where: { room: { created_by: id } } }),
+    ...(username ? [prisma.claude_log.deleteMany({ where: { username } })] : []),
+    ...(ownedRoomIds.length > 0 ? [prisma.panel_log.deleteMany({ where: { room_id: { in: ownedRoomIds } } })] : []),
+    ...(ownedRoomIds.length > 0 ? [prisma.memory_summary.deleteMany({ where: { room_id: { in: ownedRoomIds } } })] : []),
     prisma.llm_agent.deleteMany({ where: { creator_id: id } }),
     prisma.room_member.deleteMany({ where: { user_id: id } }),
     prisma.room_invite.deleteMany({ where: { created_by: id } }),
