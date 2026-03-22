@@ -101,7 +101,7 @@ model llm_agent {
   name                String
   room_id             String
   creator_id          String
-  voice_id            String   @default("female")
+  voice_id            String   @default("Joanna")
   model               String   @default("grok-4-1-fast-non-reasoning")
   system_instructions  String?  @db.Text
   memories             String?  @db.Text
@@ -298,7 +298,7 @@ model agent_template {
   name                String   @unique
   description         String?  @db.Text
   model               String   @default("grok-4-1-fast-non-reasoning")
-  voice_id            String   @default("female")
+  voice_id            String   @default("Joanna")
   system_instructions String?  @db.Text
   memories            String?  @db.Text
   autopilot_prompts   String?  @db.Text

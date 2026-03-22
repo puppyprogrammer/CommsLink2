@@ -397,11 +397,11 @@ const ChatPage = () => {
       ]);
       if (!text) setInput('');
 
-      // Generate TTS audio if user has a voice selected
+      // Generate TTS audio for the message
       let audio: string | null = null;
-      const voiceId = preferences.voice_id || '';
+      const voiceId = preferences.voice_id || 'Joanna';
 
-      if (voiceId) {
+      {
         try {
           const result = await voiceApi.generate(session.token, {
             text: msgText,
