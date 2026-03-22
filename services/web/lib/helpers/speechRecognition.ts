@@ -19,6 +19,7 @@ let paused = false;
 let pausedCallbacks: RecognitionCallbacks | null = null;
 let pausedLanguage: string = 'en';
 let pausedContinuous: boolean = true;
+let lastSpeechTime = 0;
 
 const isSupported = (): boolean =>
   typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
@@ -34,10 +35,11 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
   const recognition = new SpeechRecognitionCtor();
 
   recognition.lang = LOCALE_MAP[language] || 'en-US';
-  recognition.continuous = true; // Always keep session alive as long as possible
-  recognition.interimResults = true; // Keep the session open longer between phrases
+  recognition.continuous = true;
+  recognition.interimResults = true;
 
   recognition.onresult = (event: SpeechRecognitionEvent) => {
+    lastSpeechTime = Date.now();
     const lastResult = event.results[event.results.length - 1];
     if (lastResult.isFinal) {
       callbacks.onResult(lastResult[0].transcript);
@@ -47,29 +49,34 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
   recognition.onstart = () => callbacks.onStart?.();
 
   recognition.onend = () => {
-    // If paused (audio playing), do NOT restart or fire onEnd — we'll resume later
     if (paused) return;
 
     if (continuous && activeRecognition === recognition) {
-      // Silently restart after a delay to avoid rapid cycling and system beeps
-      restartTimer = setTimeout(() => {
-        if (activeRecognition === recognition && !paused) {
-          try {
-            recognition.start();
-          } catch {
-            activeRecognition = null;
-            callbacks.onEnd?.();
+      // Only auto-restart if user was recently speaking (within last 30 seconds)
+      // Otherwise let it stay quiet — no beep
+      const silenceDuration = Date.now() - lastSpeechTime;
+      if (silenceDuration < 30000) {
+        restartTimer = setTimeout(() => {
+          if (activeRecognition === recognition && !paused) {
+            try {
+              recognition.start();
+            } catch {
+              activeRecognition = null;
+              callbacks.onEnd?.();
+            }
           }
-        }
-      }, 1000);
-      return;
+        }, 2000);
+        return;
+      }
+      // Long silence — stop gracefully, no beep, no restart
+      // But keep activeRecognition set so isActive() still returns true
+      // User can tap mic to restart
     }
     activeRecognition = null;
     callbacks.onEnd?.();
   };
 
   recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-    // In continuous mode, silently ignore transient errors
     if (continuous && (event.error === 'no-speech' || event.error === 'aborted')) return;
     activeRecognition = null;
     callbacks.onError?.(event.error);
@@ -80,6 +87,7 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
   pausedLanguage = language;
   pausedContinuous = continuous;
   pausedCallbacks = callbacks;
+  lastSpeechTime = Date.now();
   recognition.start();
   callbacks.onStart?.();
   return true;
@@ -92,7 +100,6 @@ const pause = () => {
     clearTimeout(restartTimer);
     restartTimer = null;
   }
-  // Stop the recognition but keep activeRecognition set so we know to resume
   try {
     activeRecognition.stop();
   } catch {
@@ -103,7 +110,6 @@ const pause = () => {
 const resume = () => {
   if (!paused) return;
   paused = false;
-  // Restart recognition with the same settings
   if (pausedCallbacks) {
     start(pausedLanguage, pausedContinuous, pausedCallbacks);
   }
