@@ -1071,7 +1071,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
         {/* ── Remote Terminals ─────────────────────────── */}
         <Box sx={{ mb: 1 }}>
-          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }>
+          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
             <TerminalIcon sx={{ fontSize: 18, mr: 0.5, verticalAlign: 'text-bottom' }} />
             Remote Terminals
           </Typography>
@@ -1226,7 +1226,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
         <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
 
         <Box sx={{ mb: 1 }}>
-          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }>
+          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
             Room Memory
           </Typography>
           <FormControlLabel
@@ -1405,7 +1405,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
         )}
 
         <Box sx={{ mb: 1 }}>
-          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }>
+          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
             AI Commands
           </Typography>
           <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', color: '#556b82', fontSize: '0.75rem' }}>
@@ -1639,7 +1639,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
         <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
 
-        <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }>
+        <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
           AI Agents ({agents.length}/3)
         </Typography>
         <Typography variant="detailText" sx={{ mb: 2, display: 'block' }}>
