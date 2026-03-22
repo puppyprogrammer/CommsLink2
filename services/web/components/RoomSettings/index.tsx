@@ -98,12 +98,6 @@ type RoomSettingsProps = {
   onDeleteRoom?: (roomName: string) => void;
 };
 
-const BROWSER_VOICES = [
-  { value: 'male', label: 'Male (Browser)' },
-  { value: 'female', label: 'Female (Browser)' },
-  { value: 'robot', label: 'Robot (Browser)' },
-];
-
 const DEFAULT_MODEL = 'grok-4-1-fast-non-reasoning';
 
 type ListItem = { text: string; locked: boolean };
@@ -456,11 +450,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   };
 
   const getVoiceLabel = (voiceId: string): string => {
-    const browser = BROWSER_VOICES.find((v) => v.value === voiceId);
-    if (browser) return browser.label;
-    const elVoice = premiumVoices.find((v) => v.voice_id === voiceId);
-    if (elVoice) return elVoice.name;
-    return voiceId;
+    const voice = premiumVoices.find((v) => v.voice_id === voiceId);
+    if (voice) return voice.name;
+    return voiceId || 'No voice';
   };
 
   const loadTemplate = (template: AgentTemplate) => {
@@ -592,13 +584,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
   const renderVoiceSelect = (value: string, onChange: (val: string) => void) => (
     <Select fullWidth size="small" value={value} onChange={(e) => onChange(e.target.value)} sx={{ mb: 1 }}>
-      <ListSubheader>Browser Voices</ListSubheader>
-      {BROWSER_VOICES.map((v) => (
-        <MenuItem key={v.value} value={v.value}>
-          {v.label}
-        </MenuItem>
-      ))}
-      {premiumVoices.length > 0 && <ListSubheader>AI Voices</ListSubheader>}
       {premiumVoices.map((v) => (
         <MenuItem key={v.voice_id} value={v.voice_id}>
           {v.name}
