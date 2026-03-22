@@ -173,9 +173,13 @@
 
 // Mobile responsive
 @media (max-width: 600px) {
+  .root {
+    height: calc(100vh - 36px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+
   .sidePanel {
     position: fixed;
-    top: 36px;
+    top: calc(36px + env(safe-area-inset-top, 0px));
     right: 0;
     bottom: 0;
     width: 100% !important;

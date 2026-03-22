@@ -35,13 +35,19 @@
   overflow: hidden;
 }
 
-// Mobile: shrink activity bar, compact header
+// Mobile: shrink activity bar, add safe area for status bar
 @media (max-width: 600px) {
+  .appBar {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
   .activityBar {
     width: 40px;
+    top: calc(36px + env(safe-area-inset-top, 0px));
   }
 
   .content {
     margin-left: 40px;
+    margin-top: calc(36px + env(safe-area-inset-top, 0px));
   }
 }

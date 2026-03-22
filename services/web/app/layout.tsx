@@ -2,13 +2,19 @@
 import React from 'react';
 
 // Node modules
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 
 // Components
 import Providers from './Providers';
 
 // Styles
 import '@/styles/globals.scss';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
 
 export const metadata: Metadata = {
   title: 'CommsLink — Voice-Controlled AI Agents for Remote Terminals',
