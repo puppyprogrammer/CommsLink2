@@ -1035,6 +1035,7 @@ const ChatPage = () => {
                 machines={panelMachines}
                 onClose={() => setTerminalPanelOpen(false)}
                 initialTab={terminalTab}
+                isCreator={rooms.some((r) => r.name === currentRoom && canManageRoom(r))}
               />
             </div>
           </>

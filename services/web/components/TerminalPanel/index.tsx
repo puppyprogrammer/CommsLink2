@@ -28,9 +28,10 @@ type Props = {
   machines: Machine[];
   onClose: () => void;
   initialTab?: 'terminal' | 'claude';
+  isCreator?: boolean;
 };
 
-const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab }) => {
+const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab, isCreator = false }) => {
   const [tab, setTab] = useState<'terminal' | 'claude'>(initialTab || 'claude');
   const [input, setInput] = useState('');
   const [terminalBusy, setTerminalBusy] = useState(false);
@@ -236,26 +237,43 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab 
         {machines.length === 0 && activeEntries.length === 0 ? (
           <div className={styles.onboarding}>
             <div className={styles.onboardingIcon}>&#128421;</div>
-            <div className={styles.onboardingTitle}>Connect a Machine</div>
-            <div className={styles.onboardingDesc}>
-              Download the CommsLink agent and run it on any machine to control it from here.
-            </div>
-            <div className={styles.downloadButtons}>
-              <a href="/api/v1/terminal/download/win" className={styles.downloadBtn}>
-                <span>&#9881;</span> Windows
-              </a>
-              <a href="/api/v1/terminal/download/linux" className={styles.downloadBtn}>
-                <span>&#128039;</span> Linux
-              </a>
-              <a href="/api/v1/terminal/download/macos" className={styles.downloadBtn}>
-                <span>&#63743;</span> macOS
-              </a>
-            </div>
-            <div className={styles.onboardingSteps}>
-              <div><span className={styles.stepNum}>1</span> Download the agent for your OS</div>
-              <div><span className={styles.stepNum}>2</span> Open Room Settings and click &quot;Set Up New Terminal&quot;</div>
-              <div><span className={styles.stepNum}>3</span> Run the agent with the setup code provided</div>
-            </div>
+            {isCreator ? (
+              <>
+                <div className={styles.onboardingTitle}>Connect a Machine</div>
+                <div className={styles.onboardingDesc}>
+                  Download the CommsLink agent and run it on any machine to control it from here.
+                </div>
+                <div className={styles.downloadButtons}>
+                  <a href="/api/v1/terminal/download/win" className={styles.downloadBtn}>
+                    <span>&#9881;</span> Windows
+                  </a>
+                  <a href="/api/v1/terminal/download/linux" className={styles.downloadBtn}>
+                    <span>&#128039;</span> Linux
+                  </a>
+                  <a href="/api/v1/terminal/download/macos" className={styles.downloadBtn}>
+                    <span>&#63743;</span> macOS
+                  </a>
+                </div>
+                <div className={styles.onboardingSteps}>
+                  <div><span className={styles.stepNum}>1</span> Download the agent for your OS</div>
+                  <div><span className={styles.stepNum}>2</span> Open Room Settings and click &quot;Set Up New Terminal&quot;</div>
+                  <div><span className={styles.stepNum}>3</span> Run the agent with the setup code provided</div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={styles.onboardingTitle}>Remote Terminals</div>
+                <div className={styles.onboardingDesc}>
+                  The room creator can connect machines to this room. Once a machine is connected,
+                  you can talk to AI agents who will run commands on your behalf.
+                </div>
+                <div className={styles.onboardingSteps}>
+                  <div><span className={styles.stepNum}>1</span> Ask the room creator to set up a terminal agent</div>
+                  <div><span className={styles.stepNum}>2</span> Mention an AI agent by name in chat</div>
+                  <div><span className={styles.stepNum}>3</span> The AI will execute commands and report back</div>
+                </div>
+              </>
+            )}
           </div>
         ) : activeEntries.length === 0 ? (
           <div className={styles.empty}>
@@ -272,8 +290,8 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab 
         {tab === 'terminal' && terminalBusy && <div className={styles.systemLine}>Running...</div>}
       </div>
 
-      {/* Input area — only for terminal tab */}
-      {tab === 'terminal' && (
+      {/* Input area — only for terminal tab, creator only */}
+      {tab === 'terminal' && isCreator && (
         <div className={styles.inputArea}>
           <span className={styles.prompt}>$</span>
           <input
