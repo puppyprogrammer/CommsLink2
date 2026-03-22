@@ -346,18 +346,20 @@ const ChatPage = () => {
       socket.connect();
     }
 
-    // If redirected from invite link, switch to the invited room after initial join
+    // If redirected from invite link, switch to the invited room once connected
     const urlParams = new URLSearchParams(window.location.search);
-    const joinRoom = urlParams.get('joinRoom');
-    if (joinRoom) {
-      // Wait for initial room_joined, then switch to the invited room
-      const switchAfterInit = () => {
-        socket.emit('switch_room', { roomName: joinRoom.toLowerCase() });
-        // Clean up the URL
-        window.history.replaceState({}, '', '/chat');
-      };
-      // Small delay to let initRoom() complete first
-      setTimeout(switchAfterInit, 500);
+    const joinRoomParam = urlParams.get('joinRoom');
+    if (joinRoomParam) {
+      const targetRoom = joinRoomParam.toLowerCase();
+      window.history.replaceState({}, '', '/chat');
+      // Emit switch immediately — the server will join us to the right room
+      // Use a connect listener in case socket isn't connected yet
+      const doSwitch = () => socket.emit('switch_room', { roomName: targetRoom });
+      if (socket.connected) {
+        doSwitch();
+      } else {
+        socket.once('connect', doSwitch);
+      }
     }
 
     return () => {
