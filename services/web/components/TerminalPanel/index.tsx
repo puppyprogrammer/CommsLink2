@@ -38,10 +38,10 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab,
   const [mobileAgentRunning, setMobileAgentRunning] = useState(false);
 
   // Check if running inside native app
-  const isNativeApp = typeof window !== 'undefined' && (window as Record<string, unknown>).__nativeTerminalAgent;
+  const isNativeApp = typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).__nativeTerminalAgent;
 
   const toggleMobileAgent = useCallback(() => {
-    const native = (window as Record<string, unknown>).__nativeTerminalAgent as { start: (url: string, token: string, name: string) => void; stop: () => void } | undefined;
+    const native = (window as unknown as Record<string, unknown>).__nativeTerminalAgent as { start: (url: string, token: string, name: string) => void; stop: () => void } | undefined;
     if (!native) return;
 
     if (mobileAgentRunning) {
