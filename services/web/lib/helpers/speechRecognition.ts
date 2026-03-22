@@ -30,7 +30,6 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
   recognition.lang = LOCALE_MAP[language] || 'en-US';
   recognition.continuous = true; // Always keep session alive as long as possible
   recognition.interimResults = true; // Keep the session open longer between phrases
-  recognition.maxAlternatives = 1;
 
   recognition.onresult = (event: SpeechRecognitionEvent) => {
     const lastResult = event.results[event.results.length - 1];
