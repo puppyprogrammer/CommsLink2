@@ -938,6 +938,25 @@ const ChatPage = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={preferences.volume}
+                  onChange={(e) => updatePreference('volume', parseFloat(e.target.value))}
+                  title={`Volume: ${Math.round(preferences.volume * 100)}%`}
+                  style={{
+                    width: 48,
+                    height: 3,
+                    appearance: 'none',
+                    background: 'rgba(77,216,208,0.25)',
+                    borderRadius: 2,
+                    outline: 'none',
+                    cursor: 'pointer',
+                    accentColor: '#4dd8d0',
+                  }}
+                />
                 {audioPlaying && (
                   <IconButton size="small" color="error" onClick={stopAllAudio} title="Stop Audio">
                     <StopCircleIcon sx={{ fontSize: 18 }} />
