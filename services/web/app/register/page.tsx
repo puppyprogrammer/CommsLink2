@@ -25,8 +25,6 @@ const features = [
   { emoji: '🤖', label: 'AI Agents' },
   { emoji: '🎙️', label: 'Voice Chat' },
   { emoji: '💻', label: 'Remote Terminals' },
-  { emoji: '🔍', label: 'AI Search' },
-  { emoji: '📋', label: 'Forums' },
 ];
 
 const RegisterPage = () => {
