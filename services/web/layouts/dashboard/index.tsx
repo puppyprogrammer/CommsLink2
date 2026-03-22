@@ -11,7 +11,6 @@ import { Box, AppBar, Toolbar, Typography, IconButton, Tooltip } from '@mui/mate
 
 // Material UI icons
 import ChatIcon from '@mui/icons-material/Chat';
-import PersonIcon from '@mui/icons-material/Person';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LogoutIcon from '@mui/icons-material/Logout';
 
@@ -95,20 +94,21 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
               {creditBalance.toLocaleString()}c
             </Typography>
           )}
-          <Typography variant="detailText" sx={{
-            mr: 1, fontSize: '0.75rem',
-            display: { xs: 'none', sm: 'block' },
-          }}>
+          <Typography
+            variant="detailText"
+            onClick={() => router.push('/profile')}
+            sx={{
+              mr: 1,
+              fontSize: '0.75rem',
+              cursor: 'pointer',
+              color: '#858585',
+              '&:hover': { color: '#4dd8d0' },
+              display: { xs: 'none', sm: 'block' },
+            }}
+            title="Profile"
+          >
             {session?.user.username}
           </Typography>
-          <IconButton
-            size="small"
-            onClick={() => router.push('/profile')}
-            title="Profile"
-            sx={{ mr: 0.5, color: '#858585' }}
-          >
-            <PersonIcon sx={{ fontSize: 18 }} />
-          </IconButton>
           <IconButton size="small" onClick={handleLogout} title="Logout" sx={{ color: '#858585' }}>
             <LogoutIcon sx={{ fontSize: 18 }} />
           </IconButton>

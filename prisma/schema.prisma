@@ -306,3 +306,16 @@ model agent_template {
   max_tokens          Int      @default(1500)
   created_at          DateTime @default(now())
 }
+
+model audit_log {
+  id         String   @id @default(uuid())
+  event      String
+  username   String
+  ip_address String?
+  details    String?  @db.Text
+  created_at DateTime @default(now())
+
+  @@index([event])
+  @@index([username])
+  @@index([created_at])
+}

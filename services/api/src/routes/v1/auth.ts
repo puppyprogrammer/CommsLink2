@@ -5,6 +5,7 @@ import tracer from '../../../../../core/lib/tracer';
 import loginAction from '../../../../../core/actions/auth/loginAction';
 import registerAction from '../../../../../core/actions/auth/registerAction';
 import { checkRateLimit } from '../../../../../core/helpers/rateLimiter';
+import Data from '../../../../../core/data';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 
@@ -40,7 +41,13 @@ const authRoutes: ServerRoute[] = [
         }
 
         const { username, password } = request.payload as { username: string; password: string };
-        return registerAction(username, password);
+        const result = await registerAction(username, password);
+        Data.auditLog.create({
+          event: 'account_created',
+          username,
+          ip_address: ip,
+        }).catch(console.error);
+        return result;
       }),
   },
   {

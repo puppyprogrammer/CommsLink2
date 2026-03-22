@@ -53,6 +53,26 @@ const addCredits = async (id: string, amount: number): Promise<user> =>
 const updateLastRoom = async (id: string, roomId: string | null): Promise<user> =>
   prisma.user.update({ where: { id }, data: { last_room_id: roomId } });
 
+/** Hard-delete a user and all associated data. */
+const deleteAccount = async (id: string): Promise<void> => {
+  await prisma.$transaction([
+    prisma.credit_usage_log.deleteMany({ where: { user_id: id } }),
+    prisma.credit_transaction.deleteMany({ where: { user_id: id } }),
+    prisma.payment_transaction.deleteMany({ where: { user_id: id } }),
+    prisma.machine_permission.deleteMany({ where: { machine: { owner_id: id } } }),
+    prisma.machine.deleteMany({ where: { owner_id: id } }),
+    prisma.claude_log.deleteMany({ where: { user_id: id } }),
+    prisma.panel_log.deleteMany({ where: { user_id: id } }),
+    prisma.memory_summary.deleteMany({ where: { room: { created_by: id } } }),
+    prisma.llm_agent.deleteMany({ where: { creator_id: id } }),
+    prisma.room_member.deleteMany({ where: { user_id: id } }),
+    prisma.room_invite.deleteMany({ where: { created_by: id } }),
+    prisma.message.deleteMany({ where: { author_id: id } }),
+    prisma.room.deleteMany({ where: { created_by: id } }),
+    prisma.user.delete({ where: { id } }),
+  ]);
+};
+
 export default {
   create,
   findById,
@@ -64,4 +84,5 @@ export default {
   deductCredits,
   addCredits,
   updateLastRoom,
+  deleteAccount,
 };

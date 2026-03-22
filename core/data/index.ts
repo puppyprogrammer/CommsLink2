@@ -14,7 +14,8 @@ import roomInvite from './roomInvite';
 import paymentTransaction from './paymentTransaction';
 import panelLog from './panelLog';
 import agentTemplate from './agentTemplate';
+import auditLog from './auditLog';
 
-const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate };
+const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog };
 
 export default Data;
