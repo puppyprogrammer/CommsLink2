@@ -223,6 +223,17 @@
   }
 }
 
+.downloadBtnActive {
+  background: rgba(244, 71, 71, 0.12) !important;
+  border-color: rgba(244, 71, 71, 0.3) !important;
+  color: #f44 !important;
+
+  &:hover {
+    background: rgba(244, 71, 71, 0.2) !important;
+    border-color: rgba(244, 71, 71, 0.5) !important;
+  }
+}
+
 .onboardingSteps {
   display: flex;
   flex-direction: column;

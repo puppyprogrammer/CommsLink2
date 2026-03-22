@@ -7,6 +7,7 @@ import TerminalIcon from '@mui/icons-material/Terminal';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import type { Socket } from 'socket.io-client';
+import useSession from '@/lib/session/useSession';
 import styles from './TerminalPanel.module.scss';
 
 type Machine = {
@@ -32,7 +33,25 @@ type Props = {
 };
 
 const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab, isCreator = false }) => {
+  const { session } = useSession();
   const [tab, setTab] = useState<'terminal' | 'claude'>(initialTab || 'claude');
+  const [mobileAgentRunning, setMobileAgentRunning] = useState(false);
+
+  // Check if running inside native app
+  const isNativeApp = typeof window !== 'undefined' && (window as Record<string, unknown>).__nativeTerminalAgent;
+
+  const toggleMobileAgent = useCallback(() => {
+    const native = (window as Record<string, unknown>).__nativeTerminalAgent as { start: (url: string, token: string, name: string) => void; stop: () => void } | undefined;
+    if (!native) return;
+
+    if (mobileAgentRunning) {
+      native.stop();
+      setMobileAgentRunning(false);
+    } else {
+      native.start('https://commslink.net', session?.token || '', `android-${Date.now().toString(36)}`);
+      setMobileAgentRunning(true);
+    }
+  }, [mobileAgentRunning, session?.token]);
   const [input, setInput] = useState('');
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState<string>('');
@@ -254,10 +273,29 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab,
                     <span>&#63743;</span> macOS
                   </a>
                 </div>
+                {isNativeApp && (
+                  <button
+                    className={`${styles.downloadBtn} ${mobileAgentRunning ? styles.downloadBtnActive : ''}`}
+                    onClick={toggleMobileAgent}
+                    style={{ marginTop: 4, width: '100%', justifyContent: 'center' }}
+                  >
+                    {mobileAgentRunning ? '&#9724; Stop Sharing This Phone' : '&#128241; Share This Phone as Terminal'}
+                  </button>
+                )}
                 <div className={styles.onboardingSteps}>
-                  <div><span className={styles.stepNum}>1</span> Download the agent for your OS</div>
-                  <div><span className={styles.stepNum}>2</span> Open Room Settings and click &quot;Set Up New Terminal&quot;</div>
-                  <div><span className={styles.stepNum}>3</span> Run the agent with the setup code provided</div>
+                  {isNativeApp ? (
+                    <>
+                      <div><span className={styles.stepNum}>1</span> Tap &quot;Share This Phone&quot; above to connect</div>
+                      <div><span className={styles.stepNum}>2</span> AI agents can now run commands on this device</div>
+                      <div><span className={styles.stepNum}>3</span> Or download the agent for a desktop machine below</div>
+                    </>
+                  ) : (
+                    <>
+                      <div><span className={styles.stepNum}>1</span> Download the agent for your OS</div>
+                      <div><span className={styles.stepNum}>2</span> Open Room Settings and click &quot;Set Up New Terminal&quot;</div>
+                      <div><span className={styles.stepNum}>3</span> Run the agent with the setup code provided</div>
+                    </>
+                  )}
                 </div>
               </>
             ) : (
