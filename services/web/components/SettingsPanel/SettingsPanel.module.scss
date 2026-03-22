@@ -27,19 +27,16 @@
   display: block;
 }
 
-// Mobile: settings panel overlays full width
 @media (max-width: 600px) {
   .root {
     position: fixed;
     top: calc(36px + env(safe-area-inset-top, 0px));
+    left: 40px;
     right: 0;
     bottom: 0;
-    width: 100%;
+    width: auto;
     z-index: 1100;
     background-color: $background-paper;
-  }
-
-  .section {
-    padding: 0.75rem 0.75rem;
+    border-left: none;
   }
 }
