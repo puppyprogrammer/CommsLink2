@@ -36,6 +36,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import ComputerIcon from '@mui/icons-material/Computer';
 import CircleIcon from '@mui/icons-material/Circle';
 import BlockIcon from '@mui/icons-material/Block';
+import CloseIcon from '@mui/icons-material/Close';
 import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
 import PeopleIcon from '@mui/icons-material/People';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -1004,9 +1005,30 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   );
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle>Room Settings — {roomName}</DialogTitle>
-      <DialogContent>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      sx={{
+        '& .MuiDialog-paper': {
+          '@media (max-width: 600px)': {
+            margin: 0,
+            maxHeight: '100%',
+            height: '100%',
+            maxWidth: '100%',
+            borderRadius: 0,
+          },
+        },
+      }}
+    >
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
+        <Typography variant="h6" sx={{ fontSize: '1rem' }}>{roomName}</Typography>
+        <IconButton size="small" onClick={onClose} sx={{ color: '#888' }}>
+          <CloseIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent sx={{ px: { xs: 1.5, sm: 3 } }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -1027,7 +1049,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           />
         </Box>
 
-        <Divider sx={{ mb: 2 }} />
+        <Divider sx={{ my: 1.5 }} />
 
         {/* ── Remote Terminals ─────────────────────────── */}
         <Box sx={{ mb: 2 }}>
@@ -1040,7 +1062,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </Typography>
 
           {roomMachines.length > 0 && (
-            <Box sx={{ mb: 1, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
+            <Box sx={{ mb: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5 }}>
               {roomMachines.map((perm) => (
                 <Paper
                   key={perm.id}
@@ -1113,7 +1135,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                 <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', color: 'text.secondary' }}>
                   Your machines not yet in this room:
                 </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5 }}>
                   {unlinked.map((m) => (
                     <Paper
                       key={m.id}
@@ -1183,7 +1205,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </Button>
         </Box>
 
-        <Divider sx={{ mb: 2 }} />
+        <Divider sx={{ my: 1.5 }} />
 
         <Box sx={{ mb: 2 }}>
           <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>
@@ -1211,7 +1233,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
         {memoryEnabled && summaries.length > 0 && (
           <>
-            <Divider sx={{ mb: 2 }} />
+            <Divider sx={{ my: 1.5 }} />
             <Box sx={{ mb: 2 }}>
               <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', fontWeight: 600 }}>
                 Memory Summaries
@@ -1371,7 +1393,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           <Typography variant="detailText" sx={{ mb: 1, display: 'block', color: 'text.secondary' }}>
             Toggle which commands AI agents can use. Memory commands also work as user chat commands.
           </Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5 }}>
             {[
               ...(memoryEnabled
                 ? [
@@ -1559,7 +1581,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </Box>
 
           {/* Always-on commands (informational) */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0.5 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5 }}>
             {[
               {
                 label: 'List Users — See who is online in this room',
@@ -1597,7 +1619,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </Box>
         </Box>
 
-        <Divider sx={{ mb: 2 }} />
+        <Divider sx={{ my: 1.5 }} />
 
         <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>
           AI Agents ({agents.length}/3)
