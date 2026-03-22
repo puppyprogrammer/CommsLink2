@@ -231,6 +231,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
   // Add agent dialog
   const [showAddAgent, setShowAddAgent] = useState(false);
+  const [aiCommandsExpanded, setAiCommandsExpanded] = useState(false);
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
 
   // Memory tree collapsed state
@@ -1069,6 +1070,202 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
         <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
 
+        {/* ── Room Members ─────────────────────────── */}
+        {canManageRoom && roomMembers.length > 0 && (
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <PeopleIcon sx={{ fontSize: 16 }} /> Members ({roomMembers.length})
+            </Typography>
+            {roomMembers.map((member) => (
+              <Box
+                key={member.userId}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  py: 0.5,
+                  px: 1,
+                  mb: 0.5,
+                  borderRadius: 1,
+                  bgcolor: member.role === 'banned' ? 'rgba(255,0,0,0.08)' : 'rgba(255,255,255,0.03)',
+                }}
+              >
+                <Typography variant="body2" sx={{ color: member.role === 'banned' ? '#f44336' : 'inherit' }}>
+                  {member.username} {member.role === 'banned' ? '(banned)' : ''}
+                </Typography>
+                <Box>
+                  {member.role === 'banned' ? (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => {
+                        if (!session?.token) return;
+                        const socket = getSocket(session.token);
+                        socket.emit('unban_member', { roomName, userId: member.userId });
+                        setRoomMembers((prev) => prev.filter((m) => m.userId !== member.userId));
+                      }}
+                      sx={{ minWidth: 0, fontSize: 11 }}
+                    >
+                      Unban
+                    </Button>
+                  ) : (
+                    <>
+                      <IconButton
+                        size="small"
+                        title="Kick"
+                        onClick={() => {
+                          if (!session?.token) return;
+                          const socket = getSocket(session.token);
+                          socket.emit('kick_member', { roomName, userId: member.userId });
+                          setRoomMembers((prev) => prev.filter((m) => m.userId !== member.userId));
+                        }}
+                      >
+                        <PersonRemoveIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        title="Ban"
+                        onClick={() => {
+                          if (!session?.token) return;
+                          if (!confirm(`Ban ${member.username} from this room?`)) return;
+                          const socket = getSocket(session.token);
+                          socket.emit('ban_member', { roomName, userId: member.userId });
+                          setRoomMembers((prev) =>
+                            prev.map((m) => (m.userId === member.userId ? { ...m, role: 'banned' } : m)),
+                          );
+                        }}
+                      >
+                        <BlockIcon sx={{ fontSize: 16, color: '#f44336' }} />
+                      </IconButton>
+                    </>
+                  )}
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        {/* ── Invite Link ─────────────────────────── */}
+        {canManageRoom && roomName.toLowerCase() !== 'public' && (
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <LinkIcon sx={{ fontSize: 16 }} /> Invite Link
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<LinkIcon sx={{ fontSize: 14 }} />}
+                onClick={() => {
+                  if (!session?.token) return;
+                  const socket = getSocket(session.token);
+                  socket.emit('create_invite', { roomName });
+                }}
+              >
+                Create Invite Link
+              </Button>
+              {inviteLink && (
+                <IconButton
+                  size="small"
+                  title="Copy invite link"
+                  onClick={() => {
+                    navigator.clipboard.writeText(inviteLink).then(() => toast('Copied!'));
+                  }}
+                >
+                  <ContentCopyIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              )}
+            </Box>
+            {inviteLink && (
+              <Typography
+                variant="caption"
+                sx={{ mt: 0.5, display: 'block', color: 'text.secondary', wordBreak: 'break-all' }}
+              >
+                {inviteLink}
+              </Typography>
+            )}
+          </Box>
+        )}
+
+        <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
+
+        {/* ── AI Agents ─────────────────────────── */}
+        <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
+          AI Agents ({agents.length}/3)
+        </Typography>
+        <Typography variant="detailText" sx={{ mb: 2, display: 'block' }}>
+          Mention an agent&apos;s name in chat to trigger a response.
+        </Typography>
+
+        {agents.map((agent) => {
+          const instructions = parseList(agent.system_instructions);
+          const memories = parseList(agent.memories);
+          const autopilotPrompts = parseList(agent.autopilot_prompts);
+          let taskCount = 0;
+          try {
+            const parsed = JSON.parse(agent.tasks || '[]');
+            if (Array.isArray(parsed))
+              taskCount = parsed.filter((t: { status?: string }) => t.status === 'pending').length;
+          } catch {
+            /* ignore */
+          }
+          return (
+            <Paper
+              key={agent.id}
+              sx={{
+                p: 1.5,
+                mb: 0.75,
+                bgcolor: 'rgba(77, 216, 208, 0.03)',
+                border: '1px solid rgba(77, 216, 208, 0.1)',
+                borderRadius: 1.5,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <SmartToyIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {agent.name}
+                  </Typography>
+                  <Typography variant="detailText">({getVoiceLabel(agent.voice_id)})</Typography>
+                </Box>
+                <Box>
+                  <IconButton size="small" onClick={() => startEdit(agent)}>
+                    <EditIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                  <IconButton size="small" color="error" onClick={() => handleDelete(agent.id)}>
+                    <DeleteIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Box>
+              </Box>
+              <Typography variant="detailText" sx={{ mt: 0.5, display: 'block', color: 'text.secondary' }}>
+                Model: {getModelLabel(agent.model)}
+                {agent.autopilot_enabled &&
+                  ` | Autopilot: every ${agent.autopilot_interval >= 60 ? `${Math.round(agent.autopilot_interval / 60)}m` : `${agent.autopilot_interval}s`}`}
+              </Typography>
+              <Typography variant="detailText" sx={{ display: 'block', color: 'text.secondary' }}>
+                {`${instructions.length} instruction${instructions.length !== 1 ? 's' : ''}, `}
+                {`${memories.length} memor${memories.length !== 1 ? 'ies' : 'y'}, `}
+                {`${autopilotPrompts.length} autopilot prompt${autopilotPrompts.length !== 1 ? 's' : ''}`}
+                {taskCount > 0 && `, ${taskCount} pending task${taskCount !== 1 ? 's' : ''}`}
+              </Typography>
+            </Paper>
+          );
+        })}
+
+        {agents.length < 3 && (
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setShowAddAgent(true)}
+            sx={{ mt: 1 }}
+            startIcon={<AddIcon />}
+          >
+            Add Agent
+          </Button>
+        )}
+
+        <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
+
         {/* ── Remote Terminals ─────────────────────────── */}
         <Box sx={{ mb: 1 }}>
           <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
@@ -1225,6 +1422,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
         <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
 
+        {/* ── Room Memory ─────────────────────────── */}
         <Box sx={{ mb: 1 }}>
           <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
             Room Memory
@@ -1404,431 +1602,264 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </>
         )}
 
+        {/* ── AI Commands (collapsible) ─────────────────────────── */}
         <Box sx={{ mb: 1 }}>
-          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
+          <Typography
+            variant="h6"
+            onClick={() => setAiCommandsExpanded(!aiCommandsExpanded)}
+            sx={{
+              mb: 0.5,
+              fontSize: '0.85rem',
+              color: '#4dd8d0',
+              fontWeight: 600,
+              letterSpacing: 0.5,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              userSelect: 'none',
+            }}
+          >
             AI Commands
+            {aiCommandsExpanded ? (
+              <ExpandLessIcon sx={{ fontSize: 18, ml: 0.5 }} />
+            ) : (
+              <ExpandMoreIcon sx={{ fontSize: 18, ml: 0.5 }} />
+            )}
           </Typography>
-          <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', color: '#556b82', fontSize: '0.75rem' }}>
-            Toggle which commands AI agents can use. Memory commands also work as user chat commands.
-          </Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5 }}>
-            {[
-              ...(memoryEnabled
-                ? [
-                    {
-                      label: '/memory — View master summary',
-                      desc: 'AI: automatically included in prompt | User: /memory',
-                      checked: cmdMemory,
-                      key: 'cmdMemory' as const,
-                      set: setCmdMemory,
-                    },
-                    {
-                      label: '/recall [ref] — Retrieve a specific summary',
-                      desc: 'AI: {recall ref_name} | User: /recall l1-20260309-001',
-                      checked: cmdRecall,
-                      key: 'cmdRecall' as const,
-                      set: setCmdRecall,
-                    },
-                    {
-                      label: '/sql [query] — Query room messages',
-                      desc: 'AI: {sql SELECT ...} | User: /sql SELECT username, content FROM message LIMIT 10',
-                      checked: cmdSql,
-                      key: 'cmdSql' as const,
-                      set: setCmdSql,
-                    },
-                  ]
-                : []),
-              {
-                label: 'Self-Modification — Memories, instructions, prompts, plan, tasks',
-                desc: 'AI: {add_memory}, {remove_memory}, {add_instruction}, {remove_instruction}, {add_autopilot}, {remove_autopilot}, {set_plan}, {clear_plan}, {add_task}, {complete_task}, {update_task}, {remove_task}',
-                checked: cmdSelfmod,
-                key: 'cmdSelfmod' as const,
-                set: setCmdSelfmod,
-              },
-              {
-                label: 'Autopilot Control — Toggle and set interval',
-                desc: 'AI: {toggle_autopilot on|off}, {set_autopilot_interval N} (seconds, min 6)',
-                checked: cmdAutopilot,
-                key: 'cmdAutopilot' as const,
-                set: setCmdAutopilot,
-              },
-              {
-                label: 'AI Mentions — Agents respond to each other',
-                desc: 'When an agent mentions another agent by name, that agent responds (max 5 exchanges)',
-                checked: cmdMentions,
-                key: 'cmdMentions' as const,
-                set: setCmdMentions,
-              },
-              {
-                label: 'Remote Terminal — Execute commands on connected machines',
-                desc: 'AI: {terminal machine_name command} | Dangerous commands require creator approval',
-                checked: cmdTerminal,
-                key: 'cmdTerminal' as const,
-                set: setCmdTerminal,
-              },
-              {
-                label: 'Claude Code — Persistent AI coding sessions on remote machines',
-                desc: 'AI: {claude machine_name prompt} | Sessions persist across messages',
-                checked: cmdClaude,
-                key: 'cmdClaude' as const,
-                set: setCmdClaude,
-              },
-              {
-                label: 'Token Budget — AI adjusts own response length',
-                desc: 'AI: {set_tokens N} | Lets agents increase tokens for long prompts and lower them for quick replies',
-                checked: cmdTokens,
-                key: 'cmdTokens' as const,
-                set: setCmdTokens,
-              },
-              {
-                label: 'AI Moderation — Kick and ban users',
-                desc: 'AI: {kick username}, {ban username}, {unban username} | AI can moderate disruptive users',
-                checked: cmdModeration,
-                key: 'cmdModeration' as const,
-                set: setCmdModeration,
-              },
-              {
-                label: 'Internal Thought — Silent reasoning without voice',
-                desc: 'AI: {think reasoning here} | Logs thought as system message, no TTS generated. Saves voice credits.',
-                checked: cmdThink,
-                key: 'cmdThink' as const,
-                set: setCmdThink,
-              },
-              {
-                label: 'Effort Level — Switch between reasoning models',
-                desc: 'AI: {set_effort low|high} | Low = fast non-reasoning, High = thorough reasoning model',
-                checked: cmdEffort,
-                key: 'cmdEffort' as const,
-                set: setCmdEffort,
-              },
-              {
-                label: 'Claude Audit Log — View recent Claude activity on machines',
-                desc: 'AI: {audit machine_name} | Shows last 10 Claude interactions for a machine owned by the creator',
-                checked: cmdAudit,
-                key: 'cmdAudit' as const,
-                set: setCmdAudit,
-              },
-              {
-                label: 'Extended Thinking — AI chains multiple thought loops',
-                desc: 'AI: {continue} | Lets agents request additional thinking loops before responding (up to max loops setting)',
-                checked: cmdContinue,
-                key: 'cmdContinue' as const,
-                set: setCmdContinue,
-              },
-              {
-                label: 'Intent Coherence — Subconscious alignment check',
-                desc: 'Periodically evaluates whether the AI is staying on-track with its goals. Injects coherence score into prompts.',
-                checked: cmdIntentCoherence,
-                key: 'cmdIntentCoherence' as const,
-                set: setCmdIntentCoherence,
-              },
-              {
-                label: 'Memory Coherence — Subconscious memory health check',
-                desc: 'Periodically evaluates AI memory quality and consistency. Injects coherence score into prompts.',
-                checked: cmdMemoryCoherence,
-                key: 'cmdMemoryCoherence' as const,
-                set: setCmdMemoryCoherence,
-              },
-            ].map((cmd) => (
-              <Box key={cmd.key}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={cmd.checked}
-                      onChange={(e) => {
-                        cmd.set(e.target.checked);
-                        if (!session?.token) return;
-                        const socket = getSocket(session.token);
-                        socket.emit('update_room_commands', { roomName, [cmd.key]: e.target.checked });
-                      }}
-                      size="small"
-                      sx={{ p: 0.25 }}
+          {aiCommandsExpanded && (
+            <>
+              <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', color: '#556b82', fontSize: '0.75rem' }}>
+                Toggle which commands AI agents can use. Memory commands also work as user chat commands.
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5 }}>
+                {[
+                  ...(memoryEnabled
+                    ? [
+                        {
+                          label: '/memory — View master summary',
+                          desc: 'AI: automatically included in prompt | User: /memory',
+                          checked: cmdMemory,
+                          key: 'cmdMemory' as const,
+                          set: setCmdMemory,
+                        },
+                        {
+                          label: '/recall [ref] — Retrieve a specific summary',
+                          desc: 'AI: {recall ref_name} | User: /recall l1-20260309-001',
+                          checked: cmdRecall,
+                          key: 'cmdRecall' as const,
+                          set: setCmdRecall,
+                        },
+                        {
+                          label: '/sql [query] — Query room messages',
+                          desc: 'AI: {sql SELECT ...} | User: /sql SELECT username, content FROM message LIMIT 10',
+                          checked: cmdSql,
+                          key: 'cmdSql' as const,
+                          set: setCmdSql,
+                        },
+                      ]
+                    : []),
+                  {
+                    label: 'Self-Modification — Memories, instructions, prompts, plan, tasks',
+                    desc: 'AI: {add_memory}, {remove_memory}, {add_instruction}, {remove_instruction}, {add_autopilot}, {remove_autopilot}, {set_plan}, {clear_plan}, {add_task}, {complete_task}, {update_task}, {remove_task}',
+                    checked: cmdSelfmod,
+                    key: 'cmdSelfmod' as const,
+                    set: setCmdSelfmod,
+                  },
+                  {
+                    label: 'Autopilot Control — Toggle and set interval',
+                    desc: 'AI: {toggle_autopilot on|off}, {set_autopilot_interval N} (seconds, min 6)',
+                    checked: cmdAutopilot,
+                    key: 'cmdAutopilot' as const,
+                    set: setCmdAutopilot,
+                  },
+                  {
+                    label: 'AI Mentions — Agents respond to each other',
+                    desc: 'When an agent mentions another agent by name, that agent responds (max 5 exchanges)',
+                    checked: cmdMentions,
+                    key: 'cmdMentions' as const,
+                    set: setCmdMentions,
+                  },
+                  {
+                    label: 'Remote Terminal — Execute commands on connected machines',
+                    desc: 'AI: {terminal machine_name command} | Dangerous commands require creator approval',
+                    checked: cmdTerminal,
+                    key: 'cmdTerminal' as const,
+                    set: setCmdTerminal,
+                  },
+                  {
+                    label: 'Claude Code — Persistent AI coding sessions on remote machines',
+                    desc: 'AI: {claude machine_name prompt} | Sessions persist across messages',
+                    checked: cmdClaude,
+                    key: 'cmdClaude' as const,
+                    set: setCmdClaude,
+                  },
+                  {
+                    label: 'Token Budget — AI adjusts own response length',
+                    desc: 'AI: {set_tokens N} | Lets agents increase tokens for long prompts and lower them for quick replies',
+                    checked: cmdTokens,
+                    key: 'cmdTokens' as const,
+                    set: setCmdTokens,
+                  },
+                  {
+                    label: 'AI Moderation — Kick and ban users',
+                    desc: 'AI: {kick username}, {ban username}, {unban username} | AI can moderate disruptive users',
+                    checked: cmdModeration,
+                    key: 'cmdModeration' as const,
+                    set: setCmdModeration,
+                  },
+                  {
+                    label: 'Internal Thought — Silent reasoning without voice',
+                    desc: 'AI: {think reasoning here} | Logs thought as system message, no TTS generated. Saves voice credits.',
+                    checked: cmdThink,
+                    key: 'cmdThink' as const,
+                    set: setCmdThink,
+                  },
+                  {
+                    label: 'Effort Level — Switch between reasoning models',
+                    desc: 'AI: {set_effort low|high} | Low = fast non-reasoning, High = thorough reasoning model',
+                    checked: cmdEffort,
+                    key: 'cmdEffort' as const,
+                    set: setCmdEffort,
+                  },
+                  {
+                    label: 'Claude Audit Log — View recent Claude activity on machines',
+                    desc: 'AI: {audit machine_name} | Shows last 10 Claude interactions for a machine owned by the creator',
+                    checked: cmdAudit,
+                    key: 'cmdAudit' as const,
+                    set: setCmdAudit,
+                  },
+                  {
+                    label: 'Extended Thinking — AI chains multiple thought loops',
+                    desc: 'AI: {continue} | Lets agents request additional thinking loops before responding (up to max loops setting)',
+                    checked: cmdContinue,
+                    key: 'cmdContinue' as const,
+                    set: setCmdContinue,
+                  },
+                  {
+                    label: 'Intent Coherence — Subconscious alignment check',
+                    desc: 'Periodically evaluates whether the AI is staying on-track with its goals. Injects coherence score into prompts.',
+                    checked: cmdIntentCoherence,
+                    key: 'cmdIntentCoherence' as const,
+                    set: setCmdIntentCoherence,
+                  },
+                  {
+                    label: 'Memory Coherence — Subconscious memory health check',
+                    desc: 'Periodically evaluates AI memory quality and consistency. Injects coherence score into prompts.',
+                    checked: cmdMemoryCoherence,
+                    key: 'cmdMemoryCoherence' as const,
+                    set: setCmdMemoryCoherence,
+                  },
+                ].map((cmd) => (
+                  <Box key={cmd.key}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={cmd.checked}
+                          onChange={(e) => {
+                            cmd.set(e.target.checked);
+                            if (!session?.token) return;
+                            const socket = getSocket(session.token);
+                            socket.emit('update_room_commands', { roomName, [cmd.key]: e.target.checked });
+                          }}
+                          size="small"
+                          sx={{ p: 0.25 }}
+                        />
+                      }
+                      label={
+                        <Box>
+                          <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                            {cmd.label}
+                          </Typography>
+                          <Typography
+                            variant="detailText"
+                            sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
+                          >
+                            {cmd.desc}
+                          </Typography>
+                        </Box>
+                      }
+                      sx={{ m: 0, alignItems: 'flex-start' }}
                     />
-                  }
-                  label={
-                    <Box>
-                      <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-                        {cmd.label}
-                      </Typography>
-                      <Typography
-                        variant="detailText"
-                        sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
-                      >
-                        {cmd.desc}
-                      </Typography>
-                    </Box>
-                  }
-                  sx={{ m: 0, alignItems: 'flex-start' }}
+                  </Box>
+                ))}
+              </Box>
+
+              {/* Always-on commands (informational) */}
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5, mt: 0.5 }}>
+                {[
+                  {
+                    label: 'List Users — See who is online in this room',
+                    desc: 'AI: {list_users} | User: /users',
+                  },
+                  {
+                    label: "Alarm — Trigger a loud alarm on a specific user's device",
+                    desc: 'AI: {alarm username message}',
+                  },
+                  {
+                    label: "Volume — Set a user's volume level",
+                    desc: 'AI: {volume 0.0-1.0}',
+                  },
+                ].map((cmd) => (
+                  <Box key={cmd.label}>
+                    <FormControlLabel
+                      control={<Checkbox checked disabled size="small" sx={{ p: 0.25 }} />}
+                      label={
+                        <Box>
+                          <Typography variant="detailText" sx={{ fontWeight: 600, opacity: 0.7, fontSize: '0.75rem' }}>
+                            {cmd.label}
+                          </Typography>
+                          <Typography
+                            variant="detailText"
+                            sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
+                          >
+                            {cmd.desc}
+                          </Typography>
+                        </Box>
+                      }
+                      sx={{ m: 0, alignItems: 'flex-start' }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+
+              {/* Max Loops slider */}
+              <Box sx={{ mt: 1, mb: 1, px: 1 }}>
+                <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                  Max Thinking Loops: {maxLoops}
+                </Typography>
+                <Typography
+                  variant="detailText"
+                  sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem', mb: 0.5 }}
+                >
+                  Maximum command/thinking loops per AI turn. Higher = deeper reasoning but more API calls. Default: 5.
+                </Typography>
+                <Slider
+                  size="small"
+                  min={3}
+                  max={20}
+                  step={1}
+                  value={maxLoops}
+                  onChange={(_, val) => setMaxLoops(val as number)}
+                  onChangeCommitted={(_, val) => {
+                    if (!session?.token) return;
+                    const socket = getSocket(session.token);
+                    socket.emit('update_room_commands', { roomName, maxLoops: val as number });
+                  }}
+                  valueLabelDisplay="auto"
+                  marks={[
+                    { value: 3, label: '3' },
+                    { value: 5, label: '5' },
+                    { value: 10, label: '10' },
+                    { value: 15, label: '15' },
+                    { value: 20, label: '20' },
+                  ]}
                 />
               </Box>
-            ))}
-          </Box>
-
-          {/* Max Loops slider */}
-          <Box sx={{ mt: 1, mb: 1, px: 1 }}>
-            <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-              Max Thinking Loops: {maxLoops}
-            </Typography>
-            <Typography
-              variant="detailText"
-              sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem', mb: 0.5 }}
-            >
-              Maximum command/thinking loops per AI turn. Higher = deeper reasoning but more API calls. Default: 5.
-            </Typography>
-            <Slider
-              size="small"
-              min={3}
-              max={20}
-              step={1}
-              value={maxLoops}
-              onChange={(_, val) => setMaxLoops(val as number)}
-              onChangeCommitted={(_, val) => {
-                if (!session?.token) return;
-                const socket = getSocket(session.token);
-                socket.emit('update_room_commands', { roomName, maxLoops: val as number });
-              }}
-              valueLabelDisplay="auto"
-              marks={[
-                { value: 3, label: '3' },
-                { value: 5, label: '5' },
-                { value: 10, label: '10' },
-                { value: 15, label: '15' },
-                { value: 20, label: '20' },
-              ]}
-            />
-          </Box>
-
-          {/* Always-on commands (informational) */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5 }}>
-            {[
-              {
-                label: 'List Users — See who is online in this room',
-                desc: 'AI: {list_users} | User: /users',
-              },
-              {
-                label: "Alarm — Trigger a loud alarm on a specific user's device",
-                desc: 'AI: {alarm username message}',
-              },
-              {
-                label: "Volume — Set a user's volume level",
-                desc: 'AI: {volume 0.0-1.0}',
-              },
-            ].map((cmd) => (
-              <Box key={cmd.label}>
-                <FormControlLabel
-                  control={<Checkbox checked disabled size="small" sx={{ p: 0.25 }} />}
-                  label={
-                    <Box>
-                      <Typography variant="detailText" sx={{ fontWeight: 600, opacity: 0.7, fontSize: '0.75rem' }}>
-                        {cmd.label}
-                      </Typography>
-                      <Typography
-                        variant="detailText"
-                        sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}
-                      >
-                        {cmd.desc}
-                      </Typography>
-                    </Box>
-                  }
-                  sx={{ m: 0, alignItems: 'flex-start' }}
-                />
-              </Box>
-            ))}
-          </Box>
+            </>
+          )}
         </Box>
 
-        <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
-
-        <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
-          AI Agents ({agents.length}/3)
-        </Typography>
-        <Typography variant="detailText" sx={{ mb: 2, display: 'block' }}>
-          Mention an agent&apos;s name in chat to trigger a response.
-        </Typography>
-
-        {agents.map((agent) => {
-          const instructions = parseList(agent.system_instructions);
-          const memories = parseList(agent.memories);
-          const autopilotPrompts = parseList(agent.autopilot_prompts);
-          let taskCount = 0;
-          try {
-            const parsed = JSON.parse(agent.tasks || '[]');
-            if (Array.isArray(parsed))
-              taskCount = parsed.filter((t: { status?: string }) => t.status === 'pending').length;
-          } catch {
-            /* ignore */
-          }
-          return (
-            <Paper
-              key={agent.id}
-              sx={{
-                p: 1.5,
-                mb: 0.75,
-                bgcolor: 'rgba(77, 216, 208, 0.03)',
-                border: '1px solid rgba(77, 216, 208, 0.1)',
-                borderRadius: 1.5,
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <SmartToyIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {agent.name}
-                  </Typography>
-                  <Typography variant="detailText">({getVoiceLabel(agent.voice_id)})</Typography>
-                </Box>
-                <Box>
-                  <IconButton size="small" onClick={() => startEdit(agent)}>
-                    <EditIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                  <IconButton size="small" color="error" onClick={() => handleDelete(agent.id)}>
-                    <DeleteIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Box>
-              </Box>
-              <Typography variant="detailText" sx={{ mt: 0.5, display: 'block', color: 'text.secondary' }}>
-                Model: {getModelLabel(agent.model)}
-                {agent.autopilot_enabled &&
-                  ` | Autopilot: every ${agent.autopilot_interval >= 60 ? `${Math.round(agent.autopilot_interval / 60)}m` : `${agent.autopilot_interval}s`}`}
-              </Typography>
-              <Typography variant="detailText" sx={{ display: 'block', color: 'text.secondary' }}>
-                {`${instructions.length} instruction${instructions.length !== 1 ? 's' : ''}, `}
-                {`${memories.length} memor${memories.length !== 1 ? 'ies' : 'y'}, `}
-                {`${autopilotPrompts.length} autopilot prompt${autopilotPrompts.length !== 1 ? 's' : ''}`}
-                {taskCount > 0 && `, ${taskCount} pending task${taskCount !== 1 ? 's' : ''}`}
-              </Typography>
-            </Paper>
-          );
-        })}
-
-        {agents.length < 3 && (
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={() => setShowAddAgent(true)}
-            sx={{ mt: 1 }}
-            startIcon={<AddIcon />}
-          >
-            Add Agent
-          </Button>
-        )}
-        {/* Invite Link */}
-        {canManageRoom && roomName.toLowerCase() !== 'public' && (
-          <>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <LinkIcon sx={{ fontSize: 16 }} /> Invite Link
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<LinkIcon sx={{ fontSize: 14 }} />}
-                onClick={() => {
-                  if (!session?.token) return;
-                  const socket = getSocket(session.token);
-                  socket.emit('create_invite', { roomName });
-                }}
-              >
-                Create Invite Link
-              </Button>
-              {inviteLink && (
-                <IconButton
-                  size="small"
-                  title="Copy invite link"
-                  onClick={() => {
-                    navigator.clipboard.writeText(inviteLink).then(() => toast('Copied!'));
-                  }}
-                >
-                  <ContentCopyIcon sx={{ fontSize: 16 }} />
-                </IconButton>
-              )}
-            </Box>
-            {inviteLink && (
-              <Typography
-                variant="caption"
-                sx={{ mt: 0.5, display: 'block', color: 'text.secondary', wordBreak: 'break-all' }}
-              >
-                {inviteLink}
-              </Typography>
-            )}
-          </>
-        )}
-        {/* Room Members */}
-        {canManageRoom && roomMembers.length > 0 && (
-          <>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <PeopleIcon sx={{ fontSize: 16 }} /> Members ({roomMembers.length})
-            </Typography>
-            {roomMembers.map((member) => (
-              <Box
-                key={member.userId}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  py: 0.5,
-                  px: 1,
-                  mb: 0.5,
-                  borderRadius: 1,
-                  bgcolor: member.role === 'banned' ? 'rgba(255,0,0,0.08)' : 'rgba(255,255,255,0.03)',
-                }}
-              >
-                <Typography variant="body2" sx={{ color: member.role === 'banned' ? '#f44336' : 'inherit' }}>
-                  {member.username} {member.role === 'banned' ? '(banned)' : ''}
-                </Typography>
-                <Box>
-                  {member.role === 'banned' ? (
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={() => {
-                        if (!session?.token) return;
-                        const socket = getSocket(session.token);
-                        socket.emit('unban_member', { roomName, userId: member.userId });
-                        setRoomMembers((prev) => prev.filter((m) => m.userId !== member.userId));
-                      }}
-                      sx={{ minWidth: 0, fontSize: 11 }}
-                    >
-                      Unban
-                    </Button>
-                  ) : (
-                    <>
-                      <IconButton
-                        size="small"
-                        title="Kick"
-                        onClick={() => {
-                          if (!session?.token) return;
-                          const socket = getSocket(session.token);
-                          socket.emit('kick_member', { roomName, userId: member.userId });
-                          setRoomMembers((prev) => prev.filter((m) => m.userId !== member.userId));
-                        }}
-                      >
-                        <PersonRemoveIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        title="Ban"
-                        onClick={() => {
-                          if (!session?.token) return;
-                          if (!confirm(`Ban ${member.username} from this room?`)) return;
-                          const socket = getSocket(session.token);
-                          socket.emit('ban_member', { roomName, userId: member.userId });
-                          setRoomMembers((prev) =>
-                            prev.map((m) => (m.userId === member.userId ? { ...m, role: 'banned' } : m)),
-                          );
-                        }}
-                      >
-                        <BlockIcon sx={{ fontSize: 16, color: '#f44336' }} />
-                      </IconButton>
-                    </>
-                  )}
-                </Box>
-              </Box>
-            ))}
-          </>
-        )}
+        {/* ── Danger Zone ─────────────────────────── */}
         {canManageRoom && (
           <>
             <Divider sx={{ my: 2 }} />
