@@ -165,6 +165,88 @@
   font-size: 0.85rem;
 }
 
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  gap: 0.75rem;
+}
+
+.onboardingIcon {
+  font-size: 2.5rem;
+  opacity: 0.6;
+}
+
+.onboardingTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #4dd8d0;
+  letter-spacing: 0.3px;
+}
+
+.onboardingDesc {
+  font-size: 0.8rem;
+  color: #6688aa;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.downloadButtons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 0.5rem 0;
+}
+
+.downloadBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #4dd8d0;
+  background: rgba(77, 216, 208, 0.08);
+  border: 1px solid rgba(77, 216, 208, 0.2);
+  border-radius: 6px;
+  text-decoration: none;
+  transition: all 0.15s;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(77, 216, 208, 0.15);
+    border-color: rgba(77, 216, 208, 0.4);
+    box-shadow: 0 0 10px rgba(77, 216, 208, 0.15);
+  }
+}
+
+.onboardingSteps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  text-align: left;
+  font-size: 0.75rem;
+  color: #556b82;
+  line-height: 1.5;
+}
+
+.stepNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(77, 216, 208, 0.15);
+  color: #4dd8d0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  margin-right: 0.4rem;
+}
+
 .statusDot {
   width: 8px;
   height: 8px;

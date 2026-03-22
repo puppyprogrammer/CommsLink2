@@ -83,7 +83,21 @@ const ChatPage = () => {
   const [roomError, setRoomError] = useState('');
   const [roomSettingsOpen, setRoomSettingsOpen] = useState(false);
   const [roomSettingsTarget, setRoomSettingsTarget] = useState<string>('');
-  const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
+  const [terminalPanelOpen, setTerminalPanelOpenRaw] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('terminalPanelOpen');
+      if (saved !== null) return saved === 'true';
+    }
+    return false;
+  });
+  const setTerminalPanelOpen = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setTerminalPanelOpenRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      localStorage.setItem('terminalPanelOpen', String(next));
+      if (!next) localStorage.setItem('terminalPanelDismissed', 'true');
+      return next;
+    });
+  }, []);
   const [terminalNotifications, setTerminalNotifications] = useState(0);
   const [terminalTab, setTerminalTab] = useState<'terminal' | 'claude'>('claude');
   const terminalPanelOpenRef = useRef(terminalPanelOpen);
@@ -237,6 +251,10 @@ const ChatPage = () => {
         setRoomError('');
         setTypingAgents([]);
         stopTTS();
+        // Auto-open terminal panel for new rooms (0 messages) if user hasn't dismissed it before
+        if ((!data.messages || data.messages.length === 0) && !localStorage.getItem('terminalPanelDismissed')) {
+          setTerminalPanelOpen(true);
+        }
       },
     );
 

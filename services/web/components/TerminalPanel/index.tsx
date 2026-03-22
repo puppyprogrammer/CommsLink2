@@ -233,13 +233,37 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab 
 
       {/* Log output */}
       <div className={styles.output} ref={tab === 'terminal' ? terminalOutputRef : claudeOutputRef}>
-        {activeEntries.length === 0 && (
+        {machines.length === 0 && activeEntries.length === 0 ? (
+          <div className={styles.onboarding}>
+            <div className={styles.onboardingIcon}>&#128421;</div>
+            <div className={styles.onboardingTitle}>Connect a Machine</div>
+            <div className={styles.onboardingDesc}>
+              Download the CommsLink agent and run it on any machine to control it from here.
+            </div>
+            <div className={styles.downloadButtons}>
+              <a href="/api/v1/terminal/download/win" className={styles.downloadBtn}>
+                <span>&#9881;</span> Windows
+              </a>
+              <a href="/api/v1/terminal/download/linux" className={styles.downloadBtn}>
+                <span>&#128039;</span> Linux
+              </a>
+              <a href="/api/v1/terminal/download/macos" className={styles.downloadBtn}>
+                <span>&#63743;</span> macOS
+              </a>
+            </div>
+            <div className={styles.onboardingSteps}>
+              <div><span className={styles.stepNum}>1</span> Download the agent for your OS</div>
+              <div><span className={styles.stepNum}>2</span> Open Room Settings and click &quot;Set Up New Terminal&quot;</div>
+              <div><span className={styles.stepNum}>3</span> Run the agent with the setup code provided</div>
+            </div>
+          </div>
+        ) : activeEntries.length === 0 ? (
           <div className={styles.empty}>
             {tab === 'terminal'
               ? 'Terminal commands and output will appear here.'
               : 'Claude prompts, status updates, and responses will appear here.'}
           </div>
-        )}
+        ) : null}
         {activeEntries.map((entry, i) => (
           <div key={i} className={styles.entry}>
             <div className={getEntryClass(entry.type)}>{entry.text}</div>
