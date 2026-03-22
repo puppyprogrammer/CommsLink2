@@ -8,10 +8,8 @@ import {
   Slider,
   Select,
   MenuItem,
-  ListSubheader,
   FormControlLabel,
   Checkbox,
-  Button,
   Divider,
   CircularProgress,
   IconButton,
@@ -23,12 +21,6 @@ import { usePreferences } from '@/lib/state/PreferencesContext';
 import voiceApi from '@/lib/api/voice';
 
 import classes from './SettingsPanel.module.scss';
-
-const BROWSER_VOICES = [
-  { value: 'male', label: 'Male' },
-  { value: 'female', label: 'Female' },
-  { value: 'robot', label: 'Robot' },
-];
 
 type PremiumVoice = { voice_id: string; name: string };
 
@@ -57,42 +49,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
       .finally(() => setLoadingVoices(false));
   }, [session?.token]);
 
-  const isPremiumVoiceSelected = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
-
-  const handleTestVoice = () => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-
-    speechSynthesis.cancel();
-
-    const doSpeak = () => {
-      const utterance = new SpeechSynthesisUtterance('Hello, this is a test of the voice system.');
-      const voices = speechSynthesis.getVoices();
-      const voiceId = preferences.voice_id || 'male';
-
-      if (voiceId === 'female') {
-        const femaleVoice = voices.find(
-          (v) => v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('zira'),
-        );
-        if (femaleVoice) utterance.voice = femaleVoice;
-      } else if (voiceId === 'robot') {
-        utterance.pitch = 0.1;
-        utterance.rate = 0.8;
-      }
-
-      utterance.volume = preferences.volume;
-      speechSynthesis.speak(utterance);
-    };
-
-    const voices = speechSynthesis.getVoices();
-    if (voices.length > 0) {
-      doSpeak();
-    } else {
-      speechSynthesis.onvoiceschanged = () => {
-        doSpeak();
-        speechSynthesis.onvoiceschanged = null;
-      };
-    }
-  };
 
   return (
     <Box className={classes.root}>
@@ -118,16 +74,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         <Select
           size="small"
           fullWidth
-          value={preferences.voice_id || 'male'}
+          value={preferences.voice_id || ''}
           onChange={(e) => updatePreference('voice_id', e.target.value)}
+          displayEmpty
         >
-          <ListSubheader>Browser Voices</ListSubheader>
-          {BROWSER_VOICES.map((v) => (
-            <MenuItem key={v.value} value={v.value}>
-              {v.label}
-            </MenuItem>
-          ))}
-          {premiumVoices.length > 0 && <ListSubheader>AI Voices</ListSubheader>}
+          <MenuItem value="" disabled>Select a voice</MenuItem>
           {loadingVoices ? (
             <MenuItem disabled>
               <CircularProgress size={14} sx={{ mr: 1 }} /> Loading...
@@ -140,15 +91,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
             ))
           )}
         </Select>
-        <Button
-          size="small"
-          variant="outlined"
-          onClick={handleTestVoice}
-          sx={{ mt: 1 }}
-          disabled={!!isPremiumVoiceSelected}
-        >
-          {isPremiumVoiceSelected ? 'AI Voice (no browser test)' : 'Test Voice'}
-        </Button>
       </Box>
 
       <Box className={classes.section}>

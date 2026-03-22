@@ -136,21 +136,10 @@ const ChatPage = () => {
       // Skip TTS for own messages unless "hear own voice" is enabled
       if (isOwnMessage && !prefs.hear_own_voice) return;
 
-      // If message has base64 audio (server-side TTS), play that
+      // Play server-generated TTS audio (Polly)
       if (msg.audio) {
         playAudioBlob(msg.audio, prefs.volume);
-        return;
       }
-
-      const text = msg.text || msg.content || '';
-      if (!text) return;
-
-      // Use the message's voice field (for AI agents) or the user's own preference
-      const voiceId = msg.voice || prefs.voice_id || 'male';
-      const browserVoices = ['male', 'female', 'robot'];
-      const avatar = browserVoices.includes(voiceId) ? (voiceId as 'male' | 'female' | 'robot') : 'male';
-
-      speak(text, { voiceAvatar: avatar, volume: prefs.volume });
     },
     [session?.user.username],
   );
@@ -380,12 +369,11 @@ const ChatPage = () => {
       ]);
       if (!text) setInput('');
 
-      // Generate AI voice audio if using a premium voice
+      // Generate TTS audio if user has a voice selected
       let audio: string | null = null;
-      const voiceId = preferences.voice_id || 'male';
-      const isPremiumVoice = !['male', 'female', 'robot'].includes(voiceId);
+      const voiceId = preferences.voice_id || '';
 
-      if (isPremiumVoice) {
+      if (voiceId) {
         try {
           const result = await voiceApi.generate(session.token, {
             text: msgText,
@@ -504,9 +492,8 @@ const ChatPage = () => {
       return;
     }
 
-    // If user has a premium AI voice selected, use voice streaming (chunked TTS)
-    const isPremiumVoice = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
-    if (isPremiumVoice && session?.token) {
+    // If user has a voice selected, use voice streaming (chunked TTS)
+    if (preferences.voice_id && session?.token) {
       const socket = getSocket(session.token);
       const sid = voiceStream.start(socket, preferences.voice_id!, {
         onStart: () => setIsListening(true),

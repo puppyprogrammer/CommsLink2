@@ -3092,9 +3092,8 @@ const runAgentResponse = async (
         const targetName = match[1].trim();
         let voiceId = match[2].trim();
         try {
-          // Allow friendly voice names — look up Polly voice ID if not a known browser voice
-          const browserVoiceNames = ["male", "female", "robot"];
-          if (!browserVoiceNames.includes(voiceId.toLowerCase()) && voiceId.length < 30) {
+          // Allow friendly voice names — look up Polly voice ID
+          if (voiceId.length < 30) {
             // Might be a voice name like "Ash" or "Bella" — try to look up
             try {
               const { default: pollyAdapter } = await import("../../../../../core/adapters/polly");
@@ -3884,12 +3883,10 @@ const runAgentResponse = async (
       return;
     }
 
-    // Generate premium TTS if needed (skip if agent used {text} only)
-    const browserVoices = ["male", "female", "robot"];
-    const isPremiumVoice = !suppressTTS && !browserVoices.includes(agent.voice_id);
+    // Generate TTS if needed (skip if agent used {text} only)
     let audioBase64: string | null = null;
 
-    if (isPremiumVoice && responseText.trim()) {
+    if (!suppressTTS && agent.voice_id && responseText.trim()) {
       try {
         const { default: pollyAdapter } =
           await import("../../../../../core/adapters/polly");
