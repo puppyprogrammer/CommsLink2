@@ -938,30 +938,70 @@ const ChatPage = () => {
                     </MenuItem>
                   ))}
                 </Select>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={preferences.volume}
-                  onChange={(e) => updatePreference('volume', parseFloat(e.target.value))}
-                  title={`Volume: ${Math.round(preferences.volume * 100)}%`}
-                  style={{
-                    width: 48,
-                    height: 3,
-                    appearance: 'none',
-                    background: 'rgba(77,216,208,0.25)',
-                    borderRadius: 2,
-                    outline: 'none',
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    width: 52,
+                    height: 20,
+                    position: 'relative',
                     cursor: 'pointer',
-                    accentColor: '#4dd8d0',
+                    '&:hover .volFill': { background: '#4dd8d0' },
+                    '&:hover .volThumb': { opacity: 1 },
                   }}
-                />
-                {audioPlaying && (
-                  <IconButton size="small" color="error" onClick={stopAllAudio} title="Stop Audio">
-                    <StopCircleIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
-                )}
+                  title={`Volume: ${Math.round(preferences.volume * 100)}%`}
+                >
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={preferences.volume}
+                    onChange={(e) => updatePreference('volume', parseFloat(e.target.value))}
+                    style={{
+                      position: 'absolute',
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0,
+                      cursor: 'pointer',
+                      zIndex: 2,
+                      margin: 0,
+                    }}
+                  />
+                  <Box sx={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    height: 3,
+                    borderRadius: 1.5,
+                    background: 'rgba(255,255,255,0.15)',
+                  }}>
+                    <Box
+                      className="volFill"
+                      sx={{
+                        width: `${preferences.volume * 100}%`,
+                        height: '100%',
+                        borderRadius: 1.5,
+                        background: '#888',
+                        transition: 'background 0.15s',
+                      }}
+                    />
+                  </Box>
+                  <Box
+                    className="volThumb"
+                    sx={{
+                      position: 'absolute',
+                      left: `calc(${preferences.volume * 100}% - 5px)`,
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      background: '#fff',
+                      opacity: 0,
+                      transition: 'opacity 0.15s',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                </Box>
                 <IconButton
                   size="small"
                   color={isListening ? 'error' : 'default'}
