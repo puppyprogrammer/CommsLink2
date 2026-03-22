@@ -925,13 +925,8 @@ const ChatPage = () => {
           <>
             <ResizeHandle onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
             <div
-              style={{
-                width: terminalWidth,
-                flexShrink: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
+              className={classes.sidePanel}
+              style={{ width: terminalWidth }}
             >
               <TerminalPanel
                 socket={socketInstanceRef.current}

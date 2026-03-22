@@ -26,3 +26,15 @@
   margin-bottom: 0.5rem;
   display: block;
 }
+
+// Mobile: settings panel overlays full width
+@media (max-width: 600px) {
+  .root {
+    position: fixed;
+    top: 36px;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    z-index: 1100;
+  }
+}

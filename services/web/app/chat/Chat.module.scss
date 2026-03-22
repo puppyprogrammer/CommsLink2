@@ -164,6 +164,46 @@
   }
 }
 
+.sidePanel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// Mobile responsive
+@media (max-width: 600px) {
+  .sidePanel {
+    position: fixed;
+    top: 36px;
+    right: 0;
+    bottom: 0;
+    width: 100% !important;
+    z-index: 1100;
+    background-color: $background;
+  }
+
+  .chatHeader {
+    padding: 0.5rem 0.5rem;
+    height: 40px;
+  }
+
+  .messages {
+    padding: 0.5rem;
+  }
+
+  .roomIcon {
+    width: 24px;
+    height: 24px;
+    font-size: 0.5rem;
+  }
+
+  .addRoomButton {
+    width: 24px;
+    height: 24px;
+  }
+}
+
 .micPulsing {
   animation: micPulse 1s ease-in-out infinite;
 }

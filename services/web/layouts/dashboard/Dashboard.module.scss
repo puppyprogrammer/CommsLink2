@@ -34,3 +34,14 @@
   margin-left: 48px;
   overflow: hidden;
 }
+
+// Mobile: shrink activity bar, compact header
+@media (max-width: 600px) {
+  .activityBar {
+    width: 40px;
+  }
+
+  .content {
+    margin-left: 40px;
+  }
+}

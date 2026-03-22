@@ -83,3 +83,21 @@
   font-size: 0.85em;
   color: $primary-light;
 }
+
+// Mobile: hide formatting toolbar, keep action buttons
+@media (max-width: 600px) {
+  .formatButtons {
+    display: none;
+  }
+
+  .toolbar {
+    justify-content: flex-end;
+    padding: 0.1rem 0.25rem;
+  }
+
+  .editable {
+    min-height: 32px;
+    padding: 0.35rem 0.6rem;
+    font-size: 1rem; // larger for touch
+  }
+}

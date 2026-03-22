@@ -68,12 +68,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
           <Typography variant="body2" sx={{
             fontFamily: "'Orbitron', monospace", fontWeight: 400, color: '#4dd8d0',
             textShadow: '0 0 8px rgba(77, 216, 208, 0.4)',
+            display: { xs: 'none', sm: 'block' },
           }}>
             CommsLink
           </Typography>
           <Box sx={{ flex: 1 }} />
           <ConnectionStatus />
-          <Typography variant="detailText" sx={{ mr: 1, fontSize: '0.75rem' }}>
+          <Typography variant="detailText" sx={{
+            mr: 1, fontSize: '0.75rem',
+            display: { xs: 'none', sm: 'block' },
+          }}>
             {session?.user.username}
           </Typography>
           <IconButton
