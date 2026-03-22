@@ -1012,6 +1012,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       fullWidth
       sx={{
         '& .MuiDialog-paper': {
+          background: 'linear-gradient(180deg, #0a1929 0%, #0d2137 100%)',
+          border: '1px solid rgba(77, 216, 208, 0.15)',
+          borderRadius: 2,
           '@media (max-width: 600px)': {
             margin: 0,
             maxHeight: '100%',
@@ -1022,13 +1025,28 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
         },
       }}
     >
-      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
-        <Typography variant="h6" sx={{ fontSize: '1rem' }}>{roomName}</Typography>
-        <IconButton size="small" onClick={onClose} sx={{ color: '#888' }}>
-          <CloseIcon sx={{ fontSize: 18 }} />
+      <DialogTitle sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        py: 1,
+        px: { xs: 1.5, sm: 2.5 },
+        borderBottom: '1px solid rgba(77, 216, 208, 0.1)',
+      }}>
+        <Typography sx={{
+          fontSize: '0.95rem',
+          fontFamily: "'Orbitron', monospace",
+          color: '#4dd8d0',
+          fontWeight: 500,
+          textShadow: '0 0 8px rgba(77, 216, 208, 0.3)',
+        }}>
+          {roomName}
+        </Typography>
+        <IconButton size="small" onClick={onClose} sx={{ color: '#556b82' }}>
+          <CloseIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </DialogTitle>
-      <DialogContent sx={{ px: { xs: 1.5, sm: 3 } }}>
+      <DialogContent sx={{ px: { xs: 1.5, sm: 2.5 }, py: { xs: 1, sm: 1.5 } }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -1036,7 +1054,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
         )}
 
         {/* ── Voice Settings ──────────────────────────── */}
-        <Box sx={{ mb: 2 }}>
+        <Box sx={{ mb: 1 }}>
           <FormControlLabel
             control={
               <Checkbox
@@ -1049,15 +1067,15 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           />
         </Box>
 
-        <Divider sx={{ my: 1.5 }} />
+        <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
 
         {/* ── Remote Terminals ─────────────────────────── */}
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }>
             <TerminalIcon sx={{ fontSize: 18, mr: 0.5, verticalAlign: 'text-bottom' }} />
             Remote Terminals
           </Typography>
-          <Typography variant="detailText" sx={{ mb: 1, display: 'block', color: 'text.secondary' }}>
+          <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', color: '#556b82', fontSize: '0.75rem' }}>
             Connect machines to this room so AI agents can execute terminal commands on them.
           </Typography>
 
@@ -1066,7 +1084,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               {roomMachines.map((perm) => (
                 <Paper
                   key={perm.id}
-                  sx={{ p: 1, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}
+                  sx={{ p: 1, bgcolor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 1 }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
                     <ComputerIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
@@ -1139,7 +1157,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
                   {unlinked.map((m) => (
                     <Paper
                       key={m.id}
-                      sx={{ p: 1, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}
+                      sx={{ p: 1, bgcolor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 1 }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
                         <ComputerIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
@@ -1205,10 +1223,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </Button>
         </Box>
 
-        <Divider sx={{ my: 1.5 }} />
+        <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
 
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }>
             Room Memory
           </Typography>
           <FormControlLabel
@@ -1233,8 +1251,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
         {memoryEnabled && summaries.length > 0 && (
           <>
-            <Divider sx={{ my: 1.5 }} />
-            <Box sx={{ mb: 2 }}>
+            <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
+            <Box sx={{ mb: 1 }}>
               <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', fontWeight: 600 }}>
                 Memory Summaries
               </Typography>
@@ -1386,11 +1404,11 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </>
         )}
 
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }>
             AI Commands
           </Typography>
-          <Typography variant="detailText" sx={{ mb: 1, display: 'block', color: 'text.secondary' }}>
+          <Typography variant="detailText" sx={{ mb: 0.5, display: 'block', color: '#556b82', fontSize: '0.75rem' }}>
             Toggle which commands AI agents can use. Memory commands also work as user chat commands.
           </Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 0.5 }}>
@@ -1619,9 +1637,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </Box>
         </Box>
 
-        <Divider sx={{ my: 1.5 }} />
+        <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
 
-        <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>
+        <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }>
           AI Agents ({agents.length}/3)
         </Typography>
         <Typography variant="detailText" sx={{ mb: 2, display: 'block' }}>
@@ -1645,10 +1663,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               key={agent.id}
               sx={{
                 p: 1.5,
-                mb: 1,
-                bgcolor: 'background.default',
-                border: '1px solid',
-                borderColor: 'divider',
+                mb: 0.75,
+                bgcolor: 'rgba(77, 216, 208, 0.03)',
+                border: '1px solid rgba(77, 216, 208, 0.1)',
+                borderRadius: 1.5,
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1838,10 +1856,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           </>
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-      </DialogActions>
-
       {/* Clear Chat Confirm Dialog */}
       <Dialog open={clearConfirmOpen} onClose={() => setClearConfirmOpen(false)}>
         <DialogTitle>Clear Chat History</DialogTitle>
