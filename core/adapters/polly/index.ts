@@ -27,7 +27,7 @@ const generateSpeech = async (
 
   const command = new SynthesizeSpeechCommand({
     Text: text.trim(),
-    VoiceId: voiceId,
+    VoiceId: voiceId as unknown as import('@aws-sdk/client-polly').VoiceId,
     OutputFormat: 'mp3',
     Engine: 'neural' as Engine,
   });
