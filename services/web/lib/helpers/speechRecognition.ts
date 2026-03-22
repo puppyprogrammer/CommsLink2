@@ -14,6 +14,7 @@ type RecognitionCallbacks = {
 };
 
 let activeRecognition: SpeechRecognition | null = null;
+let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
 const isSupported = (): boolean =>
   typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
@@ -27,8 +28,9 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
   const recognition = new SpeechRecognitionCtor();
 
   recognition.lang = LOCALE_MAP[language] || 'en-US';
-  recognition.continuous = continuous;
-  recognition.interimResults = false;
+  recognition.continuous = true; // Always keep session alive as long as possible
+  recognition.interimResults = true; // Keep the session open longer between phrases
+  recognition.maxAlternatives = 1;
 
   recognition.onresult = (event: SpeechRecognitionEvent) => {
     const lastResult = event.results[event.results.length - 1];
@@ -41,13 +43,17 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
 
   recognition.onend = () => {
     if (continuous && activeRecognition === recognition) {
-      // Auto-restart in continuous mode
-      try {
-        recognition.start();
-      } catch {
-        activeRecognition = null;
-        callbacks.onEnd?.();
-      }
+      // Silently restart after a brief delay to avoid rapid cycling and system sounds
+      restartTimer = setTimeout(() => {
+        if (activeRecognition === recognition) {
+          try {
+            recognition.start();
+          } catch {
+            activeRecognition = null;
+            callbacks.onEnd?.();
+          }
+        }
+      }, 300);
       return;
     }
     activeRecognition = null;
@@ -55,7 +61,8 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
   };
 
   recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-    if (event.error === 'no-speech' && continuous) return;
+    // In continuous mode, silently ignore transient errors
+    if (continuous && (event.error === 'no-speech' || event.error === 'aborted')) return;
     activeRecognition = null;
     callbacks.onError?.(event.error);
     callbacks.onEnd?.();
@@ -68,6 +75,10 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
 };
 
 const stop = () => {
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
   if (activeRecognition) {
     const ref = activeRecognition;
     activeRecognition = null;
