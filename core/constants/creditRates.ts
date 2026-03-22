@@ -27,6 +27,7 @@ const GROK_PRICING: Record<string, { input: number; output: number }> = {
   'grok-3-mini': { input: 0.30, output: 0.50 },
   'grok-code-fast-1': { input: 0.20, output: 1.50 },
   // Claude (Anthropic) models
+  'claude-opus-4-20250514': { input: 15.00, output: 75.00 },
   'claude-sonnet-4-20250514': { input: 3.00, output: 15.00 },
   'claude-haiku-4-20250506': { input: 0.80, output: 4.00 },
 };
