@@ -9,7 +9,10 @@ import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
 
 const getClientIp = (request: Request): string => {
   const forwarded = request.headers['x-forwarded-for'];
-  if (forwarded) return forwarded.split(',')[0].trim();
+  if (forwarded) {
+    const val = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    return val.split(',')[0].trim();
+  }
   return request.info.remoteAddress;
 };
 
