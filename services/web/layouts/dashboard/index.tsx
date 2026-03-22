@@ -1,7 +1,7 @@
 'use client';
 
 // React modules
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 // Node modules
 import { useRouter, usePathname } from 'next/navigation';
@@ -40,12 +40,23 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
   const router = useRouter();
   const pathname = usePathname();
   const { session, isLoggedIn, isLoading } = useSession();
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isLoggedIn) {
       router.push('/login');
     }
   }, [isLoading, isLoggedIn, router]);
+
+  useEffect(() => {
+    if (!session?.token) return;
+    fetch('/api/v1/credits/status', {
+      headers: { Authorization: `Bearer ${session.token}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.balance != null) setCreditBalance(data.balance); })
+      .catch(() => {});
+  }, [session?.token]);
 
   const handleLogout = async () => {
     await fetch('/api/logout', { method: 'POST' });
@@ -74,6 +85,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
           </Typography>
           <Box sx={{ flex: 1 }} />
           <ConnectionStatus />
+          {creditBalance !== null && (
+            <Typography variant="detailText" sx={{
+              fontSize: '0.65rem',
+              color: creditBalance > 1000 ? '#4dd8d0' : creditBalance > 100 ? '#cca700' : '#f44',
+              mr: 1,
+              opacity: 0.8,
+            }}>
+              {creditBalance.toLocaleString()}c
+            </Typography>
+          )}
           <Typography variant="detailText" sx={{
             mr: 1, fontSize: '0.75rem',
             display: { xs: 'none', sm: 'block' },
