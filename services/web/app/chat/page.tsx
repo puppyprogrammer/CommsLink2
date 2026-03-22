@@ -16,6 +16,8 @@ import {
   DialogActions,
   Tooltip,
   Badge,
+  Select,
+  MenuItem,
 } from '@mui/material';
 
 // Material UI icons
@@ -99,6 +101,15 @@ const ChatPage = () => {
   const preferencesRef = useRef(preferences);
   // Buffer of recently played AI speech text — used to filter mic echo
   const recentAiSpeechRef = useRef<{ text: string; time: number }[]>([]);
+  const [availableVoices, setAvailableVoices] = useState<{ voice_id: string; name: string }[]>([]);
+
+  // Fetch available voices on mount
+  useEffect(() => {
+    if (!session?.token) return;
+    voiceApi.listVoices(session.token)
+      .then((data) => setAvailableVoices(data.voices || []))
+      .catch(() => {});
+  }, [session?.token]);
 
   // Keep preferences ref in sync for use in socket callbacks
   useEffect(() => {
@@ -907,6 +918,26 @@ const ChatPage = () => {
             placeholder={uploading ? 'Uploading image...' : 'Type a message...'}
             actionButtons={
               <>
+                <Select
+                  size="small"
+                  value={preferences.voice_id || 'Joanna'}
+                  onChange={(e) => updatePreference('voice_id', e.target.value)}
+                  variant="standard"
+                  disableUnderline
+                  sx={{
+                    fontSize: '0.7rem',
+                    color: '#4dd8d0',
+                    maxWidth: 110,
+                    '& .MuiSelect-select': { py: 0, px: 0.5 },
+                    '& .MuiSvgIcon-root': { fontSize: 14, color: '#556b82' },
+                  }}
+                >
+                  {availableVoices.map((v) => (
+                    <MenuItem key={v.voice_id} value={v.voice_id} sx={{ fontSize: '0.8rem' }}>
+                      {v.name}
+                    </MenuItem>
+                  ))}
+                </Select>
                 {audioPlaying && (
                   <IconButton size="small" color="error" onClick={stopAllAudio} title="Stop Audio">
                     <StopCircleIcon sx={{ fontSize: 18 }} />
