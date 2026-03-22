@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /chat
+Disallow: /admin
+Disallow: /profile
+Disallow: /api/
+
+Sitemap: https://commslink.net/sitemap.xml
