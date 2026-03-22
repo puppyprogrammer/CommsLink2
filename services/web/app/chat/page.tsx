@@ -97,6 +97,8 @@ const ChatPage = () => {
   const [alarmActive, setAlarmActive] = useState<{ message: string; agentName: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const preferencesRef = useRef(preferences);
+  // Buffer of recently played AI speech text — used to filter mic echo
+  const recentAiSpeechRef = useRef<{ text: string; time: number }[]>([]);
 
   // Keep preferences ref in sync for use in socket callbacks
   useEffect(() => {
@@ -108,6 +110,28 @@ const ChatPage = () => {
   useEffect(() => {
     onPlayStateChange((playing) => setAudioPlaying(playing));
     return () => onPlayStateChange(() => {});
+  }, []);
+
+  // Check if a transcript is likely echo from AI speaker output
+  const isEcho = useCallback((transcript: string): boolean => {
+    const now = Date.now();
+    const normalizedInput = transcript.toLowerCase().trim();
+    if (normalizedInput.length < 4) return false; // Too short to be meaningful echo
+
+    // Clean expired entries (older than 15 seconds)
+    recentAiSpeechRef.current = recentAiSpeechRef.current.filter((e) => now - e.time < 15000);
+
+    for (const entry of recentAiSpeechRef.current) {
+      const normalizedAi = entry.text.toLowerCase();
+      // Check if the transcript is a substring of recent AI speech or vice versa
+      if (normalizedAi.includes(normalizedInput) || normalizedInput.includes(normalizedAi)) return true;
+      // Check word overlap — if >60% of words match, it's likely echo
+      const inputWords = normalizedInput.split(/\s+/);
+      const aiWords = new Set(normalizedAi.split(/\s+/));
+      const matchCount = inputWords.filter((w) => aiWords.has(w)).length;
+      if (inputWords.length > 2 && matchCount / inputWords.length > 0.6) return true;
+    }
+    return false;
   }, []);
 
   const dismissAlarm = useCallback(() => {
@@ -136,8 +160,12 @@ const ChatPage = () => {
       // Skip TTS for own messages unless "hear own voice" is enabled
       if (isOwnMessage && !prefs.hear_own_voice) return;
 
-      // Play server-generated TTS audio (Polly)
+      // Play server-generated TTS audio (Polly) and track for echo cancellation
       if (msg.audio) {
+        const text = msg.text || msg.content || '';
+        if (text) {
+          recentAiSpeechRef.current.push({ text, time: Date.now() });
+        }
         playAudioBlob(msg.audio, prefs.volume);
       }
     },
@@ -499,7 +527,7 @@ const ChatPage = () => {
         onStart: () => setIsListening(true),
         onEnd: () => setIsListening(false),
         onChunkSent: (idx, text) => {
-          // Also post the text as a chat message so it appears in chat
+          if (isEcho(text)) return; // Skip mic echo from AI speaker
           sendMessage(text);
         },
         onError: () => setIsListening(false),
@@ -513,6 +541,7 @@ const ChatPage = () => {
     // Fallback: basic speech recognition (sends text immediately on each final result)
     const started = speechRecognition.start('en', true, {
       onResult: (transcript) => {
+        if (isEcho(transcript)) return; // Skip mic echo from AI speaker
         sendMessage(transcript);
       },
       onStart: () => setIsListening(true),
