@@ -223,6 +223,45 @@
   }
 }
 
+.mobilePrompt {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: rgba(77, 216, 208, 0.05);
+  border: 1px solid rgba(77, 216, 208, 0.15);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.mobilePromptTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4dd8d0;
+  margin-bottom: 0.5rem;
+}
+
+.mobilePromptNote {
+  font-size: 0.7rem;
+  color: #556b82;
+  margin-top: 0.5rem;
+  line-height: 1.5;
+}
+
+.mobilePromptClose {
+  margin-top: 0.75rem;
+  padding: 0.35rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0a1929;
+  background: #4dd8d0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background: #5de8e0;
+  }
+}
+
 .downloadBtnActive {
   background: rgba(244, 71, 71, 0.12) !important;
   border-color: rgba(244, 71, 71, 0.3) !important;

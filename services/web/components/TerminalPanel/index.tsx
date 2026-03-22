@@ -308,23 +308,42 @@ const TerminalPanel: React.FC<Props> = ({ socket, machines, onClose, initialTab,
                   </>
                 )}
 
-                {/* Desktop browser: show download buttons */}
+                {/* Desktop browser: show download buttons including Android */}
                 {!isNativeApp && !isMobileBrowser && (
                   <>
                     <div className={styles.onboardingDesc}>
-                      Download the CommsLink agent and run it on any machine to control it from here.
-                      You can also connect your Android phone using the CommsLink mobile app.
+                      Download the CommsLink agent for any device to control it from here.
                     </div>
                     <div className={styles.downloadButtons}>
                       <a href="/api/v1/terminal/download/win" className={styles.downloadBtn}><span>&#9881;</span> Windows</a>
                       <a href="/api/v1/terminal/download/linux" className={styles.downloadBtn}><span>&#128039;</span> Linux</a>
                       <a href="/api/v1/terminal/download/macos" className={styles.downloadBtn}><span>&#63743;</span> macOS</a>
+                      <button className={styles.downloadBtn} onClick={() => setShowMobilePrompt(true)}>
+                        <span>&#128241;</span> Android
+                      </button>
                     </div>
-                    <div className={styles.onboardingSteps}>
-                      <div><span className={styles.stepNum}>1</span> Download the agent for your OS</div>
-                      <div><span className={styles.stepNum}>2</span> Open Room Settings and click &quot;Set Up New Terminal&quot;</div>
-                      <div><span className={styles.stepNum}>3</span> Run the agent with the setup code provided</div>
-                    </div>
+                    {showMobilePrompt && (
+                      <div className={styles.mobilePrompt}>
+                        <div className={styles.mobilePromptTitle}>Connect Your Android Phone</div>
+                        <div className={styles.onboardingSteps}>
+                          <div><span className={styles.stepNum}>1</span> Install the CommsLink app on your Android phone</div>
+                          <div><span className={styles.stepNum}>2</span> Sign in with your account</div>
+                          <div><span className={styles.stepNum}>3</span> Open this room and tap the terminal icon</div>
+                          <div><span className={styles.stepNum}>4</span> Tap &quot;Share This Phone as Terminal&quot;</div>
+                        </div>
+                        <div className={styles.mobilePromptNote}>
+                          Your phone will appear as a connected machine. AI agents can then run shell commands on it.
+                        </div>
+                        <button className={styles.mobilePromptClose} onClick={() => setShowMobilePrompt(false)}>Got it</button>
+                      </div>
+                    )}
+                    {!showMobilePrompt && (
+                      <div className={styles.onboardingSteps}>
+                        <div><span className={styles.stepNum}>1</span> Download the agent for your OS</div>
+                        <div><span className={styles.stepNum}>2</span> Open Room Settings and click &quot;Set Up New Terminal&quot;</div>
+                        <div><span className={styles.stepNum}>3</span> Run the agent with the setup code provided</div>
+                      </div>
+                    )}
                   </>
                 )}
               </>
