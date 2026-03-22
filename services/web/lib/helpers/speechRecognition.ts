@@ -15,6 +15,10 @@ type RecognitionCallbacks = {
 
 let activeRecognition: SpeechRecognition | null = null;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
+let paused = false;
+let pausedCallbacks: RecognitionCallbacks | null = null;
+let pausedLanguage: string = 'en';
+let pausedContinuous: boolean = true;
 
 const isSupported = (): boolean =>
   typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
@@ -22,6 +26,8 @@ const isSupported = (): boolean =>
 const start = (language: string, continuous: boolean, callbacks: RecognitionCallbacks): boolean => {
   if (!isSupported()) return false;
 
+  paused = false;
+  pausedCallbacks = null;
   stop();
 
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -41,10 +47,13 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
   recognition.onstart = () => callbacks.onStart?.();
 
   recognition.onend = () => {
+    // If paused (audio playing), do NOT restart or fire onEnd — we'll resume later
+    if (paused) return;
+
     if (continuous && activeRecognition === recognition) {
-      // Silently restart after a brief delay to avoid rapid cycling and system sounds
+      // Silently restart after a delay to avoid rapid cycling and system beeps
       restartTimer = setTimeout(() => {
-        if (activeRecognition === recognition) {
+        if (activeRecognition === recognition && !paused) {
           try {
             recognition.start();
           } catch {
@@ -52,7 +61,7 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
             callbacks.onEnd?.();
           }
         }
-      }, 300);
+      }, 1000);
       return;
     }
     activeRecognition = null;
@@ -68,12 +77,41 @@ const start = (language: string, continuous: boolean, callbacks: RecognitionCall
   };
 
   activeRecognition = recognition;
+  pausedLanguage = language;
+  pausedContinuous = continuous;
+  pausedCallbacks = callbacks;
   recognition.start();
   callbacks.onStart?.();
   return true;
 };
 
+const pause = () => {
+  if (!activeRecognition) return;
+  paused = true;
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
+  // Stop the recognition but keep activeRecognition set so we know to resume
+  try {
+    activeRecognition.stop();
+  } catch {
+    // Already stopped
+  }
+};
+
+const resume = () => {
+  if (!paused) return;
+  paused = false;
+  // Restart recognition with the same settings
+  if (pausedCallbacks) {
+    start(pausedLanguage, pausedContinuous, pausedCallbacks);
+  }
+};
+
 const stop = () => {
+  paused = false;
+  pausedCallbacks = null;
   if (restartTimer) {
     clearTimeout(restartTimer);
     restartTimer = null;
@@ -87,4 +125,4 @@ const stop = () => {
 
 const isActive = (): boolean => activeRecognition !== null;
 
-export { start, stop, isSupported, isActive };
+export { start, stop, pause, resume, isSupported, isActive };

@@ -34,6 +34,7 @@ services:
       JWT_SECRET: commslink-dev-secret-change-in-production
       GROK_API_KEY: ${GROK_API_KEY}
       GROK_MODEL: ${GROK_MODEL:-grok-4-1-fast-non-reasoning}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}

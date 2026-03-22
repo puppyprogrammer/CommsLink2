@@ -128,9 +128,16 @@ const ChatPage = () => {
     audioQueue.setVolume(preferences.volume);
   }, [preferences]);
 
-  // Track TTS audio playing state
+  // Track TTS audio playing state — pause mic while AI audio plays to prevent feedback loop
   useEffect(() => {
-    onPlayStateChange((playing) => setAudioPlaying(playing));
+    onPlayStateChange((playing) => {
+      setAudioPlaying(playing);
+      if (playing) {
+        speechRecognition.pause();
+      } else {
+        speechRecognition.resume();
+      }
+    });
     return () => onPlayStateChange(() => {});
   }, []);
 

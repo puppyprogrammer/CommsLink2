@@ -30,17 +30,20 @@ const chargeGrokUsage = async (
 
   const updated = await Data.user.deductCredits(userId, credits);
 
+  const isClaude = model.startsWith('claude-');
+  const serviceName = isClaude ? 'Claude' : 'Grok';
+
   await Data.creditTransaction.create({
     user_id: userId,
     amount: -credits,
     balance_after: updated.credit_balance,
     type: 'usage',
-    description: `Grok ${model} (${inputTokens}+${outputTokens} tokens)`,
+    description: `${serviceName} ${model} (${inputTokens}+${outputTokens} tokens)`,
   });
 
   await Data.creditUsageLog.create({
     user_id: userId,
-    service: 'grok',
+    service: isClaude ? 'claude' : 'grok',
     model,
     input_tokens: inputTokens,
     output_tokens: outputTokens,

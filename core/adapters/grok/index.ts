@@ -35,6 +35,8 @@ const AVAILABLE_MODELS = [
   { id: 'grok-3', label: 'Grok 3', cost: '$3.00/$15.00' },
   { id: 'grok-3-mini', label: 'Grok 3 Mini', cost: '$0.30/$0.50' },
   { id: 'grok-code-fast-1', label: 'Grok Code Fast', cost: '$0.20/$1.50' },
+  { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4', cost: '$3.00/$15.00' },
+  { id: 'claude-haiku-4-20250506', label: 'Claude Haiku 4', cost: '$0.80/$4.00' },
 ] as const;
 
 const DEFAULT_MODEL = 'grok-4-1-fast-non-reasoning';

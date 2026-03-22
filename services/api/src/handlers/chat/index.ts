@@ -11,6 +11,7 @@ import creditActions from "../../../../../core/actions/credit";
 import grokAdapter, {
   type ToolDefinition,
 } from "../../../../../core/adapters/grok";
+import claudeAdapter from "../../../../../core/adapters/claude";
 import voiceQueue from "../../../../../core/adapters/redis/voiceQueue";
 import summarizeAction from "../../../../../core/actions/memory/summarizeAction";
 import prisma from "../../../../../core/adapters/prisma";
@@ -109,6 +110,38 @@ const agentTaskTrackerSummary = new Map<string, string>(); // agentId -> latest 
 const agentLastLearningExtraction = new Map<string, number>(); // agentId -> last extraction timestamp
 const agentLastLesson = new Map<string, string>(); // agentId -> last lesson text
 const LEARNING_EXTRACTION_COOLDOWN = 10 * 60_000; // 10 minutes
+
+/**
+ * Route a chatCompletion call to the correct adapter based on model ID.
+ * Claude models (claude-*) go to the Anthropic API; everything else goes to Grok (xAI).
+ */
+const routedChatCompletion: typeof grokAdapter.chatCompletion = (
+  systemPrompt,
+  messages,
+  model,
+  maxTokens,
+  tools,
+  toolChoice,
+) => {
+  if (model && model.startsWith("claude-")) {
+    return claudeAdapter.chatCompletion(
+      systemPrompt,
+      messages,
+      model,
+      maxTokens,
+      tools,
+      toolChoice,
+    );
+  }
+  return grokAdapter.chatCompletion(
+    systemPrompt,
+    messages,
+    model,
+    maxTokens,
+    tools,
+    toolChoice,
+  );
+};
 
 const trigramSimilarity = (a: string, b: string): number => {
   const trigrams = (s: string): Set<string> => {
@@ -2300,7 +2333,7 @@ const runAgentResponse = async (
     };
     const agentTools = buildToolDefinitions(cmdFlags, onlineMachines);
 
-    const response = await grokAdapter.chatCompletion(
+    const response = await routedChatCompletion(
       systemPrompt,
       contextMessages,
       agent.model,
@@ -3709,7 +3742,7 @@ const runAgentResponse = async (
         content: `Tool results:\n${toolResults.join("\n\n")}\n\nUse these results to formulate your response. Do not repeat commands you already issued. Do not restate what you already said above.`,
       });
 
-      const loopResponse = await grokAdapter.chatCompletion(
+      const loopResponse = await routedChatCompletion(
         systemPrompt,
         contextMessages,
         agent.model,

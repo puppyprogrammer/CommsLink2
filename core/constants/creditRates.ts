@@ -12,10 +12,12 @@ const MARGIN = 1.5;
 const usdToCredits = (usd: number): number => Math.ceil(usd * 1000 * MARGIN);
 
 /**
- * Grok model pricing per million tokens (input / output).
+ * AI model pricing per million tokens (input / output).
  * Used to calculate per-call credit cost.
+ * Includes both Grok (xAI) and Claude (Anthropic) models.
  */
 const GROK_PRICING: Record<string, { input: number; output: number }> = {
+  // Grok (xAI) models
   'grok-4-1-fast-reasoning': { input: 0.20, output: 0.50 },
   'grok-4-1-fast-non-reasoning': { input: 0.20, output: 0.50 },
   'grok-4-fast-reasoning': { input: 0.20, output: 0.50 },
@@ -24,6 +26,9 @@ const GROK_PRICING: Record<string, { input: number; output: number }> = {
   'grok-3': { input: 3.00, output: 15.00 },
   'grok-3-mini': { input: 0.30, output: 0.50 },
   'grok-code-fast-1': { input: 0.20, output: 1.50 },
+  // Claude (Anthropic) models
+  'claude-sonnet-4-20250514': { input: 3.00, output: 15.00 },
+  'claude-haiku-4-20250506': { input: 0.80, output: 4.00 },
 };
 
 /**
