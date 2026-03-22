@@ -72,7 +72,7 @@ type GrokModel = {
   cost: string;
 };
 
-type ElevenLabsVoice = {
+type PremiumVoice = {
   voice_id: string;
   name: string;
 };
@@ -144,7 +144,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [inviteLink, setInviteLink] = useState('');
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [models, setModels] = useState<GrokModel[]>([]);
-  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
+  const [premiumVoices, setPremiumVoices] = useState<PremiumVoice[]>([]);
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [cmdRecall, setCmdRecall] = useState(true);
   const [cmdSql, setCmdSql] = useState(true);
@@ -239,7 +239,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   // Memory tree collapsed state
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 
-  // Fetch models and ElevenLabs voices
+  // Fetch models and AI voices
   useEffect(() => {
     if (!open) return;
     apiClient
@@ -255,7 +255,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     if (session?.token) {
       voiceApi
         .listVoices(session.token)
-        .then((res) => setElevenLabsVoices(res.voices || []))
+        .then((res) => setPremiumVoices(res.voices || []))
         .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -458,7 +458,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const getVoiceLabel = (voiceId: string): string => {
     const browser = BROWSER_VOICES.find((v) => v.value === voiceId);
     if (browser) return browser.label;
-    const elVoice = elevenLabsVoices.find((v) => v.voice_id === voiceId);
+    const elVoice = premiumVoices.find((v) => v.voice_id === voiceId);
     if (elVoice) return elVoice.name;
     return voiceId;
   };
@@ -598,8 +598,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           {v.label}
         </MenuItem>
       ))}
-      {elevenLabsVoices.length > 0 && <ListSubheader>ElevenLabs Voices</ListSubheader>}
-      {elevenLabsVoices.map((v) => (
+      {premiumVoices.length > 0 && <ListSubheader>AI Voices</ListSubheader>}
+      {premiumVoices.map((v) => (
         <MenuItem key={v.voice_id} value={v.voice_id}>
           {v.name}
         </MenuItem>

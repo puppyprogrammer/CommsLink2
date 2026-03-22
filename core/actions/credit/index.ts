@@ -1,5 +1,5 @@
 import Data from '../../data';
-import { calculateGrokCredits, calculateElevenLabsCredits, calculateEC2Credits } from '../../constants/creditRates';
+import { calculateGrokCredits, calculatePollyCredits, calculateEC2Credits } from '../../constants/creditRates';
 
 /**
  * Check if a user has enough credits for an estimated operation.
@@ -53,13 +53,13 @@ const chargeGrokUsage = async (
 };
 
 /**
- * Deduct credits for an ElevenLabs TTS call and log usage.
+ * Deduct credits for an Amazon Polly TTS call and log usage.
  */
-const chargeElevenLabsUsage = async (
+const chargePollyUsage = async (
   userId: string,
   characters: number,
 ): Promise<{ credits: number; rawCostUsd: number; newBalance: number }> => {
-  const { credits, rawCostUsd } = calculateElevenLabsCredits(characters);
+  const { credits, rawCostUsd } = calculatePollyCredits(characters);
 
   if (credits <= 0) return { credits: 0, rawCostUsd, newBalance: 0 };
 
@@ -73,12 +73,12 @@ const chargeElevenLabsUsage = async (
     amount: -credits,
     balance_after: updated.credit_balance,
     type: 'usage',
-    description: `ElevenLabs TTS (${characters} chars)`,
+    description: `Polly TTS (${characters} chars)`,
   });
 
   await Data.creditUsageLog.create({
     user_id: userId,
-    service: 'elevenlabs',
+    service: 'polly',
     characters,
     raw_cost_usd: rawCostUsd,
     credits_charged: credits,
@@ -164,7 +164,7 @@ const getCreditStatus = async (userId: string) => {
 export default {
   hasCredits,
   chargeGrokUsage,
-  chargeElevenLabsUsage,
+  chargePollyUsage,
   chargeEC2Usage,
   grantTopUpCredits,
   getCreditStatus,

@@ -3092,13 +3092,13 @@ const runAgentResponse = async (
         const targetName = match[1].trim();
         let voiceId = match[2].trim();
         try {
-          // Allow friendly voice names — look up ElevenLabs ID if not a known browser voice
+          // Allow friendly voice names — look up Polly voice ID if not a known browser voice
           const browserVoiceNames = ["male", "female", "robot"];
           if (!browserVoiceNames.includes(voiceId.toLowerCase()) && voiceId.length < 30) {
             // Might be a voice name like "Ash" or "Bella" — try to look up
             try {
-              const { default: elevenlabsAdapter } = await import("../../../../../core/adapters/elevenlabs");
-              const voices = await elevenlabsAdapter.listVoices();
+              const { default: pollyAdapter } = await import("../../../../../core/adapters/polly");
+              const voices = await pollyAdapter.listVoices();
               const found = voices.find((v: { name: string }) =>
                 v.name.toLowerCase().startsWith(voiceId.toLowerCase())
               );
@@ -3891,20 +3891,20 @@ const runAgentResponse = async (
 
     if (isPremiumVoice && responseText.trim()) {
       try {
-        const { default: elevenlabsAdapter } =
-          await import("../../../../../core/adapters/elevenlabs");
-        const ttsResult = await elevenlabsAdapter.generateSpeech(
+        const { default: pollyAdapter } =
+          await import("../../../../../core/adapters/polly");
+        const ttsResult = await pollyAdapter.generateSpeech(
           responseText,
           agent.voice_id,
         );
         audioBase64 = ttsResult.audioBase64;
 
         creditActions
-          .chargeElevenLabsUsage(agent.creator_id, responseText.length)
+          .chargePollyUsage(agent.creator_id, responseText.length)
           .catch(console.error);
       } catch (ttsErr) {
         console.error(
-          `[Agent TTS] ElevenLabs failed for ${agent.name}:`,
+          `[Agent TTS] Polly failed for ${agent.name}:`,
           ttsErr,
         );
       }
@@ -5299,7 +5299,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
               text: `FEATURES YOU KNOW ABOUT:
 - AI Agents: Users can create AI personas that live in rooms, respond to messages, and work autonomously. Agents can think, speak with voice, use tools, browse the web, and execute code.
 - Remote Terminals: Connect your computer via the terminal agent. Run commands, deploy code, and use Claude Code sessions remotely.
-- Voice Chat: Choose from browser voices (free) or premium ElevenLabs voices (costs credits). All messages can be spoken aloud.
+- Voice Chat: Choose from browser voices (free) or premium TTS voices (costs credits). All messages can be spoken aloud.
 - Web Browsing: AI agents can search the web, browse pages, take screenshots, and extract content.
 - Scheduling: Set reminders and recurring tasks.
 - Credits: You start with 10,000 free credits. AI features consume credits. Buy more credit packs anytime.
@@ -5322,12 +5322,12 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
               text: `ROOM AI CONTROLS: You can create and manage AI agents for the user. Use these commands:
 - {create_agent "AgentName" personality description here} — Creates a new AI in this room
 - {delete_agent "AgentName"} — Removes an AI from this room
-- {set_agent_voice "AgentName" voiceId} — Set voice. voiceId can be "male", "female", or an ElevenLabs voice name/ID.
+- {set_agent_voice "AgentName" voiceId} — Set voice. voiceId can be "male", "female", or a Polly voice name/ID.
 - {update_agent "AgentName" name NewName} — Rename an agent
 - {update_agent "AgentName" instructions New personality here} — Change agent behavior
 - {list_room_agents} — Show all AIs in this room
 
-YOUR OWN VOICE: Your name is "Helper Bot". You can change your own voice with {set_agent_voice "Helper Bot" voiceId}. Available voices: "male", "female", or ElevenLabs premium voices. Your current voice is Bella (premium, female).
+YOUR OWN VOICE: Your name is "Helper Bot". You can change your own voice with {set_agent_voice "Helper Bot" voiceId}. Available voices: "male", "female", or Polly premium voices. Your current voice is Joanna (premium, female).
 
 When a user asks you to create a companion, assistant, or character, use {create_agent} with a clear personality description. Offer voice options.
 When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command — do not just say you changed it.`,
@@ -5343,7 +5343,7 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
             name: "Helper Bot",
             room_id: dbRoom.id,
             creator_id: socket.user.id,
-            voice_id: "hpp4J3VqNfWAUOO0d1Us", // Bella - Professional, Bright, Warm (ElevenLabs)
+            voice_id: "Joanna", // Joanna - Professional, Warm (Amazon Polly)
             can_manage_agents: true,
             model: "grok-4-1-fast-non-reasoning",
             system_instructions: JSON.stringify(helperInstructions),

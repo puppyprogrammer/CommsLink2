@@ -2,18 +2,18 @@ import tracer from '../../lib/tracer';
 import Boom from '@hapi/boom';
 
 import Data from '../../data';
-import elevenlabsAdapter from '../../adapters/elevenlabs';
+import pollyAdapter from '../../adapters/polly';
 import creditActions from '../credit';
 
-import type { SpeechResult } from '../../adapters/elevenlabs';
+import type { SpeechResult } from '../../adapters/polly';
 
 /**
  * Generate premium TTS audio for a user.
  *
  * @param userId  - Requesting user ID.
  * @param text    - Text to synthesize.
- * @param voiceId - ElevenLabs voice ID.
- * @returns Base64 audio and alignment.
+ * @param voiceId - Polly voice ID (e.g. "Joanna").
+ * @returns Base64 audio.
  */
 const generatePremiumAudioAction = async (
   userId: string,
@@ -27,16 +27,14 @@ const generatePremiumAudioAction = async (
       throw Boom.notFound('User not found');
     }
 
-    // Check credits before generating
     const hasCredits = await creditActions.hasCredits(userId);
     if (!hasCredits) {
       throw Boom.paymentRequired('Insufficient credits for voice generation');
     }
 
-    const result = await elevenlabsAdapter.generateSpeech(text, voiceId);
+    const result = await pollyAdapter.generateSpeech(text, voiceId);
 
-    // Charge credits based on character count
-    creditActions.chargeElevenLabsUsage(userId, text.length).catch(console.error);
+    creditActions.chargePollyUsage(userId, text.length).catch(console.error);
 
     return result;
   });

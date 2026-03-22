@@ -30,7 +30,7 @@ const BROWSER_VOICES = [
   { value: 'robot', label: 'Robot' },
 ];
 
-type ElevenLabsVoice = { voice_id: string; name: string };
+type PremiumVoice = { voice_id: string; name: string };
 
 type SettingsPanelProps = {
   onClose?: () => void;
@@ -39,25 +39,25 @@ type SettingsPanelProps = {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const { session } = useSession();
   const { preferences, updatePreference, isSaving } = usePreferences();
-  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
+  const [premiumVoices, setPremiumVoices] = useState<PremiumVoice[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(false);
 
-  // Fetch ElevenLabs voices for authenticated users
+  // Fetch AI voices for authenticated users
   useEffect(() => {
     if (!session?.token) {
-      setElevenLabsVoices([]);
+      setPremiumVoices([]);
       return;
     }
 
     setLoadingVoices(true);
     voiceApi
       .listVoices(session.token)
-      .then((data) => setElevenLabsVoices(data.voices || []))
-      .catch(() => setElevenLabsVoices([]))
+      .then((data) => setPremiumVoices(data.voices || []))
+      .catch(() => setPremiumVoices([]))
       .finally(() => setLoadingVoices(false));
   }, [session?.token]);
 
-  const isElevenLabsVoiceSelected = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
+  const isPremiumVoiceSelected = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
 
   const handleTestVoice = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -127,13 +127,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
               {v.label}
             </MenuItem>
           ))}
-          {elevenLabsVoices.length > 0 && <ListSubheader>ElevenLabs Voices</ListSubheader>}
+          {premiumVoices.length > 0 && <ListSubheader>AI Voices</ListSubheader>}
           {loadingVoices ? (
             <MenuItem disabled>
               <CircularProgress size={14} sx={{ mr: 1 }} /> Loading...
             </MenuItem>
           ) : (
-            elevenLabsVoices.map((v) => (
+            premiumVoices.map((v) => (
               <MenuItem key={v.voice_id} value={v.voice_id}>
                 {v.name}
               </MenuItem>
@@ -145,9 +145,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
           variant="outlined"
           onClick={handleTestVoice}
           sx={{ mt: 1 }}
-          disabled={!!isElevenLabsVoiceSelected}
+          disabled={!!isPremiumVoiceSelected}
         >
-          {isElevenLabsVoiceSelected ? 'ElevenLabs (no browser test)' : 'Test Voice'}
+          {isPremiumVoiceSelected ? 'AI Voice (no browser test)' : 'Test Voice'}
         </Button>
       </Box>
 

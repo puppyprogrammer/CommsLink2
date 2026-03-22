@@ -47,14 +47,14 @@ const calculateGrokCredits = (
 };
 
 /**
- * ElevenLabs pricing: ~$0.30 per 1000 characters (Creator tier estimate).
+ * Amazon Polly pricing: $4.00 per 1M characters (neural voices).
  */
-const ELEVENLABS_COST_PER_CHAR = 0.30 / 1000;
+const POLLY_COST_PER_CHAR = 4.0 / 1_000_000;
 
-const calculateElevenLabsCredits = (
+const calculatePollyCredits = (
   characters: number,
 ): { credits: number; rawCostUsd: number } => {
-  const rawCostUsd = characters * ELEVENLABS_COST_PER_CHAR;
+  const rawCostUsd = characters * POLLY_COST_PER_CHAR;
   return { credits: usdToCredits(rawCostUsd), rawCostUsd };
 };
 
@@ -102,6 +102,6 @@ export {
   CREDIT_PACKS,
   usdToCredits,
   calculateGrokCredits,
-  calculateElevenLabsCredits,
+  calculatePollyCredits,
   calculateEC2Credits,
 };

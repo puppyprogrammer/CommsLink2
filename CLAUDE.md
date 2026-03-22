@@ -38,7 +38,7 @@ docs/                        # System documentation
 - **Frontend**: Next.js 14 (App Router), React 18, MUI 7, SCSS modules
 - **Database**: MySQL 8.0 with Prisma ORM
 - **AI**: Grok (grok-3-mini) for chat agents + terminal security classification
-- **External Services**: ElevenLabs (TTS), Stripe (payments), MyMemory (translation)
+- **External Services**: Amazon Polly (TTS), Stripe (payments), Grok (AI)
 - **Deployment**: Docker Compose on EC2, nginx reverse proxy, Let's Encrypt SSL
 
 ## Three-Layer Architecture

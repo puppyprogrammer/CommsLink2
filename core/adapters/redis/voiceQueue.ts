@@ -2,7 +2,7 @@ import { Queue, Worker, Job } from 'bullmq';
 import { Server as SocketServer } from 'socket.io';
 import IORedis from 'ioredis';
 
-import elevenlabsAdapter from '../elevenlabs';
+import pollyAdapter from '../polly';
 import creditActions from '../../actions/credit';
 
 type VoiceChunkJob = {
@@ -26,13 +26,12 @@ const getRedisUrl = (): string => process.env.REDIS_URL || 'redis://localhost:63
  * Initialize the voice TTS queue and its worker.
  *
  * Each chunk is processed sequentially (concurrency 1) to maintain order.
- * The worker generates TTS audio via ElevenLabs and emits the result
+ * The worker generates TTS audio via Amazon Polly and emits the result
  * back to the room via Socket.IO.
  */
 const init = (io: SocketServer): void => {
   const redisUrl = getRedisUrl();
 
-  // BullMQ needs its own ioredis connections (one for queue, one for worker)
   const queueConnection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
   const workerConnection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
 
@@ -46,7 +45,6 @@ const init = (io: SocketServer): void => {
       if (!text.trim()) return;
 
       try {
-        // Check credits
         const hasCredits = await creditActions.hasCredits(userId);
         if (!hasCredits) {
           io.to(roomName).emit('voice_audio_error', {
@@ -57,13 +55,10 @@ const init = (io: SocketServer): void => {
           return;
         }
 
-        // Generate TTS
-        const result = await elevenlabsAdapter.generateSpeech(text, voiceId);
+        const result = await pollyAdapter.generateSpeech(text, voiceId);
 
-        // Charge credits
-        creditActions.chargeElevenLabsUsage(userId, text.length).catch(console.error);
+        creditActions.chargePollyUsage(userId, text.length).catch(console.error);
 
-        // Emit audio to room
         io.to(roomName).emit('voice_audio', {
           sessionId,
           chunkIndex,
@@ -91,11 +86,6 @@ const init = (io: SocketServer): void => {
   console.log('[VoiceQueue] Initialized');
 };
 
-/**
- * Add a voice chunk to the processing queue.
- *
- * Jobs are named with sessionId + chunkIndex so they process in FIFO order.
- */
 const addChunk = async (data: VoiceChunkJob): Promise<void> => {
   if (!queue) throw new Error('Voice queue not initialized');
 

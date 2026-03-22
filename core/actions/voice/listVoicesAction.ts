@@ -2,17 +2,17 @@ import tracer from '../../lib/tracer';
 import Boom from '@hapi/boom';
 
 import Data from '../../data';
-import elevenlabsAdapter from '../../adapters/elevenlabs';
+import pollyAdapter from '../../adapters/polly';
 
-import type { ElevenLabsVoice } from '../../adapters/elevenlabs';
+import type { PollyVoice } from '../../adapters/polly';
 
 /**
  * List available premium voices.
  *
  * @param userId - Requesting user ID.
- * @returns Array of ElevenLabs voices.
+ * @returns Array of Polly voices.
  */
-const listVoicesAction = async (userId: string): Promise<{ voices: ElevenLabsVoice[] }> =>
+const listVoicesAction = async (userId: string): Promise<{ voices: PollyVoice[] }> =>
   tracer.trace('ACTION.VOICE.LIST', async () => {
     const user = await Data.user.findById(userId);
 
@@ -20,7 +20,7 @@ const listVoicesAction = async (userId: string): Promise<{ voices: ElevenLabsVoi
       throw Boom.notFound('User not found');
     }
 
-    const voices = await elevenlabsAdapter.listVoices();
+    const voices = await pollyAdapter.listVoices();
     return { voices };
   });
 

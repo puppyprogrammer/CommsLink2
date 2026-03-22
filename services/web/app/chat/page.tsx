@@ -136,7 +136,7 @@ const ChatPage = () => {
       // Skip TTS for own messages unless "hear own voice" is enabled
       if (isOwnMessage && !prefs.hear_own_voice) return;
 
-      // If message has base64 audio (ElevenLabs TTS from server), play that
+      // If message has base64 audio (server-side TTS), play that
       if (msg.audio) {
         playAudioBlob(msg.audio, prefs.volume);
         return;
@@ -380,12 +380,12 @@ const ChatPage = () => {
       ]);
       if (!text) setInput('');
 
-      // Generate ElevenLabs audio if using an ElevenLabs voice
+      // Generate AI voice audio if using a premium voice
       let audio: string | null = null;
       const voiceId = preferences.voice_id || 'male';
-      const isElevenLabsVoice = !['male', 'female', 'robot'].includes(voiceId);
+      const isPremiumVoice = !['male', 'female', 'robot'].includes(voiceId);
 
-      if (isElevenLabsVoice) {
+      if (isPremiumVoice) {
         try {
           const result = await voiceApi.generate(session.token, {
             text: msgText,
@@ -393,8 +393,8 @@ const ChatPage = () => {
           });
           audio = result.audioBase64 || null;
         } catch (err) {
-          console.error('ElevenLabs voice generation failed, sending without audio:', err);
-          toast('ElevenLabs voice generation failed, sending as text', 'warning');
+          console.error('Voice generation failed, sending without audio:', err);
+          toast('Voice generation failed, sending as text', 'warning');
         }
       }
 
@@ -504,9 +504,9 @@ const ChatPage = () => {
       return;
     }
 
-    // If user has an ElevenLabs voice selected, use voice streaming (chunked TTS)
-    const isElevenLabsVoice = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
-    if (isElevenLabsVoice && session?.token) {
+    // If user has a premium AI voice selected, use voice streaming (chunked TTS)
+    const isPremiumVoice = preferences.voice_id && !['male', 'female', 'robot'].includes(preferences.voice_id);
+    if (isPremiumVoice && session?.token) {
       const socket = getSocket(session.token);
       const sid = voiceStream.start(socket, preferences.voice_id!, {
         onStart: () => setIsListening(true),
@@ -1001,7 +1001,7 @@ const ChatPage = () => {
             {[
               { icon: '🤖', text: 'Deploy AI agents that think, speak, and work autonomously' },
               { icon: '💻', text: 'Connect remote terminals and run Claude Code sessions' },
-              { icon: '🎙️', text: 'Voice chat with ElevenLabs text-to-speech' },
+              { icon: '🎙️', text: 'Voice chat with AI text-to-speech' },
               { icon: '👾', text: 'Customize 3D holographic avatars' },
               { icon: '🔍', text: 'AI-powered web search and browsing' },
             ].map((f, i) => (

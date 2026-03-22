@@ -2,7 +2,7 @@
  * Voice stream manager.
  *
  * Keeps the mic on, runs speech recognition continuously, and sends
- * accumulated text to the server in 5-second chunks for ElevenLabs TTS.
+ * accumulated text to the server in 5-second chunks for TTS.
  */
 
 const CHUNK_INTERVAL_MS = 5000;
