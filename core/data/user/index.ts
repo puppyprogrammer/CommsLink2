@@ -81,6 +81,32 @@ const deleteAccount = async (id: string): Promise<void> => {
   ]);
 };
 
+/** Clear user-created content but keep account and financial records. */
+const clearUserData = async (id: string): Promise<void> => {
+  const user = await prisma.user.findUnique({ where: { id } });
+  const username = user?.username || '';
+
+  const ownedRooms = await prisma.room.findMany({ where: { created_by: id }, select: { id: true } });
+  const ownedRoomIds = ownedRooms.map((r) => r.id);
+
+  await prisma.$transaction([
+    // User-created content
+    prisma.message.deleteMany({ where: { author_id: id } }),
+    prisma.machine_permission.deleteMany({ where: { machine: { owner_id: id } } }),
+    prisma.machine.deleteMany({ where: { owner_id: id } }),
+    prisma.llm_agent.deleteMany({ where: { creator_id: id } }),
+    prisma.room_member.deleteMany({ where: { user_id: id } }),
+    prisma.room_invite.deleteMany({ where: { created_by: id } }),
+    ...(username ? [prisma.claude_log.deleteMany({ where: { username } })] : []),
+    ...(ownedRoomIds.length > 0 ? [
+      prisma.panel_log.deleteMany({ where: { room_id: { in: ownedRoomIds } } }),
+      prisma.memory_summary.deleteMany({ where: { room_id: { in: ownedRoomIds } } }),
+    ] : []),
+    prisma.room.deleteMany({ where: { created_by: id } }),
+    // Keep: credit_transaction, credit_usage_log, payment_transaction (financial records)
+  ]);
+};
+
 export default {
   create,
   findById,
@@ -93,4 +119,5 @@ export default {
   addCredits,
   updateLastRoom,
   deleteAccount,
+  clearUserData,
 };

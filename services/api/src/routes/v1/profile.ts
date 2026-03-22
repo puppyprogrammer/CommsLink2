@@ -69,6 +69,35 @@ const profileRoutes: ServerRoute[] = [
         return { success: true, message: 'Account and all associated data deleted' };
       }),
   },
+  {
+    method: 'POST',
+    path: '/api/v1/profile/clear-data',
+    options: {
+      auth: 'jwt',
+      validate: {
+        payload: Joi.object({
+          confirmation: Joi.string().valid('CLEAR').required(),
+        }),
+      },
+    },
+    handler: async (request: Request, h: ResponseToolkit) =>
+      tracer.trace('CONTROLLER.PROFILE.CLEAR_DATA', async () => {
+        const credentials = request.auth.credentials as unknown as AuthCredentials;
+        const user = await Data.user.findById(credentials.id);
+        if (!user) return h.response({ error: 'User not found' }).code(404);
+
+        await Data.auditLog.create({
+          event: 'data_cleared',
+          username: user.username,
+          ip_address: getClientIp(request),
+          details: `User ${user.username} cleared their content data (messages, rooms, agents, machines)`,
+        });
+
+        await Data.user.clearUserData(credentials.id);
+
+        return { success: true, message: 'Messages, rooms, agents, and machines deleted. Financial records retained.' };
+      }),
+  },
 ];
 
 export { profileRoutes };

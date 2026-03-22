@@ -29,6 +29,10 @@ const ProfilePage = () => {
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearSuccess, setClearSuccess] = useState('');
+  const [clearError, setClearError] = useState('');
+  const [clearConfirm, setClearConfirm] = useState('');
 
   const {
     register,
@@ -134,6 +138,58 @@ const ProfilePage = () => {
               {isSubmitting ? 'Saving...' : 'Update Profile'}
             </Button>
           </form>
+        </Paper>
+
+        <Paper sx={{ p: 2.5, bgcolor: 'rgba(204,167,0,0.03)', border: '1px solid rgba(204,167,0,0.15)', mb: 3 }}>
+          <Typography variant="h6" sx={{ fontSize: '0.95rem', color: '#cca700', mb: 1 }}>
+            Clear My Data
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#8ba4bd', mb: 2, fontSize: '0.8rem', lineHeight: 1.6 }}>
+            Delete your messages, rooms, AI agents, and connected machines.
+            Your account, credits, and payment history will be preserved.
+          </Typography>
+
+          {clearSuccess && <Alert severity="success" sx={{ mb: 2 }}>{clearSuccess}</Alert>}
+          {clearError && <Alert severity="error" sx={{ mb: 2 }}>{clearError}</Alert>}
+
+          <TextField
+            fullWidth size="small"
+            placeholder='Type "CLEAR" to confirm'
+            value={clearConfirm}
+            onChange={(e) => setClearConfirm(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <Button
+            variant="contained"
+            size="small"
+            disabled={clearConfirm !== 'CLEAR' || clearing}
+            onClick={async () => {
+              if (!session?.token) return;
+              setClearError('');
+              setClearSuccess('');
+              setClearing(true);
+              try {
+                const res = await fetch('/api/v1/profile/clear-data', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+                  body: JSON.stringify({ confirmation: 'CLEAR' }),
+                });
+                if (!res.ok) {
+                  const body = await res.json();
+                  setClearError(body.message || 'Failed');
+                } else {
+                  setClearSuccess('Data cleared. Your messages, rooms, agents, and machines have been deleted.');
+                  setClearConfirm('');
+                }
+              } catch {
+                setClearError('Something went wrong');
+              }
+              setClearing(false);
+            }}
+            sx={{ bgcolor: '#cca700', '&:hover': { bgcolor: '#b89600' } }}
+          >
+            {clearing ? 'Clearing...' : 'Clear My Data'}
+          </Button>
         </Paper>
 
         <Divider sx={{ mb: 3, borderColor: 'rgba(244,71,71,0.2)' }} />
