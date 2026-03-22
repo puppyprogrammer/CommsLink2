@@ -1022,6 +1022,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             height: '100%',
             maxWidth: '100%',
             borderRadius: 0,
+            paddingTop: 'env(safe-area-inset-top, 24px)',
           },
         },
       }}
