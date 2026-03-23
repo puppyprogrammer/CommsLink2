@@ -455,27 +455,11 @@ const ChatPage = () => {
       const voiceId = preferences.voice_id || 'Joanna';
       const socket = getSocket(session.token);
 
-      // Send text immediately — don't wait for TTS
+      // Send text — server generates TTS and broadcasts audio separately
       socket.emit('chat_message', {
         text: msgText,
         voice: voiceId,
         nonce,
-      });
-
-      // Generate TTS in background and send as audio update
-      voiceApi.generate(session.token, {
-        text: msgText,
-        voice_id: voiceId,
-      }).then((result) => {
-        if (result.audioBase64) {
-          socket.emit('chat_audio', {
-            nonce,
-            audio: result.audioBase64,
-            voice: voiceId,
-          });
-        }
-      }).catch((err) => {
-        console.error('[TTS] Voice generation failed:', err);
       });
     },
     [input, session?.token, preferences.voice_id],
