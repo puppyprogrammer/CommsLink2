@@ -6905,8 +6905,41 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
                 }
               })();
 
-              // Track speech for agent mentions
+              // Track speech
               userLastSpoke.set(`${roomId}:${socket.user.id}`, Date.now());
+
+              // Check if message mentions an AI agent (same logic as chat_message handler)
+              const agents = await Data.llmAgent.findByRoom(roomId);
+              const textLower = trimmed.toLowerCase();
+              let agentMentioned = false;
+              for (const agent of agents) {
+                const names = [agent.name.toLowerCase()];
+                if (agent.nicknames) {
+                  try {
+                    const parsed = JSON.parse(agent.nicknames) as string[];
+                    names.push(...parsed.map((n: string) => n.toLowerCase()));
+                  } catch { /* ignore */ }
+                }
+                if (names.some((n) => textLower.includes(n))) {
+                  await runAgentResponse(io, agent, user.currentRoom);
+                  agentMentioned = true;
+                  break;
+                }
+              }
+              // If only one agent and user is alone, trigger it
+              if (!agentMentioned && agents.length === 1) {
+                const roomEntry = activeRooms.get(user.currentRoom);
+                if (roomEntry) {
+                  const humanUsers = new Set<string>();
+                  for (const sid of roomEntry.users) {
+                    const u = connectedUsers.get(sid);
+                    if (u) humanUsers.add(u.userId);
+                  }
+                  if (humanUsers.size <= 1) {
+                    await runAgentResponse(io, agents[0], user.currentRoom);
+                  }
+                }
+              }
             },
             onPartial: (text: string) => {
               socket.emit("voice_stt_partial", { text });
