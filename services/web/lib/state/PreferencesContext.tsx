@@ -18,7 +18,7 @@ type PreferencesContextValue = {
 };
 
 const defaultPreferences: Preferences = {
-  voice_id: null,
+  voice_id: 'Joanna',
   volume: 1.0,
   hear_own_voice: false,
 };
@@ -40,8 +40,10 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
   useEffect(() => {
     if (session?.user && !initialized.current) {
       initialized.current = true;
+      const INVALID_VOICES = ['male', 'female', 'robot', '', null, undefined];
+      const voiceId = INVALID_VOICES.includes(session.user.voice_id) ? 'Joanna' : session.user.voice_id;
       setPreferences({
-        voice_id: session.user.voice_id,
+        voice_id: voiceId,
         volume: session.user.volume ?? 1.0,
         hear_own_voice: session.user.hear_own_voice ?? false,
       });
