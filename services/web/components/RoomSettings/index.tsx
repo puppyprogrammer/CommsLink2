@@ -66,6 +66,7 @@ type Agent = {
   plan: string | null;
   tasks: string | null;
   nicknames: string | null;
+  max_tokens: number;
 };
 
 type GrokModel = {
