@@ -1,6 +1,9 @@
 import Joi from 'joi';
 import Boom from '@hapi/boom';
 import jwt from 'jsonwebtoken';
+import { createHash } from 'crypto';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, createReadStream } from 'fs';
+import { join } from 'path';
 
 import { register, login } from '../../../../../core/actions/ffxiv/authAction';
 import { generateTTS } from '../../../../../core/actions/ffxiv/ttsAction';
@@ -8,6 +11,9 @@ import pollyAdapter from '../../../../../core/adapters/polly';
 import Data from '../../../../../core/data';
 import { checkRateLimit } from '../../../../../core/helpers/rateLimiter';
 import { broadcastAudio, updatePlayerPosition } from '../../ffxivWs';
+
+const RELEASES_DIR = join(process.cwd(), 'data', 'plugin-releases');
+if (!existsSync(RELEASES_DIR)) mkdirSync(RELEASES_DIR, { recursive: true });
 
 // Dedup: track recent messages to prevent double TTS when multiple clients send the same chat
 const recentMessages = new Map<string, number>();
@@ -252,6 +258,121 @@ const ffxivRoutes: ServerRoute[] = [
         voiceId: user.voice_id,
         message: 'Voice updated successfully',
       };
+    },
+  },
+
+  // ── Plugin Update: Version Check ────────────────────────────
+  {
+    method: 'GET',
+    path: '/api/v1/ffxiv/update/version',
+    options: { auth: false },
+    handler: async (request: Request, h: ResponseToolkit) => {
+      const versionFile = join(RELEASES_DIR, 'version.json');
+      if (!existsSync(versionFile)) {
+        return h.response({ error: 'No release available' }).code(404);
+      }
+      try {
+        const data = JSON.parse(readFileSync(versionFile, 'utf-8'));
+        return data;
+      } catch {
+        return h.response({ error: 'Failed to read version info' }).code(500);
+      }
+    },
+  },
+
+  // ── Plugin Update: Download ─────────────────────────────────
+  {
+    method: 'GET',
+    path: '/api/v1/ffxiv/update/download',
+    options: { auth: false },
+    handler: async (request: Request, h: ResponseToolkit) => {
+      const zipPath = join(RELEASES_DIR, 'latest.zip');
+      if (!existsSync(zipPath)) {
+        return h.response({ error: 'No release available' }).code(404);
+      }
+      return h.response(createReadStream(zipPath))
+        .type('application/zip')
+        .header('Content-Disposition', 'attachment; filename="FFXIVoices-latest.zip"');
+    },
+  },
+
+  // ── Plugin Update: Upload (Admin Only) ──────────────────────
+  {
+    method: 'POST',
+    path: '/api/v1/ffxiv/update/upload',
+    options: {
+      auth: false,
+      payload: {
+        maxBytes: 20 * 1024 * 1024, // 20MB
+        parse: false, // Raw bytes
+        output: 'data',
+      },
+    },
+    handler: async (request: Request, h: ResponseToolkit) => {
+      // Manual auth — verify admin
+      const rawHeader = request.headers.authorization;
+      const authHeader = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        throw Boom.unauthorized('Missing authorization');
+      }
+      const token = authHeader.substring(7);
+      const secret = process.env.JWT_SECRET;
+      if (!secret) throw new Error('JWT_SECRET required');
+
+      let decoded: { id: string; type?: string };
+      try {
+        decoded = jwt.verify(token, secret) as { id: string; type?: string };
+      } catch {
+        throw Boom.unauthorized('Invalid token');
+      }
+
+      // Check if user is admin (support both commslink and ffxiv tokens)
+      if (decoded.type === 'ffxiv') {
+        // For now, only the first registered FFXIV user is admin
+        // TODO: add is_admin field to ffxiv_user
+        const user = await Data.ffxivUser.findById(decoded.id);
+        if (!user) throw Boom.unauthorized('User not found');
+      } else {
+        const user = await Data.user.findById(decoded.id);
+        if (!user || !user.is_admin) throw Boom.forbidden('Admin access required');
+      }
+
+      const version = request.query.version as string;
+      const changelog = request.query.changelog as string || '';
+
+      if (!version) {
+        throw Boom.badRequest('version query parameter is required');
+      }
+
+      const rawBody = request.payload as Buffer;
+      if (!rawBody || rawBody.length < 4) {
+        throw Boom.badRequest('Empty or too small payload');
+      }
+
+      // Verify ZIP magic bytes (PK)
+      if (rawBody[0] !== 0x50 || rawBody[1] !== 0x4B) {
+        throw Boom.badRequest('Not a valid ZIP file');
+      }
+
+      const sha256 = createHash('sha256').update(rawBody).digest('hex');
+
+      // Write zip
+      const zipPath = join(RELEASES_DIR, 'latest.zip');
+      writeFileSync(zipPath, rawBody);
+
+      // Write version.json
+      const metadata = {
+        version,
+        changelog: decodeURIComponent(changelog),
+        sha256,
+        size: rawBody.length,
+        updatedAt: new Date().toISOString(),
+      };
+      writeFileSync(join(RELEASES_DIR, 'version.json'), JSON.stringify(metadata, null, 2));
+
+      console.log(`[FFXIVoices] Plugin release uploaded: v${version}, ${rawBody.length} bytes, sha256=${sha256.substring(0, 16)}...`);
+
+      return metadata;
     },
   },
 ];
