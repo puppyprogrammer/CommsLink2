@@ -5695,8 +5695,8 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
         }
 
         const count = await Data.llmAgent.countByRoom(roomId);
-        if (count >= 3) {
-          socket.emit("agent_error", { error: "Maximum 3 agents per room" });
+        if (count >= 5) {
+          socket.emit("agent_error", { error: "Maximum 5 agents per room" });
           return;
         }
 

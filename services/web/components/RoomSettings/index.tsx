@@ -1192,7 +1192,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
 
         {/* ── AI Agents ─────────────────────────── */}
         <Typography variant="h6" sx={{ mb: 0.5, fontSize: '0.85rem', color: '#4dd8d0', fontWeight: 600, letterSpacing: 0.5 }}>
-          AI Agents ({agents.length}/3)
+          AI Agents ({agents.length}/5)
         </Typography>
         <Typography variant="detailText" sx={{ mb: 2, display: 'block' }}>
           Mention an agent&apos;s name in chat to trigger a response.
@@ -1253,7 +1253,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
           );
         })}
 
-        {agents.length < 3 && (
+        {agents.length < 5 && (
           <Button
             variant="outlined"
             size="small"
