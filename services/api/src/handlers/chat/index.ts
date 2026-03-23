@@ -5149,7 +5149,9 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
       io.to(user.currentRoom).emit("chat_message", message);
 
       // Generate TTS for user message server-side (so other users hear their selected voice)
-      if (data.voice && data.text.trim()) {
+      const BROWSER_VOICES = ["male", "female", "robot"];
+      const userVoice = (data.voice && !BROWSER_VOICES.includes(data.voice)) ? data.voice : "Joanna";
+      if (data.text.trim()) {
         (async () => {
           try {
             const { default: pollyAdapter } = await import("../../../../../core/adapters/polly");
@@ -5158,13 +5160,13 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
               const { default: comprehendAdapter } = await import("../../../../../core/adapters/comprehend");
               sentiment = await comprehendAdapter.detectSentiment(data.text);
             } catch { /* sentiment optional */ }
-            const ttsResult = await pollyAdapter.generateSpeechWithEmotion(data.text, data.voice!, sentiment);
+            const ttsResult = await pollyAdapter.generateSpeechWithEmotion(data.text, userVoice, sentiment);
             if (ttsResult.audioBase64) {
               io.to(user.currentRoom).emit("chat_audio", {
                 nonce: data.nonce,
                 audio: ttsResult.audioBase64,
                 sender: socket.user.username,
-                voice: data.voice,
+                voice: userVoice,
               });
             }
           } catch (ttsErr) {
