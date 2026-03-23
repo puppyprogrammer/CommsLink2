@@ -84,6 +84,7 @@ const broadcastAudio = (
   senderPos: { x: number; y: number; z: number },
 ) => {
   const PROXIMITY_YALMS = 50;
+  let sentCount = 0;
 
   for (const [uid, player] of players) {
     // Skip self unless hearSelf is enabled
@@ -110,7 +111,9 @@ const broadcastAudio = (
 
     // Send binary WAV frame
     player.ws.send(wavBuffer);
+    sentCount++;
   }
+  console.log(`[FFXIVoices] Broadcast "${message.substring(0, 30)}" to ${sentCount} player(s), sender=${senderCharName}, hearSelf=${players.get(senderUserId)?.hearSelf}`);
 };
 
 // Update a player's position (called from chat route)
