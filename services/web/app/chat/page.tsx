@@ -134,15 +134,13 @@ const ChatPage = () => {
     onPlayStateChange((playing) => {
       setAudioPlaying(playing);
       if (playing) {
-        if (voiceCapture.isActive()) {
-          voiceCapture.pause();
-        } else {
+        // Don't pause voiceCapture — echo filter handles feedback prevention
+        // Only pause Web Speech API which picks up speaker audio
+        if (!voiceCapture.isActive()) {
           speechRecognition.pause();
         }
       } else {
-        if (voiceCapture.isActive()) {
-          voiceCapture.resume();
-        } else {
+        if (!voiceCapture.isActive()) {
           speechRecognition.resume();
         }
       }
