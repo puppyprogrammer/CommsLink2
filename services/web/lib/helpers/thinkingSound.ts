@@ -1,14 +1,15 @@
 /**
- * Ethereal whisper effect while AI is thinking.
- * Layered filtered noise at different frequencies creates
- * a hushed, breathy whisper that fades in and out.
+ * Thinking indicator sound — soft ethereal chime/hum.
+ * Two detuned sine waves with slow tremolo creates a dreamy,
+ * mystical hum like a crystal resonating.
  */
 
 let audioCtx: AudioContext | null = null;
-let sources: AudioBufferSourceNode[] = [];
-let gains: GainNode[] = [];
+let osc1: OscillatorNode | null = null;
+let osc2: OscillatorNode | null = null;
 let masterGain: GainNode | null = null;
-let pulseInterval: ReturnType<typeof setInterval> | null = null;
+let tremoloGain: GainNode | null = null;
+let lfo: OscillatorNode | null = null;
 let active = false;
 
 const getContext = (): AudioContext => {
@@ -19,97 +20,51 @@ const getContext = (): AudioContext => {
   return audioCtx;
 };
 
-const createNoiseBuffer = (ctx: AudioContext, seconds: number): AudioBuffer => {
-  const length = ctx.sampleRate * seconds;
-  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < length; i++) {
-    // Shape the noise to sound more like breath — emphasize low frequencies
-    data[i] = (Math.random() * 2 - 1) * (0.3 + Math.random() * 0.2);
-  }
-  return buffer;
-};
-
-/** Create a whisper layer — filtered noise at a specific frequency range */
-const createWhisperLayer = (
-  ctx: AudioContext,
-  noiseBuffer: AudioBuffer,
-  freq: number,
-  q: number,
-  type: BiquadFilterType,
-): { source: AudioBufferSourceNode; gain: GainNode } => {
-  const source = ctx.createBufferSource();
-  source.buffer = noiseBuffer;
-  source.loop = true;
-
-  const filter = ctx.createBiquadFilter();
-  filter.type = type;
-  filter.frequency.value = freq;
-  filter.Q.value = q;
-
-  const gain = ctx.createGain();
-  gain.gain.value = 0;
-
-  source.connect(filter);
-  filter.connect(gain);
-
-  return { source, gain };
-};
-
 const startThinking = (): void => {
   if (active) return;
   active = true;
 
   try {
     const ctx = getContext();
-    const noiseBuffer = createNoiseBuffer(ctx, 3);
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
     masterGain = ctx.createGain();
-    masterGain.gain.value = 1;
+    masterGain.gain.value = 0;
     masterGain.connect(ctx.destination);
 
-    // Layer 1: Low breathy base (like "hhh")
-    const layer1 = createWhisperLayer(ctx, noiseBuffer, 400, 0.8, 'bandpass');
-    // Layer 2: Mid sibilance (like "sss/shh")
-    const layer2 = createWhisperLayer(ctx, noiseBuffer, 2500, 1.2, 'bandpass');
-    // Layer 3: High air (like breath through teeth)
-    const layer3 = createWhisperLayer(ctx, noiseBuffer, 6000, 0.6, 'highpass');
+    // Two slightly detuned sine waves = ethereal shimmer
+    osc1 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.value = 220; // A3
 
-    [layer1, layer2, layer3].forEach(({ source, gain }) => {
-      gain.connect(masterGain!);
-      source.start();
-      sources.push(source);
-      gains.push(gain);
-    });
+    osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = 223; // Slightly detuned — creates slow beating/shimmer
 
-    // Whisper pulse — irregular, organic rhythm like hushed murmuring
-    let phase = 0;
-    pulseInterval = setInterval(() => {
-      if (!active || gains.length === 0) return;
-      const now = ctx.currentTime;
-      phase++;
+    // Tremolo LFO — slow wobble
+    tremoloGain = ctx.createGain();
+    tremoloGain.gain.value = 0.5;
 
-      // Vary each layer independently for organic feel
-      const breathIn = phase % 2 === 0;
-      const intensity = 0.02 + Math.random() * 0.015; // Slight randomness
+    lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 1.5; // 1.5 Hz tremolo — gentle pulse
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.5;
+    lfo.connect(lfoGain);
+    lfoGain.connect(tremoloGain.gain);
 
-      // Base breath
-      gains[0].gain.cancelScheduledValues(now);
-      gains[0].gain.setValueAtTime(gains[0].gain.value, now);
-      gains[0].gain.linearRampToValueAtTime(breathIn ? intensity : 0.003, now + (breathIn ? 0.4 : 0.6));
+    osc1.connect(tremoloGain);
+    osc2.connect(tremoloGain);
+    tremoloGain.connect(masterGain);
 
-      // Sibilance — slightly delayed, quieter
-      gains[1].gain.cancelScheduledValues(now);
-      gains[1].gain.setValueAtTime(gains[1].gain.value, now);
-      gains[1].gain.linearRampToValueAtTime(breathIn ? intensity * 0.4 : 0.001, now + (breathIn ? 0.5 : 0.5));
+    osc1.start();
+    osc2.start();
+    lfo.start();
 
-      // High air — sparse, only on some pulses
-      if (phase % 3 === 0) {
-        gains[2].gain.cancelScheduledValues(now);
-        gains[2].gain.setValueAtTime(gains[2].gain.value, now);
-        gains[2].gain.linearRampToValueAtTime(breathIn ? intensity * 0.2 : 0, now + 0.3);
-      }
-    }, 800 + Math.random() * 400); // Irregular timing
+    // Fade in gently
+    const now = ctx.currentTime;
+    masterGain.gain.setValueAtTime(0, now);
+    masterGain.gain.linearRampToValueAtTime(0.03, now + 1.5);
 
   } catch {
     active = false;
@@ -119,28 +74,21 @@ const startThinking = (): void => {
 const stopThinking = (): void => {
   active = false;
 
-  if (pulseInterval) {
-    clearInterval(pulseInterval);
-    pulseInterval = null;
-  }
-
-  // Fade out smoothly
   if (masterGain && audioCtx) {
     try {
       const now = audioCtx.currentTime;
       masterGain.gain.cancelScheduledValues(now);
       masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-      masterGain.gain.linearRampToValueAtTime(0, now + 0.5);
+      masterGain.gain.linearRampToValueAtTime(0, now + 0.8);
     } catch { /* ignore */ }
   }
 
   setTimeout(() => {
-    sources.forEach((s) => { try { s.stop(); } catch { /* */ } });
-    sources = [];
-    gains.forEach((g) => { try { g.disconnect(); } catch { /* */ } });
-    gains = [];
-    if (masterGain) { try { masterGain.disconnect(); } catch { /* */ } masterGain = null; }
-  }, 600);
+    [osc1, osc2, lfo].forEach((o) => { if (o) try { o.stop(); } catch { /* */ } });
+    osc1 = null; osc2 = null; lfo = null;
+    [tremoloGain, masterGain].forEach((g) => { if (g) try { g.disconnect(); } catch { /* */ } });
+    tremoloGain = null; masterGain = null;
+  }, 900);
 };
 
 const isThinking = (): boolean => active;
