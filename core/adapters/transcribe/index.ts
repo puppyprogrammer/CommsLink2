@@ -33,8 +33,8 @@ const transcribeStream = async (
 
   const command = new StartStreamTranscriptionCommand({
     LanguageCode: (languageCode || 'en-US') as LanguageCode,
-    MediaEncoding: (mediaEncoding || 'ogg-opus') as MediaEncoding,
-    MediaSampleRateHertz: 48000,
+    MediaEncoding: (mediaEncoding || 'pcm') as MediaEncoding,
+    MediaSampleRateHertz: 16000,
     AudioStream: audioStream(audioChunks),
   });
 
