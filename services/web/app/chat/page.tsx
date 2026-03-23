@@ -971,9 +971,10 @@ const ChatPage = () => {
                   variant="standard"
                   disableUnderline
                   sx={{
-                    fontSize: '0.7rem',
+                    fontSize: { xs: '0.65rem', sm: '0.7rem' },
                     color: '#4dd8d0',
-                    maxWidth: 110,
+                    maxWidth: { xs: 80, sm: 110 },
+                    minWidth: 60,
                     '& .MuiSelect-select': { py: 0, px: 0.5 },
                     '& .MuiSvgIcon-root': { fontSize: 14, color: '#556b82' },
                   }}

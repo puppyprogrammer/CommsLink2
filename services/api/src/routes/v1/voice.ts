@@ -15,7 +15,7 @@ const voiceRoutes: ServerRoute[] = [
       auth: 'jwt',
       validate: {
         payload: Joi.object({
-          text: Joi.string().max(500).required(),
+          text: Joi.string().max(5000).required(),
           voiceId: Joi.string().required(),
         }),
       },

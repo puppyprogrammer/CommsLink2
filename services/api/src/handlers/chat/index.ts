@@ -6815,14 +6815,17 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
         );
 
         const session = transcribeAdapter.startSession(
-          // onTranscript â€” fires for each completed sentence in real-time
-          (text: string) => {
-            console.log(`[STT] ${socket.user?.username}: "${text}"`);
-            socket.emit("voice_stt_transcript", { text });
-          },
-          // onError
-          (err: Error) => {
-            console.error(`[STT] Stream error for ${socket.user?.username}:`, err.message);
+          {
+            onTranscript: (text: string) => {
+              console.log(`[STT] ${socket.user?.username}: "${text}"`);
+              socket.emit("voice_stt_transcript", { text });
+            },
+            onPartial: (text: string) => {
+              socket.emit("voice_stt_partial", { text });
+            },
+            onError: (err: Error) => {
+              console.error(`[STT] Stream error for ${socket.user?.username}:`, err.message);
+            },
           },
         );
 
