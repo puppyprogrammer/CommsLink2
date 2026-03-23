@@ -28,6 +28,7 @@
     "@hapi/boom": "^10.0.1",
     "@hapi/hapi": "^21.3.7",
     "@hapi/inert": "^7.1.0",
+    "@types/ws": "^8.18.1",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.0.0",
     "cheerio": "^1.2.0",
@@ -41,7 +42,8 @@
     "sharp": "^0.34.5",
     "socket.io": "^4.7.4",
     "stripe": "^14.0.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@prisma/client": "^5.10.0",

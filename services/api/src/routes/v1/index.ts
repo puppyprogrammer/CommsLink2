@@ -11,6 +11,7 @@ import { modelsRoutes } from './models';
 import { uploadRoutes } from './upload';
 import { terminalRoutes } from './terminal';
 import { agentTemplateRoutes } from './agentTemplate';
+import { ffxivRoutes } from './ffxiv';
 
 /**
  * Register all v1 API routes.
@@ -30,6 +31,7 @@ const registerRoutes = (server: Server): void => {
     ...uploadRoutes,
     ...terminalRoutes,
     ...agentTemplateRoutes,
+    ...ffxivRoutes,
   ]);
 };
 

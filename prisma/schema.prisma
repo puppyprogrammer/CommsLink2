@@ -319,3 +319,18 @@ model audit_log {
   @@index([username])
   @@index([created_at])
 }
+
+model ffxiv_user {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  password_hash  String
+  content_id     String?
+  char_name      String?
+  voice_id       String   @default("Rachel")
+  credit_balance Int      @default(500)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([email])
+  @@index([content_id])
+}
