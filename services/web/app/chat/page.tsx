@@ -954,12 +954,15 @@ const ChatPage = () => {
                   onChange={(e) => updatePreference('voice_id', e.target.value)}
                   variant="standard"
                   disableUnderline
+                  renderValue={(val) => {
+                    const v = availableVoices.find((voice) => voice.voice_id === val);
+                    return v ? v.name.replace(/\s*\(.*?\)\s*/g, '') : val;
+                  }}
                   sx={{
-                    fontSize: { xs: '0.65rem', sm: '0.7rem' },
+                    fontSize: '0.7rem',
                     color: '#4dd8d0',
-                    maxWidth: { xs: 80, sm: 110 },
-                    minWidth: 60,
-                    '& .MuiSelect-select': { py: 0, px: 0.5 },
+                    minWidth: 70,
+                    '& .MuiSelect-select': { py: 0.25, px: 0.5 },
                     '& .MuiSvgIcon-root': { fontSize: 14, color: '#556b82' },
                   }}
                 >
