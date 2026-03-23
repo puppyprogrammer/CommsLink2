@@ -6841,11 +6841,6 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
           "../../../../../core/adapters/transcribe"
         );
 
-        // Get user's voice preference for TTS
-        const sttUser = await Data.user.findById(socket.user.id);
-        const sttVoice = (sttUser?.voice_id && !["male", "female", "robot"].includes(sttUser.voice_id))
-          ? sttUser.voice_id : "Joanna";
-
         const session = transcribeAdapter.startSession(
           {
             onTranscript: async (text: string) => {
@@ -6858,7 +6853,11 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
               const roomId = getRoomId(user.currentRoom);
               if (!roomId) return;
 
-              // Broadcast as a chat message directly from the server
+              // Get latest voice preference from DB each time
+              const sttUser = await Data.user.findById(socket.user.id);
+              const sttVoice = (sttUser?.voice_id && !["male", "female", "robot"].includes(sttUser.voice_id))
+                ? sttUser.voice_id : "Joanna";
+
               const msgId = `stt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
               io.to(user.currentRoom).emit("chat_message", {
                 id: msgId,
