@@ -3,6 +3,7 @@ import { PollyClient, SynthesizeSpeechCommand } from '@aws-sdk/client-polly';
 import type { VoiceId, Engine } from '@aws-sdk/client-polly';
 
 import Data from '../../data';
+import elevenlabsAdapter from '../../adapters/elevenlabs';
 
 const getPollyClient = () => new PollyClient({ region: process.env.AWS_REGION || 'us-east-2' });
 
@@ -28,8 +29,9 @@ const createWavHeader = (pcmLength: number, sampleRate: number, channels: number
 };
 
 /**
- * Generate TTS audio for an FFXIVoices user using Amazon Polly.
- * Returns WAV buffer (PCM wrapped in WAV header).
+ * Generate TTS audio for an FFXIVoices user.
+ * Routes to ElevenLabs for voices prefixed with "el:", otherwise Polly.
+ * Returns WAV buffer.
  */
 const generateTTS = async (
   userId: string,
@@ -41,32 +43,45 @@ const generateTTS = async (
   if (user.credit_balance <= 0) throw Boom.paymentRequired('Insufficient credits');
 
   const selectedVoice = voiceId || user.voice_id || 'Joanna';
-  const client = getPollyClient();
 
-  const command = new SynthesizeSpeechCommand({
-    Text: text.trim(),
-    VoiceId: selectedVoice as VoiceId,
-    OutputFormat: 'pcm',
-    SampleRate: '16000',
-    Engine: 'standard' as Engine,
-  });
+  let wavBuffer: Buffer;
 
-  const response = await client.send(command);
-  if (!response.AudioStream) throw new Error('Polly returned no audio stream');
+  if (selectedVoice.startsWith('el:')) {
+    // ElevenLabs premium voice
+    const elVoiceId = selectedVoice.substring(3);
+    wavBuffer = await elevenlabsAdapter.generateSpeechWav(text.trim(), elVoiceId);
 
-  const chunks: Uint8Array[] = [];
-  const stream = response.AudioStream as AsyncIterable<Uint8Array>;
-  for await (const chunk of stream) {
-    chunks.push(chunk);
+    // Premium costs 3 credits per 50 chars
+    const creditCost = Math.max(1, Math.ceil(text.length / 50) * 3);
+    await Data.ffxivUser.deductCredits(user.id, creditCost);
+  } else {
+    // Polly free voice
+    const client = getPollyClient();
+    const command = new SynthesizeSpeechCommand({
+      Text: text.trim(),
+      VoiceId: selectedVoice as VoiceId,
+      OutputFormat: 'pcm',
+      SampleRate: '16000',
+      Engine: 'standard' as Engine,
+    });
+
+    const response = await client.send(command);
+    if (!response.AudioStream) throw new Error('Polly returned no audio stream');
+
+    const chunks: Uint8Array[] = [];
+    const stream = response.AudioStream as AsyncIterable<Uint8Array>;
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+
+    const pcmBuffer = Buffer.concat(chunks);
+    const wavHeader = createWavHeader(pcmBuffer.length, 16000, 1, 16);
+    wavBuffer = Buffer.concat([wavHeader, pcmBuffer]);
+
+    // Free tier: 1 credit per 50 chars
+    const creditCost = Math.max(1, Math.ceil(text.length / 50));
+    await Data.ffxivUser.deductCredits(user.id, creditCost);
   }
-
-  const pcmBuffer = Buffer.concat(chunks);
-  const wavHeader = createWavHeader(pcmBuffer.length, 16000, 1, 16);
-  const wavBuffer = Buffer.concat([wavHeader, pcmBuffer]);
-
-  // Deduct credits: 1 credit per 50 characters, minimum 1
-  const creditCost = Math.max(1, Math.ceil(text.length / 50));
-  await Data.ffxivUser.deductCredits(user.id, creditCost);
 
   return wavBuffer;
 };

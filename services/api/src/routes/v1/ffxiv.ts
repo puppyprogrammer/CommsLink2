@@ -231,7 +231,34 @@ const ffxivRoutes: ServerRoute[] = [
       auth: false,
     },
     handler: async () => {
-      return pollyAdapter.listVoices();
+      // Combine Polly (free) and ElevenLabs (premium) voices
+      const pollyVoices = await pollyAdapter.listVoices();
+      const pollyWithProvider = pollyVoices.map((v) => ({ ...v, provider: 'polly', tier: 'free' }));
+
+      const elevenLabsVoices = [
+        { voice_id: 'el:m3yAHyFEFKtbCIM5n7GF', name: 'Ash (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:hpp4J3VqNfWAUOO0d1Us', name: 'Bella (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:EXAVITQu4vr4xnSDxMaL', name: 'Sarah (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:FGY2WhTYpPnrIDTdsKH5', name: 'Laura (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:cgSgspJ2msm6clMCkdW9', name: 'Jessica (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:pFZP5JQG7iQjIQuC4Bku', name: 'Lily (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:Xb7hH8MSUJpSbSDYk0k2', name: 'Alice (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:6u6JbqKdaQy89ENzLSju', name: 'Brielle (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:o0M2BxRl1s2s3MZyU17F', name: 'Myriam (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:29vD33N1CtxCmqQRPOHJ', name: 'Drew (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:2EiwWnXFnvU5JabPnv8n', name: 'Clyde (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:AZnzlk1XvdvUeBnXmlld', name: 'Domi (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:CwhRBWXzGAHq8TQ4Fs17', name: 'Roger (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:IKne3meq5aSn9XLyUdCD', name: 'Charlie (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:JBFqnCBsd6RMkjVDRZzb', name: 'George (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:SOYHLrjzK2X1ezoPC6cr', name: 'Harry (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:nPczCjzI2devNBz1zQrb', name: 'Brian (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:onwK4e9ZLuTAKqWW03F9', name: 'Daniel (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:pNInz6obpgDQGcFmaJgB', name: 'Adam (Premium)', provider: 'elevenlabs', tier: 'premium' },
+        { voice_id: 'el:bIHbv24MWmeRgasZH58o', name: 'Will (Premium)', provider: 'elevenlabs', tier: 'premium' },
+      ];
+
+      return [...pollyWithProvider, ...elevenLabsVoices];
     },
   },
 
