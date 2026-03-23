@@ -5,6 +5,7 @@ type ConnectedPlayer = {
   ws: WebSocket;
   userId: string;
   charName: string;
+  hearSelf: boolean;
   zone: number;
   mapId: number;
   x: number;
@@ -40,6 +41,7 @@ const init = () => {
 
           players.set(userId, {
             ws, userId, charName: user?.char_name || 'Unknown',
+            hearSelf: data.hearSelf === true,
             zone: 0, mapId: 0, x: 0, y: 0, z: 0,
           });
 
@@ -84,7 +86,8 @@ const broadcastAudio = (
   const PROXIMITY_YALMS = 50;
 
   for (const [uid, player] of players) {
-    if (uid === senderUserId) continue; // Don't send to self
+    // Skip self unless hearSelf is enabled
+    if (uid === senderUserId && !player.hearSelf) continue;
     if (player.ws.readyState !== WebSocket.OPEN) continue;
 
     // Zone + map filter
