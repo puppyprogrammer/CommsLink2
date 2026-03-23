@@ -4,43 +4,41 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Box, Typography, Button, Container } from '@mui/material';
-import TerminalIcon from '@mui/icons-material/Terminal';
-import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import SecurityIcon from '@mui/icons-material/Security';
-import SpeedIcon from '@mui/icons-material/Speed';
-import GroupsIcon from '@mui/icons-material/Groups';
+import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
+import ApiIcon from '@mui/icons-material/Api';
+import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 
-const features = [
+const products = [
   {
-    icon: <RecordVoiceOverIcon sx={{ fontSize: 36 }} />,
-    title: 'Voice-Controlled AI',
-    desc: 'Talk to AI agents with real-time text-to-speech. Give commands with your voice, hear responses spoken back.',
+    name: 'CommsLink Chat',
+    tagline: 'Voice AI Agents + Remote Terminals',
+    description: 'Talk to autonomous AI agents that execute commands on your servers. Deploy agents, manage infrastructure, and collaborate — all through voice.',
+    icon: <SmartToyIcon sx={{ fontSize: 48 }} />,
+    href: '/chat',
+    cta: 'Launch App',
+    color: '#4dd8d0',
+    live: true,
   },
   {
-    icon: <TerminalIcon sx={{ fontSize: 36 }} />,
-    title: 'Remote Terminal Access',
-    desc: 'Execute commands on any machine from anywhere. Your AI agents can run shell commands, scripts, and even spawn Claude Code sessions.',
+    name: 'FFXIVoices',
+    tagline: 'AI Voices for FFXIV Roleplayers',
+    description: 'Give your FFXIV character a voice. Every player selects a unique AI voice — party chat, /say, and RP dialogue spoken aloud to everyone nearby.',
+    icon: <SportsEsportsIcon sx={{ fontSize: 48 }} />,
+    href: '/ffxivoices',
+    cta: 'Coming Soon',
+    color: '#b388ff',
+    live: false,
   },
   {
-    icon: <SmartToyIcon sx={{ fontSize: 36 }} />,
-    title: 'Autonomous AI Agents',
-    desc: 'Deploy AI agents that think, remember, and act on their own. They monitor themselves for drift and maintain memory coherence.',
-  },
-  {
-    icon: <SecurityIcon sx={{ fontSize: 36 }} />,
-    title: 'Security Classification',
-    desc: 'Every terminal command is classified by AI before execution. Dangerous commands require approval. Blocked commands never run.',
-  },
-  {
-    icon: <SpeedIcon sx={{ fontSize: 36 }} />,
-    title: 'Real-Time Everything',
-    desc: 'Built on Socket.IO for instant messaging, live terminal output, and real-time voice. No polling, no delays.',
-  },
-  {
-    icon: <GroupsIcon sx={{ fontSize: 36 }} />,
-    title: 'Team Rooms',
-    desc: 'Create rooms with multiple AI agents and team members. Share terminal access, collaborate with voice, and manage agents together.',
+    name: 'Voice API',
+    tagline: 'TTS + STT + Sentiment for Developers',
+    description: 'Speech-to-text, sentiment analysis, and emotion-aware text-to-speech in one API. Powered by Amazon Transcribe, Comprehend, and Polly.',
+    icon: <ApiIcon sx={{ fontSize: 48 }} />,
+    href: '/api',
+    cta: 'Coming Soon',
+    color: '#f0883e',
+    live: false,
   },
 ];
 
@@ -62,18 +60,18 @@ const LandingPage = () => {
       {/* Hero */}
       <Box sx={{
         position: 'relative',
-        pt: { xs: 8, md: 14 },
-        pb: { xs: 8, md: 12 },
+        pt: { xs: 10, md: 16 },
+        pb: { xs: 6, md: 10 },
         textAlign: 'center',
         '&::before': {
           content: '""',
           position: 'absolute',
-          top: '50%',
+          top: '40%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: '600px',
-          height: '600px',
-          background: 'radial-gradient(circle, rgba(77,216,208,0.08) 0%, transparent 70%)',
+          width: '700px',
+          height: '700px',
+          background: 'radial-gradient(circle, rgba(77,216,208,0.06) 0%, transparent 70%)',
           pointerEvents: 'none',
         },
       }}>
@@ -82,44 +80,43 @@ const LandingPage = () => {
           <img
             src="/logo.svg"
             alt="CommsLink"
-            width={80}
-            height={80}
+            width={90}
+            height={90}
             style={{
               marginBottom: '1.5rem',
-              filter: 'drop-shadow(0 0 20px rgba(77,216,208,0.6)) drop-shadow(0 0 40px rgba(77,216,208,0.3))',
+              filter: 'drop-shadow(0 0 25px rgba(77,216,208,0.5)) drop-shadow(0 0 50px rgba(77,216,208,0.25))',
             }}
           />
-          <Typography variant="h2" sx={{
+          <Typography sx={{
             fontFamily: "'Orbitron', monospace",
             fontWeight: 700,
             color: '#4dd8d0',
-            textShadow: '0 0 20px rgba(77,216,208,0.4), 0 0 60px rgba(77,216,208,0.2)',
-            fontSize: { xs: '2rem', md: '3.2rem' },
+            textShadow: '0 0 25px rgba(77,216,208,0.4), 0 0 60px rgba(77,216,208,0.15)',
+            fontSize: { xs: '2.2rem', md: '3.5rem' },
             mb: 2,
           }}>
             CommsLink
           </Typography>
-          <Typography variant="h5" sx={{
+          <Typography sx={{
             color: '#8ba4bd',
             fontWeight: 300,
-            maxWidth: 600,
+            fontSize: { xs: '1rem', md: '1.3rem' },
+            maxWidth: 550,
             mx: 'auto',
-            mb: 1.5,
-            fontSize: { xs: '1.1rem', md: '1.4rem' },
-            lineHeight: 1.5,
+            mb: 1,
+            lineHeight: 1.6,
           }}>
-            Talk to AI. Control your machines.
+            Voice AI technology for people and games
           </Typography>
-          <Typography variant="body1" sx={{
+          <Typography sx={{
             color: '#556b82',
-            maxWidth: 520,
+            fontSize: { xs: '0.85rem', md: '0.95rem' },
+            maxWidth: 480,
             mx: 'auto',
             mb: 5,
-            fontSize: { xs: '0.9rem', md: '1rem' },
             lineHeight: 1.7,
           }}>
-            Voice-powered AI agents that execute commands on your remote machines.
-            Deploy autonomous agents, manage servers, and collaborate with your team — all through chat.
+            We build voice-powered AI systems — from autonomous agents that control your servers to immersive character voices for gaming.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -127,17 +124,11 @@ const LandingPage = () => {
               size="large"
               onClick={() => router.push('/register')}
               sx={{
-                px: 5,
-                py: 1.5,
-                fontSize: '1.05rem',
-                fontWeight: 'bold',
+                px: 5, py: 1.5, fontSize: '1rem', fontWeight: 'bold',
                 background: 'linear-gradient(135deg, #4dd8d0 0%, #3ab8b0 100%)',
                 color: '#0a1929',
-                boxShadow: '0 0 20px rgba(77,216,208,0.3), 0 4px 15px rgba(0,0,0,0.3)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #5de8e0 0%, #4ac8c0 100%)',
-                  boxShadow: '0 0 30px rgba(77,216,208,0.5), 0 4px 20px rgba(0,0,0,0.4)',
-                },
+                boxShadow: '0 0 20px rgba(77,216,208,0.3)',
+                '&:hover': { background: 'linear-gradient(135deg, #5de8e0 0%, #4ac8c0 100%)', boxShadow: '0 0 30px rgba(77,216,208,0.5)' },
               }}
             >
               Get Started Free
@@ -147,145 +138,140 @@ const LandingPage = () => {
               size="large"
               onClick={() => router.push('/login')}
               sx={{
-                px: 4,
-                py: 1.5,
-                fontSize: '1.05rem',
-                borderColor: 'rgba(77,216,208,0.3)',
-                color: '#4dd8d0',
-                '&:hover': {
-                  borderColor: 'rgba(77,216,208,0.6)',
-                  background: 'rgba(77,216,208,0.05)',
-                },
+                px: 4, py: 1.5, fontSize: '1rem',
+                borderColor: 'rgba(77,216,208,0.3)', color: '#4dd8d0',
+                '&:hover': { borderColor: 'rgba(77,216,208,0.6)', background: 'rgba(77,216,208,0.05)' },
               }}
             >
               Sign In
             </Button>
           </Box>
-          <Typography variant="caption" sx={{ display: 'block', mt: 2, color: '#445566' }}>
-            10,000 free credits included. No credit card required.
-          </Typography>
         </Container>
       </Box>
 
-      {/* Terminal mockup */}
-      <Container maxWidth="sm" sx={{ mb: { xs: 8, md: 12 } }}>
-        <Box sx={{
-          background: 'rgba(0,0,0,0.5)',
-          border: '1px solid rgba(77,216,208,0.15)',
-          borderRadius: 2,
-          overflow: 'hidden',
-          boxShadow: '0 0 30px rgba(77,216,208,0.05), 0 8px 32px rgba(0,0,0,0.4)',
-        }}>
-          <Box sx={{
-            background: 'rgba(77,216,208,0.06)',
-            px: 2,
-            py: 0.75,
-            display: 'flex',
-            gap: 0.75,
-            alignItems: 'center',
-          }}>
-            <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57' }} />
-            <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }} />
-            <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: '#28ca42' }} />
-            <Typography variant="caption" sx={{ ml: 1, color: '#556b82', fontFamily: 'monospace' }}>
-              commslink
-            </Typography>
-          </Box>
-          <Box sx={{ p: 2.5, fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 2 }}>
-            <Box component="span" sx={{ color: '#4dd8d0' }}>you:</Box>
-            <Box component="span" sx={{ color: '#8ba4bd' }}> Hey Kara, check if nginx is running on the production server</Box>
-            <br />
-            <Box component="span" sx={{ color: '#f0883e' }}>Kara:</Box>
-            <Box component="span" sx={{ color: '#8ba4bd' }}> On it. Running status check now...</Box>
-            <br />
-            <Box component="span" sx={{ color: '#556b82' }}>[Kara executed: systemctl status nginx]</Box>
-            <br />
-            <Box component="span" sx={{ color: '#f0883e' }}>Kara:</Box>
-            <Box component="span" sx={{ color: '#8ba4bd' }}> Nginx is active and running. Uptime 14 days. No errors in the last 1000 lines of the access log.</Box>
-          </Box>
-        </Box>
-      </Container>
-
-      {/* Features grid */}
-      <Container maxWidth="lg" sx={{ pb: { xs: 8, md: 14 } }}>
-        <Typography variant="h4" sx={{
+      {/* Products */}
+      <Container maxWidth="lg" sx={{ pb: { xs: 6, md: 10 } }}>
+        <Typography sx={{
           textAlign: 'center',
-          mb: 6,
+          mb: 5,
           fontFamily: "'Orbitron', monospace",
           fontWeight: 400,
           color: '#4dd8d0',
-          fontSize: { xs: '1.3rem', md: '1.8rem' },
-          textShadow: '0 0 10px rgba(77,216,208,0.3)',
+          fontSize: { xs: '1.1rem', md: '1.5rem' },
+          textShadow: '0 0 10px rgba(77,216,208,0.2)',
         }}>
-          Built for operators
+          Our Products
         </Typography>
         <Box sx={{
           display: 'grid',
           gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
           gap: 3,
         }}>
-          {features.map((f) => (
+          {products.map((p) => (
             <Box
-              key={f.title}
+              key={p.name}
               sx={{
-                p: 3.5,
-                borderRadius: 2,
-                background: 'rgba(77,216,208,0.03)',
-                border: '1px solid rgba(77,216,208,0.08)',
+                p: 4,
+                borderRadius: 3,
+                background: 'rgba(255,255,255,0.02)',
+                border: `1px solid ${p.live ? `${p.color}20` : 'rgba(255,255,255,0.05)'}`,
                 transition: 'all 0.2s ease',
+                display: 'flex',
+                flexDirection: 'column',
                 '&:hover': {
-                  background: 'rgba(77,216,208,0.06)',
-                  borderColor: 'rgba(77,216,208,0.2)',
-                  transform: 'translateY(-2px)',
+                  background: `${p.color}08`,
+                  borderColor: `${p.color}40`,
+                  transform: 'translateY(-3px)',
                 },
               }}
             >
-              <Box sx={{ color: '#4dd8d0', mb: 2 }}>{f.icon}</Box>
-              <Typography variant="h6" sx={{ mb: 1, fontWeight: 600, fontSize: '1rem' }}>
-                {f.title}
+              <Box sx={{ color: p.color, mb: 2, opacity: p.live ? 1 : 0.5 }}>{p.icon}</Box>
+              <Typography sx={{ fontSize: '1.2rem', fontWeight: 700, mb: 0.5, color: p.live ? '#e0e8f0' : '#6688aa' }}>
+                {p.name}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#6688aa', lineHeight: 1.7 }}>
-                {f.desc}
+              <Typography sx={{ fontSize: '0.8rem', color: p.color, mb: 1.5, fontWeight: 500 }}>
+                {p.tagline}
               </Typography>
+              <Typography sx={{ fontSize: '0.85rem', color: '#6688aa', lineHeight: 1.7, mb: 3, flex: 1 }}>
+                {p.description}
+              </Typography>
+              <Button
+                variant={p.live ? 'contained' : 'outlined'}
+                onClick={() => p.live ? router.push(p.href) : null}
+                disabled={!p.live}
+                sx={{
+                  alignSelf: 'flex-start',
+                  ...(p.live ? {
+                    background: `linear-gradient(135deg, ${p.color} 0%, ${p.color}cc 100%)`,
+                    color: '#0a1929',
+                    fontWeight: 700,
+                    '&:hover': { boxShadow: `0 0 15px ${p.color}40` },
+                  } : {
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    color: '#556b82',
+                  }),
+                }}
+              >
+                {p.cta}
+              </Button>
             </Box>
           ))}
         </Box>
       </Container>
 
-      {/* Bottom CTA */}
-      <Box sx={{
-        py: { xs: 6, md: 10 },
-        textAlign: 'center',
-        borderTop: '1px solid rgba(77,216,208,0.06)',
-        background: 'rgba(0,0,0,0.2)',
-      }}>
-        <Container maxWidth="sm">
-          <Typography variant="h5" sx={{
-            mb: 2,
-            fontWeight: 600,
-            fontSize: { xs: '1.2rem', md: '1.5rem' },
+      {/* Technology section */}
+      <Box sx={{ py: { xs: 5, md: 8 }, borderTop: '1px solid rgba(77,216,208,0.06)', background: 'rgba(0,0,0,0.15)' }}>
+        <Container maxWidth="md">
+          <Typography sx={{
+            textAlign: 'center', mb: 4,
+            fontFamily: "'Orbitron', monospace", fontWeight: 400,
+            color: '#4dd8d0', fontSize: { xs: '1rem', md: '1.3rem' },
           }}>
-            Ready to command your infrastructure with voice?
+            Built With
           </Typography>
-          <Typography variant="body2" sx={{ color: '#556b82', mb: 4 }}>
-            Set up in under a minute. Deploy an AI agent, connect a machine, start talking.
+          <Box sx={{
+            display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: { xs: 3, md: 5 },
+          }}>
+            {[
+              { name: 'Amazon Transcribe', desc: 'Real-time speech-to-text' },
+              { name: 'Amazon Comprehend', desc: 'Sentiment analysis' },
+              { name: 'Amazon Polly', desc: 'Emotion-aware TTS' },
+              { name: 'Claude (Anthropic)', desc: 'AI reasoning' },
+              { name: 'Grok (xAI)', desc: 'AI reasoning' },
+            ].map((tech) => (
+              <Box key={tech.name} sx={{ textAlign: 'center', minWidth: 100 }}>
+                <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: '#8ba4bd' }}>
+                  {tech.name}
+                </Typography>
+                <Typography sx={{ fontSize: '0.65rem', color: '#556b82' }}>
+                  {tech.desc}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Container>
+      </Box>
+
+      {/* CTA */}
+      <Box sx={{ py: { xs: 6, md: 10 }, textAlign: 'center' }}>
+        <Container maxWidth="sm">
+          <RecordVoiceOverIcon sx={{ fontSize: 48, color: '#4dd8d0', mb: 2, opacity: 0.6 }} />
+          <Typography sx={{ mb: 2, fontWeight: 600, fontSize: { xs: '1.1rem', md: '1.4rem' } }}>
+            The future of communication is voice + AI
+          </Typography>
+          <Typography sx={{ color: '#556b82', mb: 4, fontSize: '0.9rem' }}>
+            Free account. 10,000 credits. No credit card.
           </Typography>
           <Button
             variant="contained"
             size="large"
             onClick={() => router.push('/register')}
             sx={{
-              px: 6,
-              py: 1.5,
-              fontSize: '1.05rem',
-              fontWeight: 'bold',
+              px: 6, py: 1.5, fontSize: '1rem', fontWeight: 'bold',
               background: 'linear-gradient(135deg, #4dd8d0 0%, #3ab8b0 100%)',
               color: '#0a1929',
               boxShadow: '0 0 20px rgba(77,216,208,0.3)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #5de8e0 0%, #4ac8c0 100%)',
-                boxShadow: '0 0 30px rgba(77,216,208,0.5)',
-              },
+              '&:hover': { background: 'linear-gradient(135deg, #5de8e0 0%, #4ac8c0 100%)', boxShadow: '0 0 30px rgba(77,216,208,0.5)' },
             }}
           >
             Get Started Free
@@ -293,13 +279,9 @@ const LandingPage = () => {
         </Container>
       </Box>
 
-      {/* Stats bar */}
+      {/* Stats */}
       {stats && (stats.users > 0 || stats.rooms > 0 || stats.agents > 0) && (
-        <Box sx={{
-          py: 4,
-          borderTop: '1px solid rgba(77, 216, 208, 0.06)',
-          background: 'rgba(0,0,0,0.15)',
-        }}>
+        <Box sx={{ py: 4, borderTop: '1px solid rgba(77,216,208,0.06)', background: 'rgba(0,0,0,0.15)' }}>
           <Container maxWidth="sm">
             <Box sx={{ display: 'flex', justifyContent: 'center', gap: { xs: 4, sm: 8 } }}>
               {[
@@ -309,10 +291,8 @@ const LandingPage = () => {
               ].map((s) => (
                 <Box key={s.label} sx={{ textAlign: 'center' }}>
                   <Typography sx={{
-                    fontSize: { xs: '1.2rem', sm: '1.5rem' },
-                    fontWeight: 700,
-                    color: '#4dd8d0',
-                    fontFamily: "'Orbitron', monospace",
+                    fontSize: { xs: '1.2rem', sm: '1.5rem' }, fontWeight: 700,
+                    color: '#4dd8d0', fontFamily: "'Orbitron', monospace",
                   }}>
                     {s.value.toLocaleString()}
                   </Typography>
@@ -329,18 +309,10 @@ const LandingPage = () => {
       {/* Footer */}
       <Box sx={{ py: 3, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mb: 1.5 }}>
-          <Typography
-            component={Link}
-            href="/privacy"
-            sx={{ color: '#445566', fontSize: '0.7rem', textDecoration: 'none', '&:hover': { color: '#4dd8d0' } }}
-          >
+          <Typography component={Link} href="/privacy" sx={{ color: '#445566', fontSize: '0.7rem', textDecoration: 'none', '&:hover': { color: '#4dd8d0' } }}>
             Privacy Policy
           </Typography>
-          <Typography
-            component={Link}
-            href="/terms"
-            sx={{ color: '#445566', fontSize: '0.7rem', textDecoration: 'none', '&:hover': { color: '#4dd8d0' } }}
-          >
+          <Typography component={Link} href="/terms" sx={{ color: '#445566', fontSize: '0.7rem', textDecoration: 'none', '&:hover': { color: '#4dd8d0' } }}>
             Terms of Service
           </Typography>
         </Box>
