@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 
 import { register, login } from '../../../../../core/actions/ffxiv/authAction';
 import { generateTTS } from '../../../../../core/actions/ffxiv/ttsAction';
-import elevenlabsAdapter from '../../../../../core/adapters/elevenlabs';
+import pollyAdapter from '../../../../../core/adapters/polly';
 import Data from '../../../../../core/data';
 import { checkRateLimit } from '../../../../../core/helpers/rateLimiter';
 import { broadcastAudio, updatePlayerPosition } from '../../ffxivWs';
@@ -202,7 +202,7 @@ const ffxivRoutes: ServerRoute[] = [
       auth: false,
     },
     handler: async () => {
-      return elevenlabsAdapter.listVoices();
+      return pollyAdapter.listVoices();
     },
   },
 
