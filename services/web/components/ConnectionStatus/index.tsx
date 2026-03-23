@@ -32,7 +32,7 @@ const ConnectionStatus = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn]);
 
-  if (!isLoggedIn) return null;
+  if (!isLoggedIn || !connected) return null;
 
   return (
     <Box

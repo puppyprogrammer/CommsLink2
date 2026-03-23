@@ -75,7 +75,7 @@ const CreditsPage = () => {
 
   return (
     <DashboardLayout>
-      <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 600 }}>
+      <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 600, mx: 'auto' }}>
         {/* Balance */}
         <Box sx={{ textAlign: 'center', mb: 3 }}>
           <Typography sx={{ fontSize: '0.8rem', color: '#556b82', mb: 0.5 }}>
