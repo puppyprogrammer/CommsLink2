@@ -15,14 +15,20 @@ import LogoutIcon from '@mui/icons-material/Logout';
 
 // Libraries
 import useSession from '@/lib/session/useSession';
+import { getSocket } from '@/lib/socket';
+import { getRoomIcon } from '@/lib/helpers/roomIcon';
 
 // Components
 import ConnectionStatus from '@/components/ConnectionStatus';
+import AddIcon from '@mui/icons-material/Add';
+import LockIcon from '@mui/icons-material/Lock';
 
 // Styles
 import classes from './Dashboard.module.scss';
 
 const ACTIVITY_BAR_WIDTH = 48;
+
+type Room = { name: string; displayName: string; users: number; hasPassword: boolean; isPublic: boolean; createdBy: string | null };
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -36,6 +42,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
   const pathname = usePathname();
   const { session, isLoggedIn, isLoading } = useSession();
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
 
   useEffect(() => {
     if (!isLoading && !isLoggedIn) {
@@ -52,6 +59,23 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
       .then((data) => { if (data?.balance != null) setCreditBalance(data.balance); })
       .catch(() => {});
   }, [session?.token]);
+
+  // Load rooms via socket for non-chat pages
+  useEffect(() => {
+    if (!session?.token || activityBarExtra || pathname === '/chat') return;
+    const socket = getSocket(session.token);
+    const handleRooms = (data: { rooms: Room[] } | Room[]) => {
+      const list = Array.isArray(data) ? data : data.rooms;
+      if (Array.isArray(list)) setRooms(list);
+    };
+    socket.on('room_list', handleRooms);
+    socket.on('room_list_update', handleRooms);
+    if (!socket.connected) socket.connect();
+    return () => {
+      socket.off('room_list', handleRooms);
+      socket.off('room_list_update', handleRooms);
+    };
+  }, [session?.token, activityBarExtra, pathname]);
 
   const handleLogout = async () => {
     await fetch('/api/logout', { method: 'POST' });
@@ -120,25 +144,74 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
 
       {/* Activity bar — room icons + admin */}
       <Box className={classes.activityBar}>
-        {activityBarExtra && (
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '4px',
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              scrollbarWidth: 'none',
-              '&::-webkit-scrollbar': { display: 'none' },
-              pb: 0.5,
-              pt: 0.25,
-              flex: 1,
-            }}
-          >
-            {activityBarExtra}
-          </Box>
-        )}
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            scrollbarWidth: 'none',
+            '&::-webkit-scrollbar': { display: 'none' },
+            pb: 0.5,
+            pt: 0.25,
+            flex: 1,
+          }}
+        >
+          {activityBarExtra || rooms.filter((r) => r.name !== 'public').map((room) => {
+            const icon = getRoomIcon(room.displayName);
+            return (
+              <Tooltip key={room.name} title={`${room.displayName} (${room.users})`} placement="right">
+                <Box
+                  onClick={() => router.push(`/chat?joinRoom=${encodeURIComponent(room.name)}`)}
+                  sx={{
+                    position: 'relative',
+                    width: 28,
+                    height: 28,
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: '0.55rem',
+                    fontWeight: 700,
+                    color: '#fff',
+                    bgcolor: icon.bgColor,
+                    transition: 'transform 0.1s',
+                    '&:hover': { transform: 'scale(1.08)' },
+                    flexShrink: 0,
+                    userSelect: 'none',
+                  }}
+                >
+                  {icon.initials}
+                  {room.users > 0 && (
+                    <Box sx={{
+                      position: 'absolute', top: -3, right: -4,
+                      minWidth: 12, height: 12, borderRadius: 6,
+                      bgcolor: '#007acc', color: '#fff',
+                      fontSize: '0.45rem', fontWeight: 600,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      px: '2px', pointerEvents: 'none',
+                    }}>
+                      {room.users}
+                    </Box>
+                  )}
+                  {room.hasPassword && !room.isPublic && (
+                    <Box sx={{
+                      position: 'absolute', bottom: -2, left: -2,
+                      width: 12, height: 12, bgcolor: 'background.paper',
+                      borderRadius: '50%', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+                    }}>
+                      <LockIcon sx={{ fontSize: 10, color: '#aaa' }} />
+                    </Box>
+                  )}
+                </Box>
+              </Tooltip>
+            );
+          })}
+        </Box>
         {session?.user.is_admin && (
           <Tooltip title="Admin" placement="right">
             <IconButton
