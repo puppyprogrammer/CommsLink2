@@ -460,6 +460,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   };
 
   const loadTemplate = (template: AgentTemplate) => {
+    setNewName(template.name);
     setNewModel(template.model);
     setNewVoice(template.voice_id);
     setNewAutopilotInterval(template.autopilot_interval);
