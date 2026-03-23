@@ -10,7 +10,6 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Box, AppBar, Toolbar, Typography, IconButton, Tooltip } from '@mui/material';
 
 // Material UI icons
-import ChatIcon from '@mui/icons-material/Chat';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LogoutIcon from '@mui/icons-material/Logout';
 
@@ -31,9 +30,6 @@ type DashboardLayoutProps = {
   onChatClick?: () => void;
 };
 
-const navItems = [
-  { label: 'Chat', href: '/chat', icon: <ChatIcon /> },
-];
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBarExtra, onChatClick }) => {
   const router = useRouter();
@@ -122,34 +118,27 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
         </Toolbar>
       </AppBar>
 
-      {/* VS Code-style activity bar — icons only */}
+      {/* Activity bar — room icons + admin */}
       <Box className={classes.activityBar}>
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Tooltip key={item.href} title={item.label} placement="right">
-              <IconButton
-                onClick={() => {
-                  if (item.href === '/chat' && pathname === '/chat' && onChatClick) {
-                    onChatClick();
-                  } else {
-                    router.push(item.href);
-                  }
-                }}
-                sx={{
-                  color: isActive ? '#ffffff' : '#858585',
-                  borderLeft: isActive ? '2px solid #007acc' : '2px solid transparent',
-                  borderRadius: 0,
-                  width: ACTIVITY_BAR_WIDTH,
-                  height: ACTIVITY_BAR_WIDTH,
-                  '&:hover': { color: '#cccccc' },
-                }}
-              >
-                {item.icon}
-              </IconButton>
-            </Tooltip>
-          );
-        })}
+        {activityBarExtra && (
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '4px',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
+              pb: 0.5,
+              pt: 0.25,
+              flex: 1,
+            }}
+          >
+            {activityBarExtra}
+          </Box>
+        )}
         {session?.user.is_admin && (
           <Tooltip title="Admin" placement="right">
             <IconButton
@@ -166,27 +155,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
               <AdminPanelSettingsIcon />
             </IconButton>
           </Tooltip>
-        )}
-        {activityBarExtra && (
-          <>
-            <Box sx={{ width: 28, borderTop: '1px solid', borderColor: 'divider', my: 0.5 }} />
-            <Box
-              sx={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '4px',
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                scrollbarWidth: 'none',
-                '&::-webkit-scrollbar': { display: 'none' },
-                pb: 0.5,
-              }}
-            >
-              {activityBarExtra}
-            </Box>
-          </>
         )}
       </Box>
 
