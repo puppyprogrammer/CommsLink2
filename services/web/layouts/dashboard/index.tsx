@@ -85,12 +85,19 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
           <Box sx={{ flex: 1 }} />
           <ConnectionStatus />
           {creditBalance !== null && (
-            <Typography variant="detailText" sx={{
-              fontSize: '0.65rem',
-              color: creditBalance > 1000 ? '#4dd8d0' : creditBalance > 100 ? '#cca700' : '#f44',
-              mr: 1,
-              opacity: 0.8,
-            }}>
+            <Typography
+              variant="detailText"
+              onClick={() => router.push('/credits')}
+              sx={{
+                fontSize: '0.65rem',
+                color: creditBalance > 1000 ? '#4dd8d0' : creditBalance > 100 ? '#cca700' : '#f44',
+                mr: 1,
+                opacity: 0.8,
+                cursor: 'pointer',
+                '&:hover': { opacity: 1 },
+              }}
+              title="Credits — click to buy more"
+            >
               {creditBalance.toLocaleString()}c
             </Typography>
           )}
