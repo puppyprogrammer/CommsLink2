@@ -9,6 +9,15 @@ import Data from '../../../../../core/data';
 import { checkRateLimit } from '../../../../../core/helpers/rateLimiter';
 import { broadcastAudio, updatePlayerPosition } from '../../ffxivWs';
 
+// Dedup: track recent messages to prevent double TTS when multiple clients send the same chat
+const recentMessages = new Map<string, number>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, ts] of recentMessages) {
+    if (now - ts > 10000) recentMessages.delete(key);
+  }
+}, 30000);
+
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 
 type FfxivJwtPayload = {
@@ -162,6 +171,19 @@ const ffxivRoutes: ServerRoute[] = [
       if (!user) {
         throw Boom.notFound('User not found');
       }
+
+      // Dedup: if this exact message was already processed recently, skip TTS
+      // (multiple clients send the same chat message they see)
+      const dedupKey = message.toLowerCase().trim();
+      const lastSeen = recentMessages.get(dedupKey);
+      if (lastSeen && Date.now() - lastSeen < 5000) {
+        // Already processed — just update this user's position and return
+        if (zone || mapId || x || y || z) {
+          updatePlayerPosition(decoded.id, zone || 0, mapId || 0, x || 0, y || 0, z || 0);
+        }
+        return h.response({ status: 'duplicate', voice: user.voice_id }).code(200);
+      }
+      recentMessages.set(dedupKey, Date.now());
 
       const jobId = `tts-${decoded.id}-${Date.now()}`;
       const senderPos = { x: x || 0, y: y || 0, z: z || 0 };
