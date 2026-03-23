@@ -2,6 +2,7 @@ import {
   TranscribeStreamingClient,
   StartStreamTranscriptionCommand,
 } from '@aws-sdk/client-transcribe-streaming';
+import type { LanguageCode, MediaEncoding } from '@aws-sdk/client-transcribe-streaming';
 
 const getClient = (): TranscribeStreamingClient =>
   new TranscribeStreamingClient({ region: process.env.AWS_REGION || 'us-east-2' });
@@ -19,19 +20,21 @@ async function* audioStream(
 }
 
 /**
- * Transcribe accumulated PCM audio buffers (16-bit, 16kHz mono) using
- * Amazon Transcribe Streaming. Returns the final concatenated transcript.
+ * Transcribe accumulated audio buffers using Amazon Transcribe Streaming.
+ * Accepts ogg-opus format (from MediaRecorder webm/opus).
+ * Returns the final concatenated transcript.
  */
 const transcribeStream = async (
   audioChunks: Buffer[],
   languageCode?: string,
+  mediaEncoding?: string,
 ): Promise<string> => {
   const client = getClient();
 
   const command = new StartStreamTranscriptionCommand({
-    LanguageCode: languageCode || 'en-US',
-    MediaEncoding: 'pcm',
-    MediaSampleRateHertz: 16000,
+    LanguageCode: (languageCode || 'en-US') as LanguageCode,
+    MediaEncoding: (mediaEncoding || 'ogg-opus') as MediaEncoding,
+    MediaSampleRateHertz: 48000,
     AudioStream: audioStream(audioChunks),
   });
 
@@ -43,7 +46,6 @@ const transcribeStream = async (
     for await (const event of response.TranscriptResultStream) {
       if (event.TranscriptEvent?.Transcript?.Results) {
         for (const result of event.TranscriptEvent.Transcript.Results) {
-          // Only use final (non-partial) results
           if (!result.IsPartial && result.Alternatives && result.Alternatives.length > 0) {
             const transcript = result.Alternatives[0].Transcript;
             if (transcript) {
