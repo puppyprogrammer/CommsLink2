@@ -46,7 +46,7 @@ const startThinking = (): void => {
       if (pulseUp) {
         gainNode.gain.cancelScheduledValues(now);
         gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-        gainNode.gain.linearRampToValueAtTime(0.03, now + 0.3); // Very quiet
+        gainNode.gain.linearRampToValueAtTime(0.08, now + 0.3); // Gentle but audible
       } else {
         gainNode.gain.cancelScheduledValues(now);
         gainNode.gain.setValueAtTime(gainNode.gain.value, now);

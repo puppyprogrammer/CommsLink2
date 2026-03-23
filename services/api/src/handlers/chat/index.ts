@@ -169,15 +169,14 @@ const isDuplicateAgentMessage = (
   const now = Date.now();
 
   let entries = agentRecentMessages.get(key) || [];
-  // Evict entries older than 30 minutes
-  entries = entries.filter((e) => now - e.ts < 1_800_000);
+  // Evict entries older than 5 minutes (was 30 — too aggressive)
+  entries = entries.filter((e) => now - e.ts < 300_000);
 
-  // Check for fuzzy similarity against recent messages
-  const isDup = entries.some((e) => trigramSimilarity(e.text, content) > 0.55);
+  // Only catch near-exact duplicates (>0.8 similarity), not just similar greetings
+  const isDup = entries.some((e) => trigramSimilarity(e.text, content) > 0.8);
   if (!isDup) {
     entries.push({ text: content, ts: now });
-    // Keep last 30 entries
-    if (entries.length > 30) entries = entries.slice(-30);
+    if (entries.length > 10) entries = entries.slice(-10);
   }
   agentRecentMessages.set(key, entries);
   return isDup;
