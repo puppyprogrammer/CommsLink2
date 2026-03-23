@@ -43,7 +43,7 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
     body: JSON.stringify({
       text,
       model_id: 'eleven_multilingual_v2',
-      output_format: 'pcm_24000',
+      output_format: 'pcm_44100',
     }),
   });
 
@@ -53,8 +53,23 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  const pcmData = Buffer.from(arrayBuffer);
-  const wavHeader = createWavHeader(pcmData.length, 24000, 1, 16);
+  const srcBuffer = Buffer.from(arrayBuffer);
+
+  // Downsample from 44100Hz to 16000Hz (signed 16-bit LE samples)
+  const srcSampleRate = 44100;
+  const dstSampleRate = 16000;
+  const ratio = srcSampleRate / dstSampleRate;
+  const srcSamples = srcBuffer.length / 2; // 16-bit = 2 bytes per sample
+  const dstSamples = Math.floor(srcSamples / ratio);
+  const pcmData = Buffer.alloc(dstSamples * 2);
+  for (let i = 0; i < dstSamples; i++) {
+    const srcIndex = Math.floor(i * ratio) * 2;
+    if (srcIndex + 1 < srcBuffer.length) {
+      pcmData.writeInt16LE(srcBuffer.readInt16LE(srcIndex), i * 2);
+    }
+  }
+
+  const wavHeader = createWavHeader(pcmData.length, 16000, 1, 16);
 
   return Buffer.concat([wavHeader, pcmData]);
 };
