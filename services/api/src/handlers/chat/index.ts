@@ -3908,8 +3908,49 @@ const runAgentResponse = async (
       collapsed === "no response generated" ||
       collapsed === "no output"
     ) {
-      agentBusy.delete(agent.id);
-      return;
+      // If the AI only thought but didn't speak, retry once with a nudge
+      if (!autopilotMode) {
+        console.log(`[Agent] ${agent.name} only thought, retrying with speak nudge`);
+        try {
+          const nudgeResponse = await routedChatCompletion(
+            systemPrompt,
+            [
+              ...contextMessages,
+              { role: "assistant" as const, content: response.text },
+              { role: "user" as const, content: "[System: You used {think} but never responded with {say} or {text}. The user is waiting. Reply NOW using {say message} — keep it brief.]" },
+            ],
+            agent.model,
+            500,
+          );
+          if (nudgeResponse?.text) {
+            let nudgeText = nudgeResponse.text
+              .replace(/\{think\}[\s\S]*?\{\/think\}/g, "")
+              .replace(/<think>[\s\S]*?<\/think>/g, "")
+              .replace(/\{think[^}]*\}/g, "")
+              .replace(/\{say\}([\s\S]*?)\{\/say\}/g, "$1")
+              .replace(/\{text\}([\s\S]*?)\{\/text\}/g, "$1")
+              .replace(/\{say ([^}]+)\}/g, "$1")
+              .replace(/\{text ([^}]+)\}/g, "$1")
+              .trim();
+            if (nudgeText) {
+              responseText = nudgeText;
+              // Fall through to normal broadcast
+            } else {
+              agentBusy.delete(agent.id);
+              return;
+            }
+          } else {
+            agentBusy.delete(agent.id);
+            return;
+          }
+        } catch {
+          agentBusy.delete(agent.id);
+          return;
+        }
+      } else {
+        agentBusy.delete(agent.id);
+        return;
+      }
     }
 
     // Dedup: skip if agent already sent a near-identical message recently
