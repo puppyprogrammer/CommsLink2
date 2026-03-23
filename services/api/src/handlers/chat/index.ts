@@ -2149,8 +2149,8 @@ const runAgentResponse = async (
         return false;
       // Filter SQL query results (from agent's {sql} commands)
       if (/^SELECT |^INSERT |^UPDATE |^DELETE |^SHOW /i.test(c)) return false;
-      // Filter Claude status updates
-      if (c.startsWith("[Claude ")) return false;
+      // Filter Claude status updates but KEEP Claude responses (agent needs to see them)
+      if (c.startsWith("[Claude ") && !c.includes(" response]")) return false;
       // Filter memory system messages
       if (c.startsWith("[Memory]")) return false;
       return true;
