@@ -955,11 +955,11 @@ const ChatPage = () => {
                     const v = availableVoices.find((voice) => voice.voice_id === val);
                     return v ? v.name.replace(/\s*\(.*?\)\s*/g, '') : val;
                   }}
+                  autoWidth={false}
                   sx={{
                     fontSize: '0.7rem',
                     color: '#4dd8d0',
-                    minWidth: 70,
-                    '& .MuiSelect-select': { py: 0.25, px: 0.5 },
+                    '& .MuiSelect-select': { py: 0.25, px: 0.5, minWidth: '0 !important' },
                     '& .MuiSvgIcon-root': { fontSize: 14, color: '#556b82' },
                   }}
                 >
