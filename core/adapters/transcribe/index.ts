@@ -55,15 +55,30 @@ const startSession = (
     }
   };
 
+  // Silence buffer — 100ms of 16kHz 16-bit silence (3200 bytes)
+  const SILENCE = Buffer.alloc(3200);
+
   async function* audioStream(): AsyncGenerator<{ AudioEvent: { AudioChunk: Buffer } }> {
-    while (!ended || chunks.length > 0) {
+    while (!ended) {
       if (chunks.length > 0) {
         const chunk = chunks.shift()!;
         yield { AudioEvent: { AudioChunk: chunk } };
       } else {
-        await new Promise<void>((resolve) => { resolveWait = resolve; });
+        // Send silence to keep the stream alive (Transcribe times out otherwise)
+        await new Promise<void>((resolve) => {
+          resolveWait = resolve;
+          // If no real chunk arrives in 200ms, send silence
+          setTimeout(() => { if (resolveWait === resolve) { resolveWait = null; resolve(); } }, 200);
+        });
         resolveWait = null;
+        if (chunks.length === 0 && !ended) {
+          yield { AudioEvent: { AudioChunk: SILENCE } };
+        }
       }
+    }
+    // Drain remaining chunks
+    while (chunks.length > 0) {
+      yield { AudioEvent: { AudioChunk: chunks.shift()! } };
     }
   }
 
