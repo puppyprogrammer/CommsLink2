@@ -43,7 +43,7 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
     body: JSON.stringify({
       text,
       model_id: 'eleven_multilingual_v2',
-      output_format: 'pcm_44100',
+      output_format: 'pcm_16000',
     }),
   });
 
@@ -54,7 +54,7 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
 
   const arrayBuffer = await response.arrayBuffer();
   const pcmData = Buffer.from(arrayBuffer);
-  const wavHeader = createWavHeader(pcmData.length, 44100, 1, 16);
+  const wavHeader = createWavHeader(pcmData.length, 16000, 1, 16);
 
   return Buffer.concat([wavHeader, pcmData]);
 };
