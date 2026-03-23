@@ -6792,7 +6792,7 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
     socket.on("chat_audio", (data: { nonce?: string; audio: string; voice?: string }) => {
       const user = connectedUsers.get(socket.id);
       if (!user?.currentRoom || !data.audio) return;
-      // Broadcast the audio to the room so other users can play it
+      console.log(`[Audio] ${socket.user.username} sent TTS audio (${Math.round(data.audio.length / 1024)}KB)`);
       io.to(user.currentRoom).emit("chat_audio", {
         nonce: data.nonce,
         audio: data.audio,

@@ -474,8 +474,8 @@ const ChatPage = () => {
             voice: voiceId,
           });
         }
-      }).catch(() => {
-        // TTS failed silently — text was already sent
+      }).catch((err) => {
+        console.error('[TTS] Voice generation failed:', err);
       });
     },
     [input, session?.token, preferences.voice_id],

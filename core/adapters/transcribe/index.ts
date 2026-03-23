@@ -20,9 +20,9 @@ type TranscribeCallbacks = {
 
 /**
  * Start a real-time transcription session.
- * Audio chunks are pushed as they arrive.
- * Calls onTranscript with each final transcript segment.
- * If speech continues for >5s without a final result, flushes the partial.
+ * Sends finalized transcript segments via onTranscript.
+ * Forces a flush every ~5s during continuous speech so monologues
+ * don't buffer forever.
  */
 const startSession = (
   callbacks: TranscribeCallbacks,
@@ -32,9 +32,28 @@ const startSession = (
   const chunks: Buffer[] = [];
   let ended = false;
   let resolveWait: (() => void) | null = null;
+
+  // Track what we already sent to avoid duplicates
+  let lastSentText = '';
   let lastPartial = '';
   let lastFinalTime = Date.now();
   let flushTimer: ReturnType<typeof setInterval> | null = null;
+
+  const emitTranscript = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    // If this text starts with what we already sent, only send the new part
+    if (lastSentText && trimmed.toLowerCase().startsWith(lastSentText.toLowerCase())) {
+      const newPart = trimmed.slice(lastSentText.length).trim();
+      if (!newPart) return; // Nothing new
+      lastSentText = trimmed;
+      callbacks.onTranscript(newPart);
+    } else {
+      lastSentText = trimmed;
+      callbacks.onTranscript(trimmed);
+    }
+  };
 
   async function* audioStream(): AsyncGenerator<{ AudioEvent: { AudioChunk: Buffer } }> {
     while (!ended || chunks.length > 0) {
@@ -48,10 +67,10 @@ const startSession = (
     }
   }
 
-  // Flush partial transcript if no final result in 5 seconds
+  // Flush partial every 5s during continuous speech
   flushTimer = setInterval(() => {
     if (lastPartial && Date.now() - lastFinalTime > 5000) {
-      callbacks.onTranscript(lastPartial);
+      emitTranscript(lastPartial);
       lastPartial = '';
       lastFinalTime = Date.now();
     }
@@ -78,7 +97,7 @@ const startSession = (
           } else {
             lastPartial = '';
             lastFinalTime = Date.now();
-            callbacks.onTranscript(text);
+            emitTranscript(text);
           }
         }
       }
@@ -96,9 +115,8 @@ const startSession = (
     end: () => {
       ended = true;
       if (flushTimer) { clearInterval(flushTimer); flushTimer = null; }
-      // Flush any remaining partial
       if (lastPartial) {
-        callbacks.onTranscript(lastPartial);
+        emitTranscript(lastPartial);
         lastPartial = '';
       }
       if (resolveWait) resolveWait();
