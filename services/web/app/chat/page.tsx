@@ -412,14 +412,17 @@ const ChatPage = () => {
     if (joinRoomParam) {
       const targetRoom = joinRoomParam.toLowerCase();
       window.history.replaceState({}, '', '/chat');
-      // Emit switch immediately — the server will join us to the right room
-      // Use a connect listener in case socket isn't connected yet
       const doSwitch = () => socket.emit('switch_room', { roomName: targetRoom });
       if (socket.connected) {
         doSwitch();
       } else {
         socket.once('connect', doSwitch);
       }
+    }
+    // Open create room dialog if redirected with ?createRoom=true
+    if (urlParams.get('createRoom') === 'true') {
+      window.history.replaceState({}, '', '/chat');
+      setCreateRoomOpen(true);
     }
 
     return () => {

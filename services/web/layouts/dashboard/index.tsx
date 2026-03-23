@@ -159,7 +159,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
             flex: 1,
           }}
         >
-          {activityBarExtra || rooms.filter((r) => r.name !== 'public').map((room) => {
+          {activityBarExtra || (<>{rooms.filter((r) => r.name !== 'public').map((room) => {
             const icon = getRoomIcon(room.displayName);
             return (
               <Tooltip key={room.name} title={`${room.displayName} (${room.users})`} placement="right">
@@ -211,6 +211,23 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
               </Tooltip>
             );
           })}
+          <Tooltip title="Create Room" placement="right">
+            <Box
+              onClick={() => router.push('/chat?createRoom=true')}
+              sx={{
+                width: 28, height: 28, borderRadius: '6px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', flexShrink: 0,
+                bgcolor: 'transparent', color: '#858585',
+                border: '1px dashed rgba(255,255,255,0.15)',
+                transition: 'all 0.15s',
+                '&:hover': { color: '#fff', borderColor: '#858585' },
+              }}
+            >
+              <AddIcon sx={{ fontSize: 16 }} />
+            </Box>
+          </Tooltip>
+          </>)}
         </Box>
         {session?.user.is_admin && (
           <Tooltip title="Admin" placement="right">
