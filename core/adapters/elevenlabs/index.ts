@@ -53,8 +53,12 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
     throw new Error(`ElevenLabs TTS failed (${response.status}): ${errorText}`);
   }
 
+  const contentType = response.headers.get('content-type');
   const arrayBuffer = await response.arrayBuffer();
   const srcBuffer = Buffer.from(arrayBuffer);
+
+  console.log(`[ElevenLabs] Response: status=${response.status}, content-type=${contentType}, bytes=${srcBuffer.length}`);
+  console.log(`[ElevenLabs] First 16 bytes: ${srcBuffer.subarray(0, 16).toString('hex')}`);
 
   // Downsample from 44100Hz to 16000Hz (signed 16-bit LE samples)
   const srcSampleRate = 44100;
@@ -70,8 +74,12 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
     }
   }
 
+  console.log(`[ElevenLabs] Downsampled: ${srcBuffer.length} bytes (${srcSamples} samples @ 44100) → ${pcmData.length} bytes (${dstSamples} samples @ 16000)`);
+
   const wavHeader = createWavHeader(pcmData.length, 16000, 1, 16);
-  return Buffer.concat([wavHeader, pcmData]);
+  const wavBuffer = Buffer.concat([wavHeader, pcmData]);
+  console.log(`[ElevenLabs] Final WAV: ${wavBuffer.length} bytes (44 header + ${pcmData.length} PCM)`);
+  return wavBuffer;
 };
 
 /**
