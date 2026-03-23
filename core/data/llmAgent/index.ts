@@ -13,6 +13,8 @@ type CreateAgentDTO = {
   autopilot_enabled?: boolean;
   autopilot_interval?: number;
   autopilot_prompts?: string;
+  plan?: string;
+  tasks?: string;
   nicknames?: string;
   max_tokens?: number;
   can_manage_agents?: boolean;
