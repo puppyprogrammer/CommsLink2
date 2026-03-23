@@ -31,7 +31,7 @@ const createWavHeader = (pcmLength: number, sampleRate: number, channels: number
 /**
  * Generate TTS audio for an FFXIVoices user.
  * Routes to ElevenLabs for voices prefixed with "el:", otherwise Polly.
- * Returns WAV buffer.
+ * Always returns WAV buffer (16kHz, 16-bit, mono).
  */
 const generateTTS = async (
   userId: string,
@@ -44,16 +44,15 @@ const generateTTS = async (
 
   const selectedVoice = voiceId || user.voice_id || 'Joanna';
 
-  let wavBuffer: Buffer;
-
   if (selectedVoice.startsWith('el:')) {
-    // ElevenLabs premium voice
+    // ElevenLabs premium voice — returns WAV (PCM 44100 downsampled to 16kHz)
     const elVoiceId = selectedVoice.substring(3);
-    wavBuffer = await elevenlabsAdapter.generateSpeechWav(text.trim(), elVoiceId);
+    const wavBuffer = await elevenlabsAdapter.generateSpeechWav(text.trim(), elVoiceId);
 
-    // Premium costs 3 credits per 50 chars
     const creditCost = Math.max(1, Math.ceil(text.length / 50) * 3);
     await Data.ffxivUser.deductCredits(user.id, creditCost);
+
+    return wavBuffer;
   } else {
     // Polly free voice
     const client = getPollyClient();
@@ -76,14 +75,13 @@ const generateTTS = async (
 
     const pcmBuffer = Buffer.concat(chunks);
     const wavHeader = createWavHeader(pcmBuffer.length, 16000, 1, 16);
-    wavBuffer = Buffer.concat([wavHeader, pcmBuffer]);
+    const wavBuffer = Buffer.concat([wavHeader, pcmBuffer]);
 
-    // Free tier: 1 credit per 50 chars
     const creditCost = Math.max(1, Math.ceil(text.length / 50));
     await Data.ffxivUser.deductCredits(user.id, creditCost);
-  }
 
-  return wavBuffer;
+    return wavBuffer;
+  }
 };
 
 export { generateTTS };

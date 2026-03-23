@@ -13,7 +13,7 @@ const createWavHeader = (pcmLength: number, sampleRate: number, channels: number
   header.write('WAVE', 8);
   header.write('fmt ', 12);
   header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 20);
   header.writeUInt16LE(channels, 22);
   header.writeUInt32LE(sampleRate, 24);
   header.writeUInt32LE(byteRate, 28);
@@ -25,27 +25,28 @@ const createWavHeader = (pcmLength: number, sampleRate: number, channels: number
 };
 
 /**
- * Generate speech as a WAV buffer using ElevenLabs TTS.
- *
- * @param text - Text to synthesize.
- * @param voiceId - ElevenLabs voice ID.
- * @returns Complete WAV buffer (44-byte header + PCM data).
+ * Generate speech as WAV buffer using ElevenLabs TTS.
+ * output_format must be a URL query param, NOT in the JSON body.
+ * Returns 16kHz 16-bit mono WAV (downsampled from 44100Hz).
  */
 const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer> => {
   const apiKey = getApiKey();
 
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': apiKey,
-      'Content-Type': 'application/json',
+  // output_format as query parameter — NOT in the JSON body
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=pcm_44100`,
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2',
+      }),
     },
-    body: JSON.stringify({
-      text,
-      model_id: 'eleven_multilingual_v2',
-      output_format: 'pcm_44100',
-    }),
-  });
+  );
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
@@ -59,7 +60,7 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
   const srcSampleRate = 44100;
   const dstSampleRate = 16000;
   const ratio = srcSampleRate / dstSampleRate;
-  const srcSamples = srcBuffer.length / 2; // 16-bit = 2 bytes per sample
+  const srcSamples = srcBuffer.length / 2;
   const dstSamples = Math.floor(srcSamples / ratio);
   const pcmData = Buffer.alloc(dstSamples * 2);
   for (let i = 0; i < dstSamples; i++) {
@@ -70,23 +71,18 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
   }
 
   const wavHeader = createWavHeader(pcmData.length, 16000, 1, 16);
-
   return Buffer.concat([wavHeader, pcmData]);
 };
 
 /**
  * List available ElevenLabs voices.
- *
- * @returns Array of voice objects with id and name.
  */
 const listVoices = async (): Promise<{ voice_id: string; name: string }[]> => {
   const apiKey = getApiKey();
 
   const response = await fetch('https://api.elevenlabs.io/v1/voices', {
     method: 'GET',
-    headers: {
-      'xi-api-key': apiKey,
-    },
+    headers: { 'xi-api-key': apiKey },
   });
 
   if (!response.ok) {
@@ -94,11 +90,7 @@ const listVoices = async (): Promise<{ voice_id: string; name: string }[]> => {
   }
 
   const data = await response.json() as { voices: { voice_id: string; name: string }[] };
-
-  return (data.voices || []).map((v) => ({
-    voice_id: v.voice_id,
-    name: v.name,
-  }));
+  return (data.voices || []).map((v) => ({ voice_id: v.voice_id, name: v.name }));
 };
 
 export { getApiKey };
