@@ -3897,9 +3897,11 @@ const runAgentResponse = async (
     responseText = responseText
       .replace(/<\s*xai:function_call[^>]*>[\s\S]*?<\/\s*xai:function_call\s*>/g, "")
       .replace(/<\s*xai:function_call[^>]*>[\s\S]*/g, "") // unclosed
-      // Strip orphaned {/say}, {/text} closing tags
+      // Strip orphaned closing tags for all command formats
       .replace(/\{\/say\}/g, "")
       .replace(/\{\/text\}/g, "")
+      .replace(/\[\/(?:say|text|think|add_memory|remove_memory|add_instruction|terminal|claude|audit)\]/g, "")
+      .replace(/\{\/(?:add_memory|remove_memory|add_instruction|terminal|claude)\}/g, "")
       // Strip any remaining raw command braces that weren't matched by command regexes
       // (only strip if they look like commands, not natural text with braces)
       .replace(/\{(?:terminal|claude|audit|add_memory|remove_memory|add_instruction|remove_instruction|set_plan|clear_plan|set_tokens|toggle_autopilot|set_autopilot_interval)\s+[^}]*\}/g, "")
