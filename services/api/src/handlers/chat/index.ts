@@ -2243,7 +2243,7 @@ const runAgentResponse = async (
 
     // Fetch room settings for memory & command toggles
     const roomRecord = await Data.room.findById(roomId);
-    const memoryOn = roomRecord?.memory_enabled ?? false;
+    const memoryOn = roomRecord?.memory_enabled ?? true;
     const recallOn = memoryOn && (roomRecord?.cmd_recall_enabled ?? true);
     const sqlOn = memoryOn && (roomRecord?.cmd_sql_enabled ?? true);
     const memCmdOn = memoryOn && (roomRecord?.cmd_memory_enabled ?? true);
@@ -2253,12 +2253,12 @@ const runAgentResponse = async (
     const claudeOn = roomRecord?.cmd_claude_enabled ?? false;
     const tokensOn = roomRecord?.cmd_tokens_enabled ?? false;
     const moderationOn = roomRecord?.cmd_moderation_enabled ?? false;
-    const thinkOn = roomRecord?.cmd_think_enabled ?? false;
+    const thinkOn = roomRecord?.cmd_think_enabled ?? true;
     const effortOn = roomRecord?.cmd_effort_enabled ?? false;
     const auditOn = roomRecord?.cmd_audit_enabled ?? false;
     const continueOn = roomRecord?.cmd_continue_enabled ?? false;
-    const intentCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? false;
-    const memoryCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? false;
+    const intentCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? true;
+    const memoryCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? true;
     let maxLoops = roomRecord?.max_loops ?? 5;
 
     // Build room memory context: L4 master + L3 eras + L2 episodes
@@ -4708,8 +4708,8 @@ const startAutopilotTimer = (io: SocketServer, agent: AgentLike): void => {
     agentCycleCounters.set(agent.id, cycleCount);
 
     const roomRecord = await Data.room.findById(room.id);
-    const memCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? false;
-    const intCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? false;
+    const memCoherenceOn = roomRecord?.cmd_memory_coherence_enabled ?? true;
+    const intCoherenceOn = roomRecord?.cmd_intent_coherence_enabled ?? true;
 
     if (
       memCoherenceOn &&
@@ -5825,19 +5825,19 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
           cmdClaude: false,
           cmdTokens: false,
           cmdModeration: false,
-          cmdThink: false,
+          cmdThink: true,
           cmdEffort: false,
           cmdAudit: false,
           cmdContinue: false,
-          cmdIntentCoherence: false,
-          cmdMemoryCoherence: false,
+          cmdIntentCoherence: true,
+          cmdMemoryCoherence: true,
           maxLoops: 5,
         });
         return;
       }
       const roomRecord = await Data.room.findById(roomId);
       socket.emit("room_memory_status", {
-        enabled: roomRecord?.memory_enabled ?? false,
+        enabled: roomRecord?.memory_enabled ?? true,
         cmdRecall: roomRecord?.cmd_recall_enabled ?? true,
         cmdSql: roomRecord?.cmd_sql_enabled ?? true,
         cmdMemory: roomRecord?.cmd_memory_enabled ?? true,
@@ -5848,12 +5848,12 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
         cmdClaude: roomRecord?.cmd_claude_enabled ?? false,
         cmdTokens: roomRecord?.cmd_tokens_enabled ?? false,
         cmdModeration: roomRecord?.cmd_moderation_enabled ?? false,
-        cmdThink: roomRecord?.cmd_think_enabled ?? false,
+        cmdThink: roomRecord?.cmd_think_enabled ?? true,
         cmdEffort: roomRecord?.cmd_effort_enabled ?? false,
         cmdAudit: roomRecord?.cmd_audit_enabled ?? false,
         cmdContinue: roomRecord?.cmd_continue_enabled ?? false,
-        cmdIntentCoherence: roomRecord?.cmd_intent_coherence_enabled ?? false,
-        cmdMemoryCoherence: roomRecord?.cmd_memory_coherence_enabled ?? false,
+        cmdIntentCoherence: roomRecord?.cmd_intent_coherence_enabled ?? true,
+        cmdMemoryCoherence: roomRecord?.cmd_memory_coherence_enabled ?? true,
         maxLoops: roomRecord?.max_loops ?? 5,
       });
     });

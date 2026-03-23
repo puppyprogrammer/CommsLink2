@@ -142,7 +142,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [models, setModels] = useState<GrokModel[]>([]);
   const [premiumVoices, setPremiumVoices] = useState<PremiumVoice[]>([]);
-  const [memoryEnabled, setMemoryEnabled] = useState(false);
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [cmdRecall, setCmdRecall] = useState(true);
   const [cmdSql, setCmdSql] = useState(true);
   const [cmdMemory, setCmdMemory] = useState(true);
@@ -153,12 +153,12 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [cmdClaude, setCmdClaude] = useState(false);
   const [cmdTokens, setCmdTokens] = useState(false);
   const [cmdModeration, setCmdModeration] = useState(false);
-  const [cmdThink, setCmdThink] = useState(false);
+  const [cmdThink, setCmdThink] = useState(true);
   const [cmdEffort, setCmdEffort] = useState(false);
   const [cmdAudit, setCmdAudit] = useState(false);
   const [cmdContinue, setCmdContinue] = useState(false);
-  const [cmdIntentCoherence, setCmdIntentCoherence] = useState(false);
-  const [cmdMemoryCoherence, setCmdMemoryCoherence] = useState(false);
+  const [cmdIntentCoherence, setCmdIntentCoherence] = useState(true);
+  const [cmdMemoryCoherence, setCmdMemoryCoherence] = useState(true);
   const [maxLoops, setMaxLoops] = useState(5);
 
   // Terminal machines

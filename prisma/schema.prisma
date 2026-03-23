@@ -46,7 +46,7 @@ model room {
   display_name    String
   password_hash   String?
   is_permanent    Boolean  @default(false)
-  memory_enabled      Boolean  @default(false)
+  memory_enabled      Boolean  @default(true)
   cmd_recall_enabled      Boolean  @default(true)
   cmd_sql_enabled         Boolean  @default(true)
   cmd_memory_enabled      Boolean  @default(true)
@@ -57,13 +57,13 @@ model room {
   cmd_claude_enabled      Boolean  @default(false)
   cmd_tokens_enabled      Boolean  @default(false)
   cmd_moderation_enabled  Boolean  @default(false)
-  cmd_think_enabled       Boolean  @default(false)
+  cmd_think_enabled       Boolean  @default(true)
   cmd_effort_enabled      Boolean  @default(false)
   cmd_audit_enabled       Boolean  @default(false)
   cmd_continue_enabled    Boolean  @default(false)
   cmd_agent_mgmt_enabled  Boolean  @default(false)
-  cmd_intent_coherence_enabled  Boolean  @default(false)
-  cmd_memory_coherence_enabled  Boolean  @default(false)
+  cmd_intent_coherence_enabled  Boolean  @default(true)
+  cmd_memory_coherence_enabled  Boolean  @default(true)
   max_loops               Int      @default(5)
   created_by          String?
   created_at      DateTime @default(now())
