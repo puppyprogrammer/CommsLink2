@@ -47,7 +47,7 @@ const startThinking = (): void => {
 
     lfo = ctx.createOscillator();
     lfo.type = 'sine';
-    lfo.frequency.value = 1.5; // 1.5 Hz tremolo — gentle pulse
+    lfo.frequency.value = 0.5; // 0.5 Hz tremolo — one pulse per 2 seconds
     const lfoGain = ctx.createGain();
     lfoGain.gain.value = 0.5;
     lfo.connect(lfoGain);
