@@ -6,6 +6,9 @@ type ConnectedPlayer = {
   userId: string;
   charName: string;
   hearSelf: boolean;
+  hearAll: boolean;
+  muted: Set<string>;
+  heard: Set<string>;
   zone: number;
   mapId: number;
   x: number;
@@ -42,6 +45,9 @@ const init = () => {
           players.set(userId, {
             ws, userId, charName: user?.char_name || 'Unknown',
             hearSelf: data.hearSelf === true,
+            hearAll: true,
+            muted: new Set(),
+            heard: new Set(),
             zone: 0, mapId: 0, x: 0, y: 0, z: 0,
           });
 
@@ -61,8 +67,12 @@ const init = () => {
 
         if (data.type === 'settings' && authenticated) {
           const player = players.get(userId);
-          if (player && data.hearSelf !== undefined) {
-            player.hearSelf = data.hearSelf === true;
+          if (player) {
+            if (typeof data.hearSelf === 'boolean') player.hearSelf = data.hearSelf;
+            if (typeof data.hearAll === 'boolean') player.hearAll = data.hearAll;
+            if (Array.isArray(data.muted)) player.muted = new Set(data.muted);
+            if (Array.isArray(data.heard)) player.heard = new Set(data.heard);
+            ws.send(JSON.stringify({ type: 'settings', status: 'ok', hearSelf: player.hearSelf, hearAll: player.hearAll }));
           }
         }
       } catch { /* ignore bad messages */ }
@@ -97,6 +107,15 @@ const broadcastAudio = (
     // Skip self unless hearSelf is enabled
     if (uid === senderUserId && !player.hearSelf) continue;
     if (player.ws.readyState !== WebSocket.OPEN) continue;
+
+    // Selective hearing filter
+    if (uid !== senderUserId) {
+      if (player.hearAll) {
+        if (player.muted.has(senderUserId)) continue;
+      } else {
+        if (!player.heard.has(senderUserId)) continue;
+      }
+    }
 
     // Zone + map filter
     if (zone > 0 && player.zone > 0 && player.zone !== zone) continue;
