@@ -5,6 +5,11 @@ import type { VoiceId, Engine } from '@aws-sdk/client-polly';
 import Data from '../../data';
 import elevenlabsAdapter from '../../adapters/elevenlabs';
 
+type TTSResult = {
+  buffer: Buffer;
+  format: 'wav' | 'mp3';
+};
+
 const getPollyClient = () => new PollyClient({ region: process.env.AWS_REGION || 'us-east-2' });
 
 /** Create a WAV header for raw PCM data */
@@ -30,14 +35,13 @@ const createWavHeader = (pcmLength: number, sampleRate: number, channels: number
 
 /**
  * Generate TTS audio for an FFXIVoices user.
- * Routes to ElevenLabs for voices prefixed with "el:", otherwise Polly.
- * Always returns WAV buffer (16kHz, 16-bit, mono).
+ * Routes to ElevenLabs (MP3) for voices prefixed with "el:", otherwise Polly (WAV).
  */
 const generateTTS = async (
   userId: string,
   text: string,
   voiceId?: string,
-): Promise<Buffer> => {
+): Promise<TTSResult> => {
   const user = await Data.ffxivUser.findById(userId);
   if (!user) throw Boom.notFound('User not found');
   if (user.credit_balance <= 0) throw Boom.paymentRequired('Insufficient credits');
@@ -45,16 +49,16 @@ const generateTTS = async (
   const selectedVoice = voiceId || user.voice_id || 'Joanna';
 
   if (selectedVoice.startsWith('el:')) {
-    // ElevenLabs premium voice — returns WAV (PCM 44100 downsampled to 16kHz)
+    // ElevenLabs premium voice — returns MP3 (PCM requires Pro tier)
     const elVoiceId = selectedVoice.substring(3);
-    const wavBuffer = await elevenlabsAdapter.generateSpeechWav(text.trim(), elVoiceId);
+    const mp3Buffer = await elevenlabsAdapter.generateSpeechMp3(text.trim(), elVoiceId);
 
     const creditCost = Math.max(1, Math.ceil(text.length / 50) * 3);
     await Data.ffxivUser.deductCredits(user.id, creditCost);
 
-    return wavBuffer;
+    return { buffer: mp3Buffer, format: 'mp3' };
   } else {
-    // Polly free voice
+    // Polly free voice — returns WAV
     const client = getPollyClient();
     const command = new SynthesizeSpeechCommand({
       Text: text.trim(),
@@ -80,7 +84,7 @@ const generateTTS = async (
     const creditCost = Math.max(1, Math.ceil(text.length / 50));
     await Data.ffxivUser.deductCredits(user.id, creditCost);
 
-    return wavBuffer;
+    return { buffer: wavBuffer, format: 'wav' };
   }
 };
 

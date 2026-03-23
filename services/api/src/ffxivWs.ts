@@ -99,6 +99,7 @@ const broadcastAudio = (
   zone: number,
   mapId: number,
   senderPos: { x: number; y: number; z: number },
+  format: 'wav' | 'mp3' = 'wav',
 ) => {
   const PROXIMITY_YALMS = 50;
   let sentCount = 0;
@@ -131,7 +132,7 @@ const broadcastAudio = (
       type: 'audio',
       playerName: senderCharName,
       message,
-      format: 'wav',
+      format,
       size: wavBuffer.length,
     }));
 

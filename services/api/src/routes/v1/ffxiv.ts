@@ -200,16 +200,17 @@ const ffxivRoutes: ServerRoute[] = [
       }
 
       // Queue TTS generation async — don't block the response
-      generateTTS(decoded.id, message).then((wavBuffer) => {
-        console.log(`[FFXIVoices] TTS done for ${user.char_name}, ${wavBuffer.length} bytes, broadcasting...`);
+      generateTTS(decoded.id, message).then((result) => {
+        console.log(`[FFXIVoices] TTS done for ${user.char_name}, ${result.buffer.length} bytes (${result.format}), broadcasting...`);
         broadcastAudio(
           decoded.id,
           user.char_name || 'Unknown',
           message,
-          wavBuffer,
+          result.buffer,
           zone || 0,
           mapId || 0,
           senderPos,
+          result.format,
         );
       }).catch((err) => {
         console.error(`[FFXIVoices] TTS generation failed for job ${jobId}:`, err);

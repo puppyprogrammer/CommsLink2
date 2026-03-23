@@ -4,37 +4,16 @@ const getApiKey = (): string => {
   return key;
 };
 
-const createWavHeader = (pcmLength: number, sampleRate: number, channels: number, bitsPerSample: number): Buffer => {
-  const header = Buffer.alloc(44);
-  const byteRate = sampleRate * channels * (bitsPerSample / 8);
-  const blockAlign = channels * (bitsPerSample / 8);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + pcmLength, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(channels, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(byteRate, 28);
-  header.writeUInt16LE(blockAlign, 32);
-  header.writeUInt16LE(bitsPerSample, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(pcmLength, 40);
-  return header;
-};
-
 /**
- * Generate speech as WAV buffer using ElevenLabs TTS.
+ * Generate speech as MP3 buffer using ElevenLabs TTS.
  * output_format must be a URL query param, NOT in the JSON body.
- * Returns 16kHz 16-bit mono WAV (downsampled from 44100Hz).
+ * Returns MP3 audio (mp3_44100_128 — available on all tiers).
  */
-const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer> => {
+const generateSpeechMp3 = async (text: string, voiceId: string): Promise<Buffer> => {
   const apiKey = getApiKey();
 
-  // output_format as query parameter — NOT in the JSON body
   const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=pcm_44100`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
     {
       method: 'POST',
       headers: {
@@ -53,33 +32,12 @@ const generateSpeechWav = async (text: string, voiceId: string): Promise<Buffer>
     throw new Error(`ElevenLabs TTS failed (${response.status}): ${errorText}`);
   }
 
-  const contentType = response.headers.get('content-type');
   const arrayBuffer = await response.arrayBuffer();
-  const srcBuffer = Buffer.from(arrayBuffer);
+  const mp3Buffer = Buffer.from(arrayBuffer);
 
-  console.log(`[ElevenLabs] Response: status=${response.status}, content-type=${contentType}, bytes=${srcBuffer.length}`);
-  console.log(`[ElevenLabs] First 16 bytes: ${srcBuffer.subarray(0, 16).toString('hex')}`);
+  console.log(`[ElevenLabs] MP3 response: ${mp3Buffer.length} bytes, first 4 bytes: ${mp3Buffer.subarray(0, 4).toString('hex')}`);
 
-  // Downsample from 44100Hz to 16000Hz (signed 16-bit LE samples)
-  const srcSampleRate = 44100;
-  const dstSampleRate = 16000;
-  const ratio = srcSampleRate / dstSampleRate;
-  const srcSamples = srcBuffer.length / 2;
-  const dstSamples = Math.floor(srcSamples / ratio);
-  const pcmData = Buffer.alloc(dstSamples * 2);
-  for (let i = 0; i < dstSamples; i++) {
-    const srcIndex = Math.floor(i * ratio) * 2;
-    if (srcIndex + 1 < srcBuffer.length) {
-      pcmData.writeInt16LE(srcBuffer.readInt16LE(srcIndex), i * 2);
-    }
-  }
-
-  console.log(`[ElevenLabs] Downsampled: ${srcBuffer.length} bytes (${srcSamples} samples @ 44100) → ${pcmData.length} bytes (${dstSamples} samples @ 16000)`);
-
-  const wavHeader = createWavHeader(pcmData.length, 16000, 1, 16);
-  const wavBuffer = Buffer.concat([wavHeader, pcmData]);
-  console.log(`[ElevenLabs] Final WAV: ${wavBuffer.length} bytes (44 header + ${pcmData.length} PCM)`);
-  return wavBuffer;
+  return mp3Buffer;
 };
 
 /**
@@ -102,4 +60,4 @@ const listVoices = async (): Promise<{ voice_id: string; name: string }[]> => {
 };
 
 export { getApiKey };
-export default { generateSpeechWav, listVoices };
+export default { generateSpeechMp3, listVoices };
