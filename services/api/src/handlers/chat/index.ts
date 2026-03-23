@@ -6789,60 +6789,49 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
     // ┌──────────────────────────────────────────┐
     // │ Voice STT (Speech-to-Text) Streaming    │
     // └──────────────────────────────────────────┘
-    socket.on("voice_stt_start", (data: { mimeType?: string }) => {
-      (socket as any).__sttChunks = [];
-      (socket as any).__sttMimeType = data?.mimeType || "audio/webm";
-      console.log(
-        `[STT] ${socket.user?.username} started voice capture`,
-      );
-    });
+    socket.on("voice_stt_start", async () => {
+      // End any existing session
+      const prev = (socket as any).__sttSession;
+      if (prev) { prev.end(); delete (socket as any).__sttSession; }
 
-    socket.on("voice_stt_chunk", (data: ArrayBuffer | Buffer) => {
-      const chunks = (socket as any).__sttChunks as Buffer[] | undefined;
-      if (chunks) {
-        const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
-        chunks.push(buf);
-        if (chunks.length === 1) {
-          console.log(`[STT] First chunk from ${socket.user?.username}: ${buf.length} bytes`);
-        }
-      }
-    });
-
-    socket.on("voice_stt_stop", async () => {
       try {
-        const chunks: Buffer[] | undefined = (socket as any).__sttChunks;
-        delete (socket as any).__sttChunks;
-
-        if (!chunks || chunks.length === 0) {
-          console.log(`[STT] No chunks received from ${socket.user?.username}`);
-          return;
-        }
-
-        const totalBytes = chunks.reduce((sum, c) => sum + c.length, 0);
-        console.log(`[STT] ${socket.user?.username} sent ${chunks.length} chunks, ${totalBytes} bytes total`);
-
-        if (totalBytes < 3200) {
-          console.log(`[STT] Audio too short (${totalBytes} bytes), skipping`);
-          return;
-        }
-
         const { default: transcribeAdapter } = await import(
           "../../../../../core/adapters/transcribe"
         );
 
-        // Send chunks individually (not combined) for better streaming
-        const transcript = await transcribeAdapter.transcribeStream(chunks);
-
-        console.log(`[STT] Transcript for ${socket.user?.username}: "${transcript}"`);
-
-        if (!transcript || !transcript.trim()) return;
-
-        socket.emit("voice_stt_transcript", { text: transcript });
-      } catch (err) {
-        console.error(
-          `[STT] Transcription failed for ${socket.user?.username}:`,
-          err,
+        const session = transcribeAdapter.startSession(
+          // onTranscript — fires for each completed sentence in real-time
+          (text: string) => {
+            console.log(`[STT] ${socket.user?.username}: "${text}"`);
+            socket.emit("voice_stt_transcript", { text });
+          },
+          // onError
+          (err: Error) => {
+            console.error(`[STT] Stream error for ${socket.user?.username}:`, err.message);
+          },
         );
+
+        (socket as any).__sttSession = session;
+        console.log(`[STT] ${socket.user?.username} started streaming session`);
+      } catch (err) {
+        console.error(`[STT] Failed to start session for ${socket.user?.username}:`, err);
+      }
+    });
+
+    socket.on("voice_stt_chunk", (data: ArrayBuffer | Buffer) => {
+      const session = (socket as any).__sttSession;
+      if (session) {
+        const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        session.pushChunk(buf);
+      }
+    });
+
+    socket.on("voice_stt_stop", () => {
+      const session = (socket as any).__sttSession;
+      if (session) {
+        session.end();
+        delete (socket as any).__sttSession;
+        console.log(`[STT] ${socket.user?.username} ended streaming session`);
       }
     });
 
@@ -6850,6 +6839,10 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
     // │ Disconnect                              │
     // └──────────────────────────────────────────┘
     socket.on("disconnect", () => {
+      // Clean up STT session on disconnect
+      const sttSession = (socket as any).__sttSession;
+      if (sttSession) { sttSession.end(); delete (socket as any).__sttSession; }
+
       console.log(`User disconnected: ${socket.user.username} (${socket.id})`);
       // Save last room before leaving
       const disconnectingUser = connectedUsers.get(socket.id);
