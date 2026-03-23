@@ -30,7 +30,8 @@ function getClientIp(request: Request): string {
  * Returns decoded payload or throws Boom.unauthorized.
  */
 function validateFfxivAuth(request: Request): FfxivJwtPayload {
-  const authHeader = request.headers.authorization;
+  const rawHeader = request.headers.authorization;
+  const authHeader = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     throw Boom.unauthorized('Missing or invalid authorization header');
   }
