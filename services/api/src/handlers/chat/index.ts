@@ -6787,6 +6787,21 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
     );
 
     // ┌──────────────────────────────────────────┐
+    // │ Chat Audio (late TTS for messages)     │
+    // └──────────────────────────────────────────┘
+    socket.on("chat_audio", (data: { nonce?: string; audio: string; voice?: string }) => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom || !data.audio) return;
+      // Broadcast the audio to the room so other users can play it
+      io.to(user.currentRoom).emit("chat_audio", {
+        nonce: data.nonce,
+        audio: data.audio,
+        sender: socket.user.username,
+        voice: data.voice,
+      });
+    });
+
+    // ┌──────────────────────────────────────────┐
     // │ Voice STT (Speech-to-Text) Streaming    │
     // └──────────────────────────────────────────┘
     socket.on("voice_stt_start", async () => {

@@ -251,6 +251,17 @@ const ChatPage = () => {
       if (Array.isArray(roomList)) setRooms(roomList);
     });
 
+    // Late-arriving TTS audio for user messages
+    socket.on('chat_audio', (data: { sender?: string; audio: string; nonce?: string }) => {
+      const prefs = preferencesRef.current;
+      const isOwn = data.sender === session?.user.username;
+      if (isOwn && !prefs.hear_own_voice) return;
+      if (data.audio) {
+        recentAiSpeechRef.current.push({ text: '', time: Date.now() });
+        playAudioBlob(data.audio, prefs.volume);
+      }
+    });
+
     socket.on(
       'room_joined',
       (data: {
@@ -441,30 +452,30 @@ const ChatPage = () => {
       ]);
       if (!text) setInput('');
 
-      // Generate TTS audio only for typed messages (not voice-captured ones)
-      let audio: string | null = null;
       const voiceId = preferences.voice_id || 'Joanna';
-      const isFromVoice = !!text && (voiceCapture.isActive() || speechRecognition.isActive());
-
-      if (!isFromVoice) {
-        try {
-          const result = await voiceApi.generate(session.token, {
-            text: msgText,
-            voice_id: voiceId,
-          });
-          audio = result.audioBase64 || null;
-        } catch (err) {
-          console.error('Voice generation failed, sending without audio:', err);
-          toast('Voice generation failed, sending as text', 'warning');
-        }
-      }
-
       const socket = getSocket(session.token);
+
+      // Send text immediately — don't wait for TTS
       socket.emit('chat_message', {
         text: msgText,
         voice: voiceId,
-        audio,
         nonce,
+      });
+
+      // Generate TTS in background and send as audio update
+      voiceApi.generate(session.token, {
+        text: msgText,
+        voice_id: voiceId,
+      }).then((result) => {
+        if (result.audioBase64) {
+          socket.emit('chat_audio', {
+            nonce,
+            audio: result.audioBase64,
+            voice: voiceId,
+          });
+        }
+      }).catch(() => {
+        // TTS failed silently — text was already sent
       });
     },
     [input, session?.token, preferences.voice_id],
