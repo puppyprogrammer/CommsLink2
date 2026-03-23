@@ -441,11 +441,12 @@ const ChatPage = () => {
       ]);
       if (!text) setInput('');
 
-      // Generate TTS audio for the message
+      // Generate TTS audio only for typed messages (not voice-captured ones)
       let audio: string | null = null;
       const voiceId = preferences.voice_id || 'Joanna';
+      const isFromVoice = !!text && (voiceCapture.isActive() || speechRecognition.isActive());
 
-      {
+      if (!isFromVoice) {
         try {
           const result = await voiceApi.generate(session.token, {
             text: msgText,
