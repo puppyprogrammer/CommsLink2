@@ -44,6 +44,7 @@ import * as voiceCapture from '@/lib/helpers/voiceCapture';
 import * as voiceStream from '@/lib/helpers/voiceStream';
 import * as audioQueue from '@/lib/helpers/audioQueue';
 import { startAlarm, stopAlarm } from '@/lib/helpers/alarm';
+import { startThinking, stopThinking } from '@/lib/helpers/thinkingSound';
 import { getRoomIcon } from '@/lib/helpers/roomIcon';
 import voiceApi from '@/lib/api/voice';
 import { useToast } from '@/lib/state/ToastContext';
@@ -344,10 +345,18 @@ const ChatPage = () => {
 
     // Agent typing indicator
     socket.on('agent_typing', (data: { agentName: string }) => {
-      setTypingAgents((prev) => (prev.includes(data.agentName) ? prev : [...prev, data.agentName]));
+      setTypingAgents((prev) => {
+        const next = prev.includes(data.agentName) ? prev : [...prev, data.agentName];
+        if (next.length > 0) startThinking();
+        return next;
+      });
     });
     socket.on('agent_done_typing', (data: { agentName: string }) => {
-      setTypingAgents((prev) => prev.filter((name) => name !== data.agentName));
+      setTypingAgents((prev) => {
+        const next = prev.filter((name) => name !== data.agentName);
+        if (next.length === 0) stopThinking();
+        return next;
+      });
     });
 
     // Alarm trigger
@@ -923,9 +932,14 @@ const ChatPage = () => {
               );
             })}
             {typingAgents.map((agentName) => (
-              <Box key={agentName} className={classes.message} sx={{ opacity: 0.5 }}>
-                <Typography variant="sm" color="primary">
-                  {agentName}
+              <Box key={agentName} className={classes.message} sx={{
+                opacity: 0.7,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+              }}>
+                <Typography variant="sm" sx={{ color: '#4dd8d0', fontSize: '0.8rem' }}>
+                  {agentName} is thinking
                 </Typography>
                 <span className={classes.typingDots}>
                   <span>.</span>
