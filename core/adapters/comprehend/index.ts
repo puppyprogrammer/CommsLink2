@@ -1,4 +1,5 @@
 import { ComprehendClient, DetectSentimentCommand } from '@aws-sdk/client-comprehend';
+import type { LanguageCode } from '@aws-sdk/client-comprehend';
 
 type SentimentResult = {
   sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'MIXED';
@@ -25,7 +26,7 @@ const detectSentiment = async (
 
   const command = new DetectSentimentCommand({
     Text: text,
-    LanguageCode: languageCode || 'en',
+    LanguageCode: (languageCode || 'en') as LanguageCode,
   });
 
   const response = await client.send(command);
