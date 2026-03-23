@@ -2338,25 +2338,50 @@ const runAgentResponse = async (
     };
     const agentTools = buildToolDefinitions(cmdFlags, onlineMachines);
 
-    // If the API call takes >3s, send a quick "thinking" message so user knows it's working
-    const thinkingTimer = !autopilotMode ? setTimeout(() => {
-      const fillers = [
-        "Hmm, let me think about that...",
-        "Give me a moment...",
-        "Let me consider that...",
-        "Thinking...",
-        "One sec, working on it...",
-      ];
-      const filler = fillers[Math.floor(Math.random() * fillers.length)];
-      io.to(roomName).emit("chat_message", {
-        id: `filler-${Date.now()}`,
-        sender: agent.name,
-        text: filler,
-        timestamp: new Date().toISOString(),
-        isAI: true,
-        voice: agent.voice_id,
-        noVoice: true, // Don't TTS the filler — just show text
-      });
+    // If the API call takes >3s, generate a contextual filler via grok-3-mini and speak it
+    const thinkingTimer = !autopilotMode ? setTimeout(async () => {
+      try {
+        // Get the last user message for context
+        const lastUserMsg = contextMessages.filter(m => m.role === "user").slice(-1)[0]?.content || "";
+        const shortContext = lastUserMsg.substring(0, 200);
+
+        const fillerResponse = await grokAdapter.chatCompletion(
+          `You are ${agent.name}. Pick ONE short filler phrase (under 10 words) that fits naturally before answering this question. Examples: "Hmm, let me think about that...", "Good question, give me a sec...", "Ooh, that's interesting...", "Let me pull that up...", "Ah, hold on a moment...", "Let me work through this...", "Hmm, interesting question...", "Bear with me on this one...", "Oh that's a good one...", "Just a moment...", "Let me dig into that...", "Alright, thinking...", "Ooh let me see...", "Hmm okay so...", "Right, let me figure this out...", "Ah yeah, give me a second...", "Let me mull that over...", "Oh wow, okay...", "Interesting, let me think...", "One moment please...", "Okay let me work on that...", "Hmm let me consider...", "Sure thing, processing...", "Ah, that requires some thought...". Output ONLY the filler phrase, nothing else.`,
+          [{ role: "user", content: shortContext || "general question" }],
+          "grok-3-mini",
+          50,
+        );
+
+        const filler = (fillerResponse?.text || "Hmm, let me think...").replace(/["{}\n]/g, "").trim().substring(0, 60);
+
+        // Generate TTS for the filler
+        let fillerAudio: string | null = null;
+        try {
+          const { default: pollyAdapter } = await import("../../../../../core/adapters/polly");
+          const tts = await pollyAdapter.generateSpeech(filler, agent.voice_id);
+          fillerAudio = tts.audioBase64;
+        } catch { /* TTS optional */ }
+
+        io.to(roomName).emit("chat_message", {
+          id: `filler-${Date.now()}`,
+          sender: agent.name,
+          text: filler,
+          timestamp: new Date().toISOString(),
+          isAI: true,
+          voice: agent.voice_id,
+          ...(fillerAudio ? { audio: fillerAudio } : {}),
+        });
+      } catch {
+        // Fallback if grok-mini fails
+        io.to(roomName).emit("chat_message", {
+          id: `filler-${Date.now()}`,
+          sender: agent.name,
+          text: "Hmm, give me a moment...",
+          timestamp: new Date().toISOString(),
+          isAI: true,
+          voice: agent.voice_id,
+        });
+      }
     }, 3000) : null;
 
     const response = await routedChatCompletion(
