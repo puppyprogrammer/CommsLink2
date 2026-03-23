@@ -3830,11 +3830,19 @@ const runAgentResponse = async (
         .replace(THINK_HTML_REGEX, "")
         .replace(THINK_XML_REGEX, "")
         .replace(THINK_REGEX, "");
-      // Also strip orphaned {/think}, [/think], and </think> closing tags
+      // Strip ALL think-like patterns — AI produces many malformed variants
       responseText = responseText
         .replace(/\{\/think\}/g, "")
-        .replace(/\[\/think\]/g, "")
-        .replace(/<\/think>/g, "");
+        .replace(/\[\/think[>\]]/g, "")
+        .replace(/<\/think>/g, "")
+        .replace(/\{think\}/g, "")
+        .replace(/\[think[>\]]/g, "")
+        .replace(/<think>/g, "")
+        // Catch multiline [think]...[/think] and mixed bracket formats
+        .replace(/\[think\][\s\S]*?\[\/think\]/g, "")
+        .replace(/\[think>[\s\S]*?\[\/think>/g, "")
+        .replace(/<think>[\s\S]*?\[\/think>/g, "")
+        .replace(/\[think>[\s\S]*?<\/think>/g, "");
     }
 
     // Extract {say} content (spoken aloud with TTS) and {text} content (text-only, no TTS).
