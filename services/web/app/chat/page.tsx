@@ -566,25 +566,7 @@ const ChatPage = () => {
       return;
     }
 
-    // If user has a voice selected, use voice streaming (chunked TTS)
-    if (preferences.voice_id && session?.token) {
-      const socket = getSocket(session.token);
-      const sid = voiceStream.start(socket, preferences.voice_id!, {
-        onStart: () => setIsListening(true),
-        onEnd: () => setIsListening(false),
-        onChunkSent: (idx, text) => {
-          if (isEcho(text)) return; // Skip mic echo from AI speaker
-          sendMessage(text);
-        },
-        onError: () => setIsListening(false),
-      });
-      if (!sid) {
-        toast('Speech recognition not supported in this browser');
-      }
-      return;
-    }
-
-    // Preferred: MediaRecorder-based capture (no Android beeping)
+    // Preferred: MediaRecorder-based capture (no Android beeping, server-side STT)
     if (voiceCapture.isSupported() && session?.token) {
       const socket = getSocket(session.token);
       voiceCapture.start(socket, {
