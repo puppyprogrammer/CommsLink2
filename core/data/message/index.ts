@@ -89,6 +89,16 @@ const archiveByRoom = async (roomId: string): Promise<number> => {
   return result.count;
 };
 
+/**
+ * Find most recent messages in a room (any type, any author).
+ */
+const findRecent = async (roomId: string, limit = 5) =>
+  prisma.message.findMany({
+    where: { room_id: roomId },
+    orderBy: { created_at: "desc" },
+    take: limit,
+  });
+
 export default {
   create,
   findByRoom,
@@ -98,4 +108,5 @@ export default {
   findUnsummarized,
   markSummarized,
   archiveByRoom,
+  findRecent,
 };
