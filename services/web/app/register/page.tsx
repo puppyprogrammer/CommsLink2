@@ -153,6 +153,15 @@ const RegisterPage = () => {
           10,000 free credits included • No credit card required
         </Typography>
 
+        <Typography variant="caption" sx={{
+          display: 'block', textAlign: 'center', mt: 1, color: '#445566', fontSize: '0.7rem',
+        }}>
+          By creating an account, you agree to our{' '}
+          <MuiLink component={Link} href="/privacy" sx={{ color: '#4dd8d0', fontSize: '0.7rem' }}>
+            Privacy Policy
+          </MuiLink>
+        </Typography>
+
         <Box sx={{ mt: 2, textAlign: 'center' }}>
           <MuiLink component={Link} href="/login" sx={{ color: '#4dd8d0', fontSize: '0.85rem' }}>
             Already have an account? Sign in
