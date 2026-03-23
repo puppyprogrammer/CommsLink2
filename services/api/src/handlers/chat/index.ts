@@ -2290,7 +2290,7 @@ const runAgentResponse = async (
           )
         : undefined;
 
-    const agentMaxTokens = agent.max_tokens ?? 1500;
+    const agentMaxTokens = agent.max_tokens ?? 2500;
 
     const systemPrompt = buildSystemPrompt(
       agent,
@@ -5682,7 +5682,9 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
         autopilotInterval?: number;
         autopilotPrompts?: string;
         plan?: string | null;
+        tasks?: string | null;
         nicknames?: string | null;
+        maxTokens?: number;
       }) => {
         const normalizedRoom = data.roomName.toLowerCase();
         const roomId = getRoomId(normalizedRoom);
@@ -5709,14 +5711,17 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
           name: data.name,
           room_id: roomId,
           creator_id: socket.user.id,
-          voice_id: data.voiceId || "female",
+          voice_id: data.voiceId || "Joanna",
           model: data.model || undefined,
           system_instructions: data.systemInstructions || undefined,
           memories: data.memories || undefined,
           autopilot_enabled: data.autopilotEnabled || false,
           autopilot_interval: data.autopilotInterval || 300,
           autopilot_prompts: data.autopilotPrompts || undefined,
+          plan: data.plan || undefined,
+          tasks: data.tasks || undefined,
           nicknames: data.nicknames || undefined,
+          max_tokens: data.maxTokens || 2500,
         });
 
         if (agent.autopilot_enabled) {
@@ -5742,6 +5747,7 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
         plan?: string | null;
         tasks?: string | null;
         nicknames?: string | null;
+        maxTokens?: number;
       }) => {
         const agent = await Data.llmAgent.findById(data.agentId);
         if (!agent) {
@@ -5761,6 +5767,7 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
           plan: data.plan ?? null,
           tasks: data.tasks ?? null,
           nicknames: data.nicknames ?? null,
+          max_tokens: data.maxTokens,
         });
 
         // Restart or stop autopilot timer

@@ -211,6 +211,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [newPlan, setNewPlan] = useState('');
   const [newTasks, setNewTasks] = useState('');
   const [newNicknames, setNewNicknames] = useState('');
+  const [newMaxTokens, setNewMaxTokens] = useState(2500);
 
   // Edit form
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
@@ -228,6 +229,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
   const [editPlan, setEditPlan] = useState('');
   const [editTasks, setEditTasks] = useState('');
   const [editNicknames, setEditNicknames] = useState('');
+  const [editMaxTokens, setEditMaxTokens] = useState(2500);
 
   // Add agent dialog
   const [showAddAgent, setShowAddAgent] = useState(false);
@@ -467,6 +469,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     setNewInstructions(parseList(template.system_instructions));
     setNewMemories(parseList(template.memories));
     setNewAutopilotPrompts(parseList(template.autopilot_prompts));
+    setNewMaxTokens(template.max_tokens || 2500);
   };
 
   const handleCreate = () => {
@@ -493,6 +496,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               .filter(Boolean),
           )
         : null,
+      maxTokens: newMaxTokens,
     });
   };
 
@@ -519,6 +523,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
               .filter(Boolean),
           )
         : null,
+      maxTokens: editMaxTokens,
     });
   };
 
@@ -549,6 +554,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
     } catch {
       setEditNicknames('');
     }
+    setEditMaxTokens(agent.max_tokens || 2500);
   };
 
   const addItem = (
@@ -2170,6 +2176,29 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             newNicknames,
             setNewNicknames,
           )}
+          <Box sx={{ mt: 1, px: 1 }}>
+            <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#4dd8d0' }}>
+              Max Response Tokens: {newMaxTokens}
+            </Typography>
+            <Typography variant="detailText" sx={{ display: 'block', color: '#556b82', fontSize: '0.65rem', mb: 0.5 }}>
+              How many tokens the AI can use per response. Higher = longer, more detailed answers. Default: 2500.
+            </Typography>
+            <Slider
+              size="small"
+              min={500}
+              max={8000}
+              step={500}
+              value={newMaxTokens}
+              onChange={(_, val) => setNewMaxTokens(val as number)}
+              valueLabelDisplay="auto"
+              marks={[
+                { value: 500, label: '500' },
+                { value: 2500, label: '2.5k' },
+                { value: 4000, label: '4k' },
+                { value: 8000, label: '8k' },
+              ]}
+            />
+          </Box>
         </DialogContent>
         <DialogActions sx={{ px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderTop: '1px solid rgba(77, 216, 208, 0.08)' }}>
           <Button
@@ -2256,6 +2285,29 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             editNicknames,
             setEditNicknames,
           )}
+          <Box sx={{ mt: 1, px: 1 }}>
+            <Typography variant="detailText" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#4dd8d0' }}>
+              Max Response Tokens: {editMaxTokens}
+            </Typography>
+            <Typography variant="detailText" sx={{ display: 'block', color: '#556b82', fontSize: '0.65rem', mb: 0.5 }}>
+              How many tokens the AI can use per response. Higher = longer, more detailed answers.
+            </Typography>
+            <Slider
+              size="small"
+              min={500}
+              max={8000}
+              step={500}
+              value={editMaxTokens}
+              onChange={(_, val) => setEditMaxTokens(val as number)}
+              valueLabelDisplay="auto"
+              marks={[
+                { value: 500, label: '500' },
+                { value: 2500, label: '2.5k' },
+                { value: 4000, label: '4k' },
+                { value: 8000, label: '8k' },
+              ]}
+            />
+          </Box>
         </DialogContent>
         <DialogActions sx={{ px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderTop: '1px solid rgba(77, 216, 208, 0.08)' }}>
           <Button

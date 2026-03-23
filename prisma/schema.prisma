@@ -111,7 +111,7 @@ model llm_agent {
   plan                 String?  @db.Text
   tasks                String?  @db.Text
   nicknames            String?  @db.Text
-  max_tokens           Int      @default(1500)
+  max_tokens           Int      @default(2500)
   can_manage_agents    Boolean  @default(false)
   created_at           DateTime @default(now())
 
@@ -303,7 +303,7 @@ model agent_template {
   memories            String?  @db.Text
   autopilot_prompts   String?  @db.Text
   autopilot_interval  Int      @default(300)
-  max_tokens          Int      @default(1500)
+  max_tokens          Int      @default(2500)
   created_at          DateTime @default(now())
 }
 
