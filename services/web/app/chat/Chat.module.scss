@@ -175,15 +175,18 @@
 @media (max-width: 600px) {
   .root {
     height: calc(100vh - 36px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    flex-direction: column;
   }
 
   .sidePanel {
-    position: fixed;
-    top: calc(36px + env(safe-area-inset-top, 0px));
-    right: 0;
-    bottom: 0;
+    position: relative;
     width: 100% !important;
-    z-index: 1100;
+    height: 33vh;
+    min-height: 150px;
+    max-height: 40vh;
+    flex-shrink: 0;
+    border-bottom: 1px solid $border;
+    order: -1; // Put terminal above chat
     background-color: $background;
   }
 

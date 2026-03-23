@@ -21,3 +21,9 @@
     background-color: #1f6feb;
   }
 }
+
+@media (max-width: 600px) {
+  .handle {
+    display: none;
+  }
+}
