@@ -566,35 +566,47 @@ const ChatPage = () => {
       return;
     }
 
-    // Preferred: MediaRecorder-based capture (no Android beeping, server-side STT)
-    if (voiceCapture.isSupported() && session?.token) {
-      const socket = getSocket(session.token);
-      voiceCapture.start(socket, {
-        onTranscript: (text) => {
-          if (isEcho(text)) return;
-          sendMessage(text);
+    // Try voice capture (MediaRecorder + server STT) first, fall back to Web Speech API
+    const tryVoiceCapture = async () => {
+      if (voiceCapture.isSupported() && session?.token) {
+        const socket = getSocket(session.token);
+        const ok = await voiceCapture.start(socket, {
+          onTranscript: (text) => {
+            if (isEcho(text)) return;
+            sendMessage(text);
+          },
+          onStart: () => setIsListening(true),
+          onEnd: () => setIsListening(false),
+          onError: (err) => {
+            toast(`Voice capture error: ${err}`, 'warning');
+            setIsListening(false);
+          },
+        });
+        if (ok) return;
+        // voiceCapture failed (permission denied etc) — fall back
+        toast('Mic denied for voice capture, trying speech recognition...', 'info');
+      }
+
+      // Fallback: Web Speech API
+      const started = speechRecognition.start('en', true, {
+        onResult: (transcript) => {
+          if (isEcho(transcript)) return;
+          sendMessage(transcript);
         },
         onStart: () => setIsListening(true),
         onEnd: () => setIsListening(false),
         onError: () => setIsListening(false),
       });
-      return;
-    }
 
-    // Fallback: Web Speech API (desktop browsers where it works fine)
-    const started = speechRecognition.start('en', true, {
-      onResult: (transcript) => {
-        if (isEcho(transcript)) return; // Skip mic echo from AI speaker
-        sendMessage(transcript);
-      },
-      onStart: () => setIsListening(true),
-      onEnd: () => setIsListening(false),
-      onError: () => setIsListening(false),
+      if (!started) {
+        toast('Speech recognition not supported in this browser');
+      }
+    };
+
+    tryVoiceCapture().catch((err) => {
+      toast(`Mic error: ${err}`, 'error');
+      setIsListening(false);
     });
-
-    if (!started) {
-      toast('Speech recognition not supported in this browser');
-    }
   };
 
   const handleCreateRoom = () => {
