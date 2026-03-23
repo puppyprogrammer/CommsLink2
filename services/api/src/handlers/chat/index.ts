@@ -746,6 +746,27 @@ const buildToolDefinitions = (
   const tools: ToolDefinition[] = [];
 
   // Always available: think and say (core output)
+  // Say is always available — agents must always be able to speak
+  tools.push({
+    type: "function",
+    function: {
+      name: "say",
+      description:
+        "Speak aloud to the room. This generates voice/TTS. Use ONLY for user-facing messages.",
+      parameters: {
+        type: "object",
+        properties: {
+          message: {
+            type: "string",
+            description: "The message to speak aloud",
+          },
+        },
+        required: ["message"],
+      },
+    },
+  });
+
+  // Think is optional — silent internal reasoning
   if (cmds.think !== false) {
     tools.push({
       type: "function",
@@ -759,24 +780,6 @@ const buildToolDefinitions = (
             thought: { type: "string", description: "Your internal reasoning" },
           },
           required: ["thought"],
-        },
-      },
-    });
-    tools.push({
-      type: "function",
-      function: {
-        name: "say",
-        description:
-          "Speak aloud to the room. This generates voice/TTS. Use ONLY for user-facing messages.",
-        parameters: {
-          type: "object",
-          properties: {
-            message: {
-              type: "string",
-              description: "The message to speak aloud",
-            },
-          },
-          required: ["message"],
         },
       },
     });
@@ -1774,20 +1777,23 @@ const buildSystemPrompt = (
     );
   }
 
-  // Internal thought (conditional)
+  // Speaking is always available
+  const speakingHelp =
+    "=== SPEAKING ===\n" +
+    "{say your message here} - SPEAK aloud to the room with your voice (TTS). Use when you want to talk audibly.\n" +
+    "{text your message here} - Send a text-only message (NO voice/TTS). The message appears in chat but is not spoken aloud.\n" +
+    "RULE: You MUST use {say} or {text} to communicate. Text outside these commands is silently discarded.\n" +
+    "Example: {say}Hey, how can I help?{/say}";
+
   if (cmds.think !== false) {
     actions.push(
-      "=== SPEAKING & THINKING ===\n" +
-        "{say your message here} - SPEAK aloud to the room with your voice (TTS). Use when you want to talk audibly.\n" +
-        "{text your message here} - Send a text-only message (NO voice/TTS). The message appears in chat but is not spoken aloud. " +
-        "Use this when voice would be surprising or unwanted, or when the user hasn't enabled voice.\n" +
-        "{think your internal reasoning here} - Log an internal thought silently. No output is generated. " +
-        "Use this for all reasoning, planning, status checks, and processing.\n" +
-        "RULE: Put ALL reasoning in {think}. Put user-facing messages in {say} (with voice) or {text} (without voice). " +
-        "Text outside {think}, {say}, and {text} is silently discarded. " +
-        "Example: {think}checking status{/think}{say}Hey, alien4 is online.{/say}\n" +
-        "Example text-only: {think}user hasn't agreed to voice yet{/think}{text}Hi! Would you like me to use my voice?{/text}",
+      speakingHelp + "\n\n=== THINKING ===\n" +
+        "{think your internal reasoning here} - Log an internal thought silently. No output is generated.\n" +
+        "RULE: Put ALL reasoning in {think}. Put user-facing messages in {say} or {text}.\n" +
+        "Example: {think}checking status{/think}{say}Hey, alien4 is online.{/say}",
     );
+  } else {
+    actions.push(speakingHelp);
   }
 
   if (cmds.continue !== false) {
