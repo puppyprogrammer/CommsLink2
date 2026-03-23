@@ -18,6 +18,17 @@ const getClientIp = (request: Request): string => {
 
 const profileRoutes: ServerRoute[] = [
   {
+    method: 'GET',
+    path: '/api/v1/profile/me',
+    options: { auth: 'jwt' },
+    handler: async (request: Request) => {
+      const credentials = request.auth.credentials as unknown as AuthCredentials;
+      const user = await Data.user.findById(credentials.id);
+      if (!user) return { voice_id: 'Joanna', volume: 1.0, hear_own_voice: false };
+      return { voice_id: user.voice_id, volume: user.volume, hear_own_voice: user.hear_own_voice };
+    },
+  },
+  {
     method: 'POST',
     path: '/api/v1/profile/update',
     options: {

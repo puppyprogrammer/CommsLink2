@@ -36,19 +36,30 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const initialized = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load preferences from session user on login
+  // Load preferences — fetch fresh from DB, don't trust stale session cookie
   useEffect(() => {
-    if (session?.user && !initialized.current) {
+    if (session?.token && !initialized.current) {
       initialized.current = true;
+      // Set from session first as a fast default
       const INVALID_VOICES = ['male', 'female', 'robot', '', null, undefined];
-      const voiceId = INVALID_VOICES.includes(session.user.voice_id) ? 'Joanna' : session.user.voice_id;
+      const sessionVoice = INVALID_VOICES.includes(session.user.voice_id) ? 'Joanna' : session.user.voice_id;
       setPreferences({
-        voice_id: voiceId,
+        voice_id: sessionVoice,
         volume: session.user.volume ?? 1.0,
         hear_own_voice: session.user.hear_own_voice ?? false,
       });
+      // Then fetch fresh from DB to override stale cookie
+      fetch('/api/v1/profile/me', { headers: { Authorization: `Bearer ${session.token}` } })
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data?.voice_id) {
+            const freshVoice = INVALID_VOICES.includes(data.voice_id) ? 'Joanna' : data.voice_id;
+            setPreferences((prev) => ({ ...prev, voice_id: freshVoice }));
+          }
+        })
+        .catch(() => {});
     }
-  }, [session?.user]);
+  }, [session?.token, session?.user]);
 
   const saveToBackend = useCallback(
     (updated: Preferences) => {
