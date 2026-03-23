@@ -58,6 +58,13 @@ const init = () => {
             player.z = data.z || 0;
           }
         }
+
+        if (data.type === 'settings' && authenticated) {
+          const player = players.get(userId);
+          if (player && data.hearSelf !== undefined) {
+            player.hearSelf = data.hearSelf === true;
+          }
+        }
       } catch { /* ignore bad messages */ }
     });
 
