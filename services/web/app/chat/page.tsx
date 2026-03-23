@@ -564,10 +564,18 @@ const ChatPage = () => {
     const tryVoiceCapture = async () => {
       if (voiceCapture.isSupported() && session?.token) {
         const socket = getSocket(session.token);
+        const username = session.user.username;
+        const voiceId = preferences.voice_id || 'Joanna';
         const ok = await voiceCapture.start(socket, {
           onTranscript: (text) => {
             if (isEcho(text)) return;
-            sendMessage(text);
+            if (!text.trim()) return;
+            // Emit directly — don't go through sendMessage which has stale closures
+            const nonce = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            setMessages((prev) => [...prev, {
+              id: nonce, sender: username, text, timestamp: new Date().toISOString(), pending: true, nonce,
+            }]);
+            socket.emit('chat_message', { text, voice: voiceId, nonce });
           },
           onStart: () => setIsListening(true),
           onEnd: () => setIsListening(false),
