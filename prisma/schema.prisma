@@ -322,7 +322,7 @@ model audit_log {
 
 model ffxiv_user {
   id             String   @id @default(uuid())
-  email          String   @unique
+  username       String   @unique
   password_hash  String
   content_id     String?
   char_name      String?
@@ -331,6 +331,6 @@ model ffxiv_user {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
-  @@index([email])
+  @@index([username])
   @@index([content_id])
 }

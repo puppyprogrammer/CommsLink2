@@ -8,7 +8,7 @@ type FfxivAuthResult = {
   token: string;
   user: {
     id: string;
-    email: string;
+    username: string;
     charName: string | null;
     voiceId: string;
     credits: number;
@@ -21,39 +21,36 @@ const getSecret = (): string => {
   return secret;
 };
 
-const signFfxivToken = (id: string, email: string): string =>
-  jwt.sign({ id, email, type: 'ffxiv' }, getSecret(), { expiresIn: '30d' });
+const signFfxivToken = (id: string, username: string): string =>
+  jwt.sign({ id, username, type: 'ffxiv' }, getSecret(), { expiresIn: '30d' });
 
-/**
- * Register a new FFXIVoices user.
- */
 const register = async (
-  email: string,
+  username: string,
   password: string,
   contentId?: string,
   charName?: string,
 ): Promise<FfxivAuthResult> => {
-  const existing = await Data.ffxivUser.findByEmail(email);
+  const existing = await Data.ffxivUser.findByUsername(username);
   if (existing) {
-    throw Boom.conflict('Email already registered');
+    throw Boom.conflict('Username already taken');
   }
 
   const passwordHash = await passwordHelper.hashPassword(password);
 
   const user = await Data.ffxivUser.create({
-    email,
+    username,
     password_hash: passwordHash,
     content_id: contentId,
     char_name: charName,
   });
 
-  const token = signFfxivToken(user.id, user.email);
+  const token = signFfxivToken(user.id, user.username);
 
   return {
     token,
     user: {
       id: user.id,
-      email: user.email,
+      username: user.username,
       charName: user.char_name,
       voiceId: user.voice_id,
       credits: user.credit_balance,
@@ -61,26 +58,22 @@ const register = async (
   };
 };
 
-/**
- * Login an existing FFXIVoices user.
- */
 const login = async (
-  email: string,
+  username: string,
   password: string,
   contentId?: string,
   charName?: string,
 ): Promise<FfxivAuthResult> => {
-  const user = await Data.ffxivUser.findByEmail(email);
+  const user = await Data.ffxivUser.findByUsername(username);
   if (!user) {
-    throw Boom.unauthorized('Invalid email or password');
+    throw Boom.unauthorized('Invalid username or password');
   }
 
   const valid = await passwordHelper.verifyPassword(password, user.password_hash);
   if (!valid) {
-    throw Boom.unauthorized('Invalid email or password');
+    throw Boom.unauthorized('Invalid username or password');
   }
 
-  // Optionally update contentId / charName on login
   if (contentId || charName) {
     const updateData: Partial<{ content_id: string; char_name: string }> = {};
     if (contentId) updateData.content_id = contentId;
@@ -88,13 +81,13 @@ const login = async (
     await Data.ffxivUser.update(user.id, updateData);
   }
 
-  const token = signFfxivToken(user.id, user.email);
+  const token = signFfxivToken(user.id, user.username);
 
   return {
     token,
     user: {
       id: user.id,
-      email: user.email,
+      username: user.username,
       charName: charName || user.char_name,
       voiceId: user.voice_id,
       credits: user.credit_balance,
