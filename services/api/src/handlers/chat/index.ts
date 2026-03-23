@@ -6798,25 +6798,42 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command â
     });
 
     socket.on("voice_stt_chunk", (data: ArrayBuffer | Buffer) => {
-      const chunks = (socket as any).__sttChunks;
+      const chunks = (socket as any).__sttChunks as Buffer[] | undefined;
       if (chunks) {
-        chunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+        const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        chunks.push(buf);
+        if (chunks.length === 1) {
+          console.log(`[STT] First chunk from ${socket.user?.username}: ${buf.length} bytes`);
+        }
       }
     });
 
     socket.on("voice_stt_stop", async () => {
       try {
         const chunks: Buffer[] | undefined = (socket as any).__sttChunks;
-        if (!chunks || chunks.length === 0) return;
-
-        const combinedBuffer = Buffer.concat(chunks);
         delete (socket as any).__sttChunks;
+
+        if (!chunks || chunks.length === 0) {
+          console.log(`[STT] No chunks received from ${socket.user?.username}`);
+          return;
+        }
+
+        const totalBytes = chunks.reduce((sum, c) => sum + c.length, 0);
+        console.log(`[STT] ${socket.user?.username} sent ${chunks.length} chunks, ${totalBytes} bytes total`);
+
+        if (totalBytes < 3200) {
+          console.log(`[STT] Audio too short (${totalBytes} bytes), skipping`);
+          return;
+        }
 
         const { default: transcribeAdapter } = await import(
           "../../../../../core/adapters/transcribe"
         );
-        const transcript =
-          await transcribeAdapter.transcribeStream([combinedBuffer]);
+
+        // Send chunks individually (not combined) for better streaming
+        const transcript = await transcribeAdapter.transcribeStream(chunks);
+
+        console.log(`[STT] Transcript for ${socket.user?.username}: "${transcript}"`);
 
         if (!transcript || !transcript.trim()) return;
 
