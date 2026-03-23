@@ -159,6 +159,9 @@ const RegisterPage = () => {
           By creating an account, you agree to our{' '}
           <MuiLink component={Link} href="/privacy" sx={{ color: '#4dd8d0', fontSize: '0.7rem' }}>
             Privacy Policy
+          </MuiLink>{' & '}
+          <MuiLink component={Link} href="/terms" sx={{ color: '#4dd8d0', fontSize: '0.7rem' }}>
+            Terms of Service
           </MuiLink>
         </Typography>
 

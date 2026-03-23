@@ -59,4 +59,7 @@ const remove = async (id: string): Promise<llm_agent> =>
 const countByRoom = async (roomId: string): Promise<number> =>
   prisma.llm_agent.count({ where: { room_id: roomId } });
 
-export default { create, findById, findByRoom, findAutopilotEnabled, findAutopilotDisabled, update, remove, countByRoom };
+const countAll = async (): Promise<number> =>
+  prisma.llm_agent.count();
+
+export default { create, findById, findByRoom, findAutopilotEnabled, findAutopilotDisabled, update, remove, countByRoom, countAll };

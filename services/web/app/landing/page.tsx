@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Box, Typography, Button, Container } from '@mui/material';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
@@ -45,6 +46,11 @@ const features = [
 
 const LandingPage = () => {
   const router = useRouter();
+  const [stats, setStats] = useState<{ users: number; rooms: number; agents: number } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/v1/stats').then((r) => r.json()).then(setStats).catch(() => {});
+  }, []);
 
   return (
     <Box sx={{
@@ -287,8 +293,57 @@ const LandingPage = () => {
         </Container>
       </Box>
 
+      {/* Stats bar */}
+      {stats && (stats.users > 0 || stats.rooms > 0 || stats.agents > 0) && (
+        <Box sx={{
+          py: 4,
+          borderTop: '1px solid rgba(77, 216, 208, 0.06)',
+          background: 'rgba(0,0,0,0.15)',
+        }}>
+          <Container maxWidth="sm">
+            <Box sx={{ display: 'flex', justifyContent: 'center', gap: { xs: 4, sm: 8 } }}>
+              {[
+                { label: 'Users', value: stats.users },
+                { label: 'Rooms', value: stats.rooms },
+                { label: 'AI Agents', value: stats.agents },
+              ].map((s) => (
+                <Box key={s.label} sx={{ textAlign: 'center' }}>
+                  <Typography sx={{
+                    fontSize: { xs: '1.2rem', sm: '1.5rem' },
+                    fontWeight: 700,
+                    color: '#4dd8d0',
+                    fontFamily: "'Orbitron', monospace",
+                  }}>
+                    {s.value.toLocaleString()}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.7rem', color: '#556b82', textTransform: 'uppercase', letterSpacing: 1 }}>
+                    {s.label}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Container>
+        </Box>
+      )}
+
       {/* Footer */}
       <Box sx={{ py: 3, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mb: 1.5 }}>
+          <Typography
+            component={Link}
+            href="/privacy"
+            sx={{ color: '#445566', fontSize: '0.7rem', textDecoration: 'none', '&:hover': { color: '#4dd8d0' } }}
+          >
+            Privacy Policy
+          </Typography>
+          <Typography
+            component={Link}
+            href="/terms"
+            sx={{ color: '#445566', fontSize: '0.7rem', textDecoration: 'none', '&:hover': { color: '#4dd8d0' } }}
+          >
+            Terms of Service
+          </Typography>
+        </Box>
         <Typography variant="caption" sx={{ color: '#334455' }}>
           CommsLink &copy; {new Date().getFullYear()}
         </Typography>
