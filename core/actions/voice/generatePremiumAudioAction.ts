@@ -3,6 +3,7 @@ import Boom from '@hapi/boom';
 
 import Data from '../../data';
 import pollyAdapter from '../../adapters/polly';
+import comprehendAdapter from '../../adapters/comprehend';
 import creditActions from '../credit';
 
 import type { SpeechResult } from '../../adapters/polly';
@@ -32,7 +33,15 @@ const generatePremiumAudioAction = async (
       throw Boom.paymentRequired('Insufficient credits for voice generation');
     }
 
-    const result = await pollyAdapter.generateSpeech(text, voiceId);
+    // Detect sentiment for emotion-aware TTS, fall back to plain on failure
+    let sentiment;
+    try {
+      sentiment = await comprehendAdapter.detectSentiment(text);
+    } catch (sentimentErr) {
+      console.error('[Voice] Comprehend sentiment detection failed, using plain TTS:', sentimentErr);
+    }
+
+    const result = await pollyAdapter.generateSpeechWithEmotion(text, voiceId, sentiment);
 
     creditActions.chargePollyUsage(userId, text.length).catch(console.error);
 

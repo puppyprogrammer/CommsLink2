@@ -40,6 +40,7 @@ import { getSocket, disconnectSocket } from '@/lib/socket';
 import { usePreferences } from '@/lib/state/PreferencesContext';
 import { speak, playAudioBlob, stop as stopTTS, onPlayStateChange } from '@/lib/helpers/tts';
 import * as speechRecognition from '@/lib/helpers/speechRecognition';
+import * as voiceCapture from '@/lib/helpers/voiceCapture';
 import * as voiceStream from '@/lib/helpers/voiceStream';
 import * as audioQueue from '@/lib/helpers/audioQueue';
 import { startAlarm, stopAlarm } from '@/lib/helpers/alarm';
@@ -133,9 +134,17 @@ const ChatPage = () => {
     onPlayStateChange((playing) => {
       setAudioPlaying(playing);
       if (playing) {
-        speechRecognition.pause();
+        if (voiceCapture.isActive()) {
+          voiceCapture.pause();
+        } else {
+          speechRecognition.pause();
+        }
       } else {
-        speechRecognition.resume();
+        if (voiceCapture.isActive()) {
+          voiceCapture.resume();
+        } else {
+          speechRecognition.resume();
+        }
       }
     });
     return () => onPlayStateChange(() => {});
@@ -546,7 +555,9 @@ const ChatPage = () => {
   const toggleSpeechRecognition = () => {
     if (isListening) {
       // Stop whichever mode is active
-      if (voiceStream.isActive()) {
+      if (voiceCapture.isActive()) {
+        voiceCapture.stop();
+      } else if (voiceStream.isActive()) {
         voiceStream.stop();
       } else {
         speechRecognition.stop();
@@ -573,7 +584,22 @@ const ChatPage = () => {
       return;
     }
 
-    // Fallback: basic speech recognition (sends text immediately on each final result)
+    // Preferred: MediaRecorder-based capture (no Android beeping)
+    if (voiceCapture.isSupported() && session?.token) {
+      const socket = getSocket(session.token);
+      voiceCapture.start(socket, {
+        onTranscript: (text) => {
+          if (isEcho(text)) return;
+          sendMessage(text);
+        },
+        onStart: () => setIsListening(true),
+        onEnd: () => setIsListening(false),
+        onError: () => setIsListening(false),
+      });
+      return;
+    }
+
+    // Fallback: Web Speech API (desktop browsers where it works fine)
     const started = speechRecognition.start('en', true, {
       onResult: (transcript) => {
         if (isEcho(transcript)) return; // Skip mic echo from AI speaker

@@ -3923,9 +3923,25 @@ const runAgentResponse = async (
       try {
         const { default: pollyAdapter } =
           await import("../../../../../core/adapters/polly");
-        const ttsResult = await pollyAdapter.generateSpeech(
+
+        // Detect sentiment for emotion-aware TTS
+        let sentiment: import("../../../../../core/adapters/polly").SentimentInput | undefined;
+        try {
+          const { default: comprehendAdapter } = await import(
+            "../../../../../core/adapters/comprehend"
+          );
+          sentiment = await comprehendAdapter.detectSentiment(responseText);
+        } catch (sentimentErr) {
+          console.error(
+            `[Agent TTS] Comprehend failed for ${agent.name}, falling back to plain TTS:`,
+            sentimentErr,
+          );
+        }
+
+        const ttsResult = await pollyAdapter.generateSpeechWithEmotion(
           responseText,
           agent.voice_id,
+          sentiment,
         );
         audioBase64 = ttsResult.audioBase64;
 
@@ -6769,6 +6785,49 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         }
       },
     );
+
+    // ┌──────────────────────────────────────────┐
+    // │ Voice STT (Speech-to-Text) Streaming    │
+    // └──────────────────────────────────────────┘
+    socket.on("voice_stt_start", (data: { mimeType?: string }) => {
+      (socket as any).__sttChunks = [];
+      (socket as any).__sttMimeType = data?.mimeType || "audio/webm";
+      console.log(
+        `[STT] ${socket.user?.username} started voice capture`,
+      );
+    });
+
+    socket.on("voice_stt_chunk", (data: ArrayBuffer | Buffer) => {
+      const chunks = (socket as any).__sttChunks;
+      if (chunks) {
+        chunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      }
+    });
+
+    socket.on("voice_stt_stop", async () => {
+      try {
+        const chunks: Buffer[] | undefined = (socket as any).__sttChunks;
+        if (!chunks || chunks.length === 0) return;
+
+        const combinedBuffer = Buffer.concat(chunks);
+        delete (socket as any).__sttChunks;
+
+        const { default: transcribeAdapter } = await import(
+          "../../../../../core/adapters/transcribe"
+        );
+        const transcript =
+          await transcribeAdapter.transcribeStream([combinedBuffer]);
+
+        if (!transcript || !transcript.trim()) return;
+
+        socket.emit("voice_stt_transcript", { text: transcript });
+      } catch (err) {
+        console.error(
+          `[STT] Transcription failed for ${socket.user?.username}:`,
+          err,
+        );
+      }
+    });
 
     // ┌──────────────────────────────────────────┐
     // │ Disconnect                              │
