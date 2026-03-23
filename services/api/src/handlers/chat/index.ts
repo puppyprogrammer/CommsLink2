@@ -2382,7 +2382,7 @@ const runAgentResponse = async (
           voice: agent.voice_id,
         });
       }
-    }, 3000) : null;
+    }, 2000) : null;
 
     const response = await routedChatCompletion(
       systemPrompt,
