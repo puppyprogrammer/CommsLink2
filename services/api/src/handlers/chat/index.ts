@@ -2338,6 +2338,27 @@ const runAgentResponse = async (
     };
     const agentTools = buildToolDefinitions(cmdFlags, onlineMachines);
 
+    // If the API call takes >3s, send a quick "thinking" message so user knows it's working
+    const thinkingTimer = !autopilotMode ? setTimeout(() => {
+      const fillers = [
+        "Hmm, let me think about that...",
+        "Give me a moment...",
+        "Let me consider that...",
+        "Thinking...",
+        "One sec, working on it...",
+      ];
+      const filler = fillers[Math.floor(Math.random() * fillers.length)];
+      io.to(roomName).emit("chat_message", {
+        id: `filler-${Date.now()}`,
+        sender: agent.name,
+        text: filler,
+        timestamp: new Date().toISOString(),
+        isAI: true,
+        voice: agent.voice_id,
+        noVoice: true, // Don't TTS the filler — just show text
+      });
+    }, 3000) : null;
+
     const response = await routedChatCompletion(
       systemPrompt,
       contextMessages,
@@ -2345,6 +2366,8 @@ const runAgentResponse = async (
       agentMaxTokens,
       agentTools,
     );
+
+    if (thinkingTimer) clearTimeout(thinkingTimer);
     // Merge structured tool_calls into text so the existing regex loop processes them
     const toolBrace = toolCallsToBraceFormat(response.toolCalls);
     let responseText = toolBrace
