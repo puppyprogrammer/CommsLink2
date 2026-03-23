@@ -41,12 +41,7 @@ const updateProfileAction = async (input: UpdateProfileInput): Promise<{ success
     }
 
     if (input.voice_id !== undefined) {
-      const isBrowserVoice = (VALID_BROWSER_VOICES as readonly string[]).includes(input.voice_id);
-      const isPremiumVoice = input.voice_id.startsWith('premium_') && input.voice_id.length > 10;
-
-      if (isBrowserVoice || isPremiumVoice) {
-        updates.voice_id = input.voice_id;
-      }
+      updates.voice_id = input.voice_id;
     }
 
     if (input.volume !== undefined) updates.volume = input.volume;
