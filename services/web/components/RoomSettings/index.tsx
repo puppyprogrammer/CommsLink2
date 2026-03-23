@@ -2069,32 +2069,76 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
       </Dialog>
 
       {/* Add Agent Dialog */}
-      <Dialog open={showAddAgent} onClose={() => setShowAddAgent(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>Add Agent</DialogTitle>
-        <DialogContent sx={{ mt: 1 }}>
+      <Dialog
+        open={showAddAgent}
+        onClose={() => setShowAddAgent(false)}
+        maxWidth="md"
+        fullWidth
+        sx={{
+          '& .MuiDialog-paper': {
+            background: 'linear-gradient(180deg, #0a1929 0%, #0d2137 100%)',
+            border: '1px solid rgba(77, 216, 208, 0.15)',
+            borderRadius: 2,
+            '@media (max-width: 600px)': {
+              margin: 0, maxHeight: '100%', height: '100%', maxWidth: '100%', borderRadius: 0,
+              paddingTop: 'env(safe-area-inset-top, 24px)',
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, px: { xs: 1.5, sm: 2.5 },
+          borderBottom: '1px solid rgba(77, 216, 208, 0.1)',
+        }}>
+          <Typography sx={{
+            fontSize: '0.95rem', fontFamily: "'Orbitron', monospace", color: '#4dd8d0', fontWeight: 500,
+            textShadow: '0 0 8px rgba(77, 216, 208, 0.3)',
+          }}>
+            Create Agent
+          </Typography>
+          <IconButton size="small" onClick={() => setShowAddAgent(false)} sx={{ color: '#f44', '&:hover': { color: '#f66', bgcolor: 'rgba(255,68,68,0.1)' } }}>
+            <CloseIcon sx={{ fontSize: 22 }} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ px: { xs: 1.5, sm: 2.5 }, py: { xs: 1, sm: 1.5 } }}>
+          {/* Template selector as visual cards */}
           {templates.length > 0 && (
-            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Select
-                size="small"
-                value=""
-                displayEmpty
-                onChange={(e) => {
-                  const t = templates.find((tpl) => tpl.id === e.target.value);
-                  if (t) loadTemplate(t);
-                }}
-                sx={{ minWidth: 240 }}
-              >
-                <MenuItem value="" disabled>
-                  Load a template...
-                </MenuItem>
+            <Box sx={{ mb: 2 }}>
+              <Typography sx={{ fontSize: '0.75rem', color: '#556b82', mb: 1 }}>
+                Quick Start — choose a template
+              </Typography>
+              <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)', md: 'repeat(5, 1fr)' },
+                gap: 0.75,
+              }}>
                 {templates.map((t) => (
-                  <MenuItem key={t.id} value={t.id}>
-                    {t.name}
-                  </MenuItem>
+                  <Box
+                    key={t.id}
+                    onClick={() => loadTemplate(t)}
+                    sx={{
+                      p: 1, borderRadius: 1.5, cursor: 'pointer', textAlign: 'center',
+                      bgcolor: 'rgba(77, 216, 208, 0.04)', border: '1px solid rgba(77, 216, 208, 0.08)',
+                      transition: 'all 0.15s',
+                      '&:hover': { bgcolor: 'rgba(77, 216, 208, 0.1)', borderColor: 'rgba(77, 216, 208, 0.3)', transform: 'translateY(-1px)' },
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#4dd8d0' }}>
+                      {t.name}
+                    </Typography>
+                    {t.description && (
+                      <Typography sx={{ fontSize: '0.6rem', color: '#556b82', mt: 0.25, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {t.description}
+                      </Typography>
+                    )}
+                  </Box>
                 ))}
-              </Select>
+              </Box>
             </Box>
           )}
+
+          <Divider sx={{ my: 1, borderColor: 'rgba(77, 216, 208, 0.08)' }} />
+
           {renderEditorColumns(
             newName,
             setNewName,
@@ -2126,25 +2170,61 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             setNewNicknames,
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowAddAgent(false)}>Cancel</Button>
+        <DialogActions sx={{ px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderTop: '1px solid rgba(77, 216, 208, 0.08)' }}>
           <Button
             variant="contained"
+            fullWidth
             onClick={() => {
               handleCreate();
               setShowAddAgent(false);
             }}
             disabled={!newName.trim()}
+            sx={{
+              py: 1, fontWeight: 700,
+              background: 'linear-gradient(135deg, #4dd8d0 0%, #3ab8b0 100%)',
+              color: '#0a1929',
+              '&:hover': { background: 'linear-gradient(135deg, #5de8e0 0%, #4ac8c0 100%)' },
+              '&:disabled': { background: 'rgba(255,255,255,0.08)', color: '#556b82' },
+            }}
           >
-            Add Agent
+            Create Agent
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={!!editAgent} onClose={() => setEditAgent(null)} maxWidth="lg" fullWidth>
-        <DialogTitle>Edit Agent</DialogTitle>
-        <DialogContent sx={{ mt: 1 }}>
+      <Dialog
+        open={!!editAgent}
+        onClose={() => setEditAgent(null)}
+        maxWidth="md"
+        fullWidth
+        sx={{
+          '& .MuiDialog-paper': {
+            background: 'linear-gradient(180deg, #0a1929 0%, #0d2137 100%)',
+            border: '1px solid rgba(77, 216, 208, 0.15)',
+            borderRadius: 2,
+            '@media (max-width: 600px)': {
+              margin: 0, maxHeight: '100%', height: '100%', maxWidth: '100%', borderRadius: 0,
+              paddingTop: 'env(safe-area-inset-top, 24px)',
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, px: { xs: 1.5, sm: 2.5 },
+          borderBottom: '1px solid rgba(77, 216, 208, 0.1)',
+        }}>
+          <Typography sx={{
+            fontSize: '0.95rem', fontFamily: "'Orbitron', monospace", color: '#4dd8d0', fontWeight: 500,
+            textShadow: '0 0 8px rgba(77, 216, 208, 0.3)',
+          }}>
+            Edit Agent
+          </Typography>
+          <IconButton size="small" onClick={() => setEditAgent(null)} sx={{ color: '#f44', '&:hover': { color: '#f66', bgcolor: 'rgba(255,68,68,0.1)' } }}>
+            <CloseIcon sx={{ fontSize: 22 }} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ px: { xs: 1.5, sm: 2.5 }, py: { xs: 1, sm: 1.5 } }}>
           {renderEditorColumns(
             editName,
             setEditName,
@@ -2176,10 +2256,19 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ roomName, open, onClose, ca
             setEditNicknames,
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditAgent(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleUpdate}>
-            Save
+        <DialogActions sx={{ px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderTop: '1px solid rgba(77, 216, 208, 0.08)' }}>
+          <Button
+            variant="contained"
+            fullWidth
+            onClick={handleUpdate}
+            sx={{
+              py: 1, fontWeight: 700,
+              background: 'linear-gradient(135deg, #4dd8d0 0%, #3ab8b0 100%)',
+              color: '#0a1929',
+              '&:hover': { background: 'linear-gradient(135deg, #5de8e0 0%, #4ac8c0 100%)' },
+            }}
+          >
+            Save Changes
           </Button>
         </DialogActions>
       </Dialog>
