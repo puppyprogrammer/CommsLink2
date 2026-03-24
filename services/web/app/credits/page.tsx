@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Button, Paper, CircularProgress, Tabs, Tab } from '@mui/material';
+import { Box, Typography, Button, Paper, CircularProgress, Tabs, Tab, TextField, Alert } from '@mui/material';
 import DashboardLayout from '@/layouts/dashboard';
 import useSession from '@/lib/session/useSession';
 
@@ -46,6 +46,10 @@ const CreditsPage = () => {
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
+  const [email, setEmail] = useState('');
+  const [hasEmail, setHasEmail] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailError, setEmailError] = useState('');
 
   useEffect(() => {
     if (!session?.token) return;
@@ -59,6 +63,8 @@ const CreditsPage = () => {
     ])
       .then(([status, packsData, txns, usageData]) => {
         setBalance(status.balance);
+        setHasEmail(!!status.email);
+        if (status.email) setEmail(status.email);
         setPacks(packsData.packs || []);
         setTransactions(Array.isArray(txns) ? txns : []);
         setUsage(Array.isArray(usageData) ? usageData : []);
@@ -67,8 +73,35 @@ const CreditsPage = () => {
       .finally(() => setLoading(false));
   }, [session?.token]);
 
+  const saveEmail = async () => {
+    if (!session?.token || !email.trim()) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+    setSavingEmail(true);
+    setEmailError('');
+    try {
+      const res = await fetch('/api/v1/profile/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      if (res.ok) {
+        setHasEmail(true);
+      } else {
+        setEmailError('Failed to save email');
+      }
+    } catch {
+      setEmailError('Failed to save email');
+    }
+    setSavingEmail(false);
+  };
+
   const handleBuy = async (packId: string) => {
     if (!session?.token) return;
+    if (!hasEmail) return; // Shouldn't happen — button is disabled
     setBuying(packId);
     try {
       const res = await fetch('/api/v1/payment/buy-credits', {
@@ -121,6 +154,49 @@ const CreditsPage = () => {
           </Typography>
         </Box>
 
+        {/* Email prompt */}
+        {!hasEmail && (
+          <Paper sx={{
+            p: 2, mb: 3,
+            bgcolor: 'rgba(255, 180, 0, 0.06)',
+            border: '1px solid rgba(255, 180, 0, 0.2)',
+            borderRadius: 2,
+          }}>
+            <Typography sx={{ fontSize: '0.8rem', color: '#cca700', fontWeight: 600, mb: 1 }}>
+              Add your email to purchase credits
+            </Typography>
+            <Typography sx={{ fontSize: '0.7rem', color: '#8899aa', mb: 1.5 }}>
+              Required for payment receipts and account recovery.
+            </Typography>
+            {emailError && <Alert severity="error" sx={{ mb: 1, py: 0 }}>{emailError}</Alert>}
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                size="small"
+                fullWidth
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                sx={{ '& .MuiInputBase-input': { fontSize: '0.85rem' } }}
+              />
+              <Button
+                variant="contained"
+                size="small"
+                disabled={savingEmail || !email.trim()}
+                onClick={saveEmail}
+                sx={{
+                  minWidth: 80,
+                  background: 'linear-gradient(135deg, #cca700 0%, #aa8800 100%)',
+                  color: '#0a1929',
+                  fontWeight: 700,
+                  '&:hover': { background: 'linear-gradient(135deg, #ddbb00 0%, #bbaa00 100%)' },
+                }}
+              >
+                {savingEmail ? '...' : 'Save'}
+              </Button>
+            </Box>
+          </Paper>
+        )}
+
         {/* Credit Packs */}
         <Typography sx={{
           fontSize: '0.85rem',
@@ -169,7 +245,7 @@ const CreditsPage = () => {
                 variant="contained"
                 size="small"
                 fullWidth
-                disabled={buying === pack.id}
+                disabled={buying === pack.id || !hasEmail}
                 onClick={() => handleBuy(pack.id)}
                 sx={{
                   py: 0.75,

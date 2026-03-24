@@ -12,8 +12,8 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   }
 
   try {
-    const { username, password } = req.body;
-    const result = await authApi.register({ username, password });
+    const { username, password, email } = req.body;
+    const result = await authApi.register({ username, password, email });
 
     req.session.auth = {
       token: result.token,

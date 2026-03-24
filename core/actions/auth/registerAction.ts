@@ -19,7 +19,7 @@ type RegisterResult = {
  * @param password - Plaintext password.
  * @returns JWT token and sanitized user.
  */
-const registerAction = async (username: string, password: string): Promise<RegisterResult> =>
+const registerAction = async (username: string, password: string, email?: string): Promise<RegisterResult> =>
   tracer.trace('ACTION.AUTH.REGISTER', async () => {
     const existing = await Data.user.findByUsername(username);
     if (existing) {
@@ -28,6 +28,12 @@ const registerAction = async (username: string, password: string): Promise<Regis
 
     const password_hash = await passwordHelper.hashPassword(password);
     const user = await Data.user.create({ username, password_hash });
+
+    // Save email if provided
+    if (email) {
+      await Data.user.update(user.id, { email });
+      user.email = email;
+    }
 
     const token = jwtHelper.signToken({
       id: user.id,

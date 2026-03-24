@@ -9,6 +9,7 @@ type LoginPayload = {
 type RegisterPayload = {
   username: string;
   password: string;
+  email?: string;
 };
 
 type AuthResponse = {

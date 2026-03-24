@@ -27,6 +27,7 @@ const authRoutes: ServerRoute[] = [
         payload: Joi.object({
           username: Joi.string().min(3).max(30).alphanum().required(),
           password: Joi.string().min(6).max(128).required(),
+          email: Joi.string().email().optional().allow(''),
         }),
       },
     },
@@ -40,8 +41,8 @@ const authRoutes: ServerRoute[] = [
           );
         }
 
-        const { username, password } = request.payload as { username: string; password: string };
-        const result = await registerAction(username, password);
+        const { username, password, email } = request.payload as { username: string; password: string; email?: string };
+        const result = await registerAction(username, password, email);
         Data.auditLog.create({
           event: 'account_created',
           username,

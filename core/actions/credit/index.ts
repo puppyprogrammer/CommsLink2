@@ -161,6 +161,7 @@ const getCreditStatus = async (userId: string) => {
 
   return {
     balance: user.credit_balance,
+    email: user.email || null,
   };
 };
 

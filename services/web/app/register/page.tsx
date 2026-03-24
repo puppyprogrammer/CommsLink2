@@ -12,6 +12,7 @@ import useSession from '@/lib/session/useSession';
 
 const schema = yup.object({
   username: yup.string().required('Choose a username').min(3, 'At least 3 characters'),
+  email: yup.string().email('Invalid email').optional(),
   password: yup.string().required('Set a password').min(6, 'At least 6 characters'),
   confirmPassword: yup
     .string()
@@ -46,7 +47,7 @@ const RegisterPage = () => {
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: data.username, password: data.password }),
+        body: JSON.stringify({ username: data.username, password: data.password, email: data.email || undefined }),
       });
       if (!res.ok) {
         const body = await res.json();
@@ -108,6 +109,16 @@ const RegisterPage = () => {
         />
         <TextField
           fullWidth
+          label="Email (optional)"
+          placeholder="For receipts & account recovery"
+          type="email"
+          {...register('email')}
+          error={!!errors.email}
+          helperText={errors.email?.message}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          fullWidth
           label="Password"
           type="password"
           placeholder="6+ characters"
@@ -150,7 +161,7 @@ const RegisterPage = () => {
         <Typography variant="caption" sx={{
           display: 'block', textAlign: 'center', mt: 1.5, color: '#556677',
         }}>
-          10,000 free credits included • No credit card required
+          1,000 free credits included • No credit card required
         </Typography>
 
         <Typography variant="caption" sx={{
