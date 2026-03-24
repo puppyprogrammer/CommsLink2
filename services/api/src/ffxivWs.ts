@@ -24,14 +24,28 @@ const init = () => {
   wss.on('connection', (ws) => {
     let authenticated = false;
     let userId = '';
+    let msgCount = 0;
+    let msgWindowStart = Date.now();
+    const MSG_LIMIT = 60; // max messages per window
+    const MSG_WINDOW = 10_000; // 10 second window
 
     ws.on('message', async (raw) => {
       try {
+        // Rate limit: drop excessive messages
+        const now = Date.now();
+        if (now - msgWindowStart > MSG_WINDOW) {
+          msgCount = 0;
+          msgWindowStart = now;
+        }
+        msgCount++;
+        if (msgCount > MSG_LIMIT) return;
+
         const data = JSON.parse(raw.toString());
 
         if (data.type === 'auth') {
           // Validate JWT
-          const secret = process.env.JWT_SECRET || 'commslink-dev-secret';
+          const secret = process.env.JWT_SECRET;
+          if (!secret) { ws.close(); return; }
           const decoded = jwt.verify(data.token, secret) as { id: string; email: string; type?: string };
           if (decoded.type !== 'ffxiv') { ws.close(); return; }
 

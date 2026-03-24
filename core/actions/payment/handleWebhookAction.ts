@@ -23,6 +23,19 @@ const handleWebhookAction = async (event: Stripe.Event): Promise<{ success: true
         const pack = CREDIT_PACKS.find((p) => p.id === packId);
         if (!pack) break;
 
+        // Verify payment amount matches expected pack price (prevent price manipulation)
+        const expectedAmountCents = Math.round(pack.priceUsd * 100);
+        if (session.amount_total !== expectedAmountCents) {
+          console.error(`[Stripe] Amount mismatch: expected ${expectedAmountCents}, got ${session.amount_total} for pack ${pack.id}, session ${session.id}`);
+          break;
+        }
+
+        // Verify payment was actually completed
+        if (session.payment_status !== 'paid') {
+          console.error(`[Stripe] Payment not completed: status=${session.payment_status}, session ${session.id}`);
+          break;
+        }
+
         // ┌──────────────────────────────────────────┐
         // │ Deduplicate — skip if already processed   │
         // └──────────────────────────────────────────┘

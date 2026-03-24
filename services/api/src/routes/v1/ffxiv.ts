@@ -168,6 +168,14 @@ const ffxivRoutes: ServerRoute[] = [
     handler: async (request: Request, h: ResponseToolkit) => {
       const decoded = validateFfxivAuth(request);
 
+      // Rate limit: 20 TTS requests per 60 seconds per user
+      const { allowed, retryAfterMs } = checkRateLimit(`ffxiv-chat:${decoded.id}`, 20, 60_000);
+      if (!allowed) {
+        throw Boom.tooManyRequests(
+          `Too many messages. Try again in ${Math.ceil(retryAfterMs / 1000)}s.`,
+        );
+      }
+
       const { message, zone, mapId, x, y, z } = request.payload as {
         message: string;
         zone?: number;

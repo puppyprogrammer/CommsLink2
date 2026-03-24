@@ -38,11 +38,23 @@ const update = async (id: string, data: UpdateUserDTO): Promise<user> =>
 const updateBanStatus = async (id: string, isBanned: boolean): Promise<user> =>
   prisma.user.update({ where: { id }, data: { is_banned: isBanned } });
 
-const deductCredits = async (id: string, amount: number): Promise<user> =>
-  prisma.user.update({
-    where: { id },
+/**
+ * Atomically deduct credits, ensuring balance doesn't go below zero.
+ * Uses a WHERE clause so the update only succeeds if sufficient balance exists.
+ * Throws if insufficient credits.
+ */
+const deductCredits = async (id: string, amount: number): Promise<user> => {
+  const result = await prisma.user.updateMany({
+    where: { id, credit_balance: { gte: amount } },
     data: { credit_balance: { decrement: amount } },
   });
+  if (result.count === 0) {
+    throw new Error('Insufficient credits');
+  }
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) throw new Error('User not found');
+  return user;
+};
 
 const addCredits = async (id: string, amount: number): Promise<user> =>
   prisma.user.update({
