@@ -625,7 +625,7 @@ const simulateFightAction = async (gladiatorAId: string, gladiatorBId: string) =
       const message = err instanceof Error ? err.message : 'Unknown simulation error';
 
       if (message.includes('credit balance')) {
-        throw Boom.serviceUnavailable('AI service temporarily unavailable (insufficient API credits). Please try again later.');
+        throw Boom.serverUnavailable('AI service temporarily unavailable (insufficient API credits). Please try again later.');
       }
 
       throw Boom.internal(`Fight simulation failed: ${message}`);
