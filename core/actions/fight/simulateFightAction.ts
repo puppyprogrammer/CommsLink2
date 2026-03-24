@@ -450,6 +450,7 @@ const simulateFightAction = async (gladiatorAId: string, gladiatorBId: string) =
 
     await Data.fight.update(fight.id, { status: 'simulating' });
 
+    try {
     // 3. Initialize state
     const stateA: GladiatorState = {
       id: gladiatorAId,
@@ -617,6 +618,18 @@ const simulateFightAction = async (gladiatorAId: string, gladiatorBId: string) =
     ]);
 
     return { fight_id: fight.id };
+
+    } catch (err: unknown) {
+      // Mark fight as error so it doesn't stay stuck in "simulating"
+      await Data.fight.update(fight.id, { status: 'error' }).catch(() => {});
+      const message = err instanceof Error ? err.message : 'Unknown simulation error';
+
+      if (message.includes('credit balance')) {
+        throw Boom.serviceUnavailable('AI service temporarily unavailable (insufficient API credits). Please try again later.');
+      }
+
+      throw Boom.internal(`Fight simulation failed: ${message}`);
+    }
   });
 
 export default simulateFightAction;
