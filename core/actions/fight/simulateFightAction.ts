@@ -1,7 +1,7 @@
 import tracer from '../../lib/tracer';
 import Boom from '@hapi/boom';
 
-import claudeAdapter from '../../adapters/claude';
+import grokAdapter from '../../adapters/grok';
 import Data from '../../data';
 
 import type { Prisma, gladiator_stats, gladiator_memory } from '../../../prisma/client';
@@ -395,10 +395,10 @@ const calculateElo = (ratingA: number, ratingB: number, aWins: boolean): { chang
  * @returns Parsed action and reasoning.
  */
 const getAIDecision = async (systemPrompt: string, context: string): Promise<AIDecision> => {
-  const response = await claudeAdapter.chatCompletion(
+  const response = await grokAdapter.chatCompletion(
     systemPrompt,
     [{ role: 'user', content: context }],
-    'claude-sonnet-4-20250514',
+    'grok-4-1-fast-non-reasoning',
     256,
   );
 
