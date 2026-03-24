@@ -22,13 +22,13 @@ const products = [
   },
   {
     name: 'FFXIVoices',
-    tagline: 'AI Voices for FFXIV Roleplayers',
-    description: 'Give your FFXIV character a voice. Every player selects a unique AI voice — party chat, /say, and RP dialogue spoken aloud to everyone nearby.',
+    tagline: 'AI Voices for FFXIV Characters',
+    description: 'A Dalamud plugin that gives every FFXIV character a unique AI voice. Nearby players hear each other\'s chat spoken aloud with proximity audio. Free standard voices included — unlock premium donor voices powered by ElevenLabs.',
     icon: <SportsEsportsIcon sx={{ fontSize: 48 }} />,
-    href: '/ffxivoices',
-    cta: 'Coming Soon',
+    href: 'https://github.com/puppyprogrammer/FFXIVoices',
+    cta: 'Get the Plugin',
     color: '#b388ff',
-    live: false,
+    live: true,
   },
   {
     name: 'Voice API',
@@ -197,7 +197,7 @@ const LandingPage = () => {
               </Typography>
               <Button
                 variant={p.live ? 'contained' : 'outlined'}
-                onClick={() => p.live ? router.push(p.href) : null}
+                onClick={() => p.live ? (p.href.startsWith('http') ? window.open(p.href, '_blank') : router.push(p.href)) : null}
                 disabled={!p.live}
                 sx={{
                   alignSelf: 'flex-start',
@@ -236,8 +236,9 @@ const LandingPage = () => {
               { name: 'Amazon Transcribe', desc: 'Real-time speech-to-text' },
               { name: 'Amazon Comprehend', desc: 'Sentiment analysis' },
               { name: 'Amazon Polly', desc: 'Emotion-aware TTS' },
+              { name: 'ElevenLabs', desc: 'Premium AI voices' },
               { name: 'Claude (Anthropic)', desc: 'AI reasoning' },
-              { name: 'Grok (xAI)', desc: 'AI reasoning' },
+              { name: 'Grok (xAI)', desc: 'AI agents' },
             ].map((tech) => (
               <Box key={tech.name} sx={{ textAlign: 'center', minWidth: 100 }}>
                 <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: '#8ba4bd' }}>
@@ -260,7 +261,7 @@ const LandingPage = () => {
             The future of communication is voice + AI
           </Typography>
           <Typography sx={{ color: '#556b82', mb: 4, fontSize: '0.9rem' }}>
-            Free account. 10,000 credits. No credit card.
+            Free account. 1,000 credits. No credit card.
           </Typography>
           <Button
             variant="contained"
