@@ -299,12 +299,17 @@ const ffxivRoutes: ServerRoute[] = [
       const user = await Data.ffxivUser.findById(decoded.id);
       if (!user) throw Boom.notFound('User not found');
 
+      // Calculate next free credit date (30 days after last grant, or now if never granted)
+      const lastGrant = user.last_free_credit_at || user.created_at;
+      const nextFreeCredits = new Date(lastGrant.getTime() + 30 * 24 * 60 * 60 * 1000);
+
       return {
         id: user.id,
         username: user.username,
         charName: user.char_name,
         voiceId: user.voice_id,
         credit_balance: user.credit_balance,
+        next_free_credits: nextFreeCredits.toISOString(),
       };
     },
   },
