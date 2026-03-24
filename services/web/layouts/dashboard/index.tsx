@@ -92,7 +92,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
       <AppBar position="fixed" className={classes.appBar}>
         <Toolbar variant="dense" sx={{ minHeight: 36, px: 1 }}>
           <Box
-            onClick={() => router.push('/chat')}
+            onClick={() => router.push('/landing')}
             sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', '&:hover': { opacity: 0.8 } }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
