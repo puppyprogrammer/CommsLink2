@@ -44,7 +44,12 @@ const fightRoutes: ServerRoute[] = [
           throw Boom.badRequest('A gladiator cannot fight itself.');
         }
 
-        return simulateFightAction(gladiator_a_id, gladiator_b_id);
+        try {
+          return await simulateFightAction(gladiator_a_id, gladiator_b_id);
+        } catch (err: unknown) {
+          console.error('[Fight Simulate] Error:', err);
+          throw err;
+        }
       }),
   },
 
