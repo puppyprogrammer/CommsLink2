@@ -202,7 +202,7 @@ const gladiatorRoutes: ServerRoute[] = [
     },
     handler: async (request: Request, h: ResponseToolkit) =>
       tracer.trace('CONTROLLER.GLADIATOR.LEADERBOARD', async () => {
-        const { limit } = request.query as { limit: number };
+        const { limit } = request.query as unknown as { limit: number };
         return { leaderboard: await Data.gladiator.leaderboard(limit) };
       }),
   },
