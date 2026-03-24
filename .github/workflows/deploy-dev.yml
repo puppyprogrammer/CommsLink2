@@ -1,0 +1,28 @@
+name: Deploy Dev to Test EC2
+
+on:
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
+    branches: [dev]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only deploy if tests passed
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Deploy to Test EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.TEST_EC2_HOST }}
+          username: ${{ secrets.TEST_EC2_USER }}
+          key: ${{ secrets.TEST_EC2_SSH_KEY }}
+          script: |
+            cd ~/CommsLink2
+            git fetch origin dev
+            git checkout dev
+            git reset --hard origin/dev
+            chmod +x scripts/deploy-ec2.sh
+            nohup ./scripts/deploy-ec2.sh "api web" > /dev/null 2>&1 &
+            echo "Deploy triggered"

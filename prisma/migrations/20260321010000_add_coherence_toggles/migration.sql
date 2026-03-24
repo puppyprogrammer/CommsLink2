@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `room` ADD COLUMN `cmd_intent_coherence_enabled` BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE `room` ADD COLUMN `cmd_memory_coherence_enabled` BOOLEAN NOT NULL DEFAULT true;
