@@ -321,15 +321,17 @@ model audit_log {
 }
 
 model ffxiv_user {
-  id             String   @id @default(uuid())
-  username       String   @unique
-  password_hash  String
-  content_id     String?
-  char_name      String?
-  voice_id       String   @default("Joanna")
-  credit_balance Int      @default(500)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+  id                  String    @id @default(uuid())
+  username            String    @unique
+  password_hash       String
+  content_id          String?
+  char_name           String?
+  voice_id            String    @default("Joanna")
+  credit_balance      Int       @default(10000)
+  registration_ip     String?   @db.VarChar(45)
+  last_free_credit_at DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
 
   @@index([username])
   @@index([content_id])

@@ -53,7 +53,8 @@ const generateTTS = async (
     const elVoiceId = selectedVoice.substring(3);
     const mp3Buffer = await elevenlabsAdapter.generateSpeechMp3(text.trim(), elVoiceId);
 
-    const creditCost = Math.max(1, Math.ceil(text.length / 50) * 3);
+    // ElevenLabs: ~$0.30/1K chars, 1 credit = $0.001 → 18 credits per 50 chars
+    const creditCost = Math.max(18, Math.ceil(text.length / 50) * 18);
     await Data.ffxivUser.deductCredits(user.id, creditCost);
 
     return { buffer: mp3Buffer, format: 'mp3' };
@@ -81,7 +82,8 @@ const generateTTS = async (
     const wavHeader = createWavHeader(pcmBuffer.length, 16000, 1, 16);
     const wavBuffer = Buffer.concat([wavHeader, pcmBuffer]);
 
-    const creditCost = Math.max(1, Math.ceil(text.length / 50));
+    // Polly: 1 credit flat per message (essentially free)
+    const creditCost = 1;
     await Data.ffxivUser.deductCredits(user.id, creditCost);
 
     return { buffer: wavBuffer, format: 'wav' };
