@@ -37,6 +37,7 @@ model user {
   room_memberships         room_member[]
   payment_transactions     payment_transaction[]
   ffxiv_profile        ffxiv_profile?
+  gladiators           gladiator[]
 
   @@index([stripe_customer_id])
   @@index([username])
@@ -336,4 +337,108 @@ model ffxiv_profile {
 
   @@index([user_id])
   @@index([content_id])
+}
+
+// ┌──────────────────────────────────────────┐
+// │ AI Fight Club                            │
+// └──────────────────────────────────────────┘
+
+model gladiator {
+  id            String   @id @default(uuid())
+  user_id       String
+  name          String
+  avatar_config Json?
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+
+  user  user             @relation(fields: [user_id], references: [id])
+  stats gladiator_stats?
+
+  memories         gladiator_memory[]
+  fights_as_a      fight[]        @relation("FightGladiatorA")
+  fights_as_b      fight[]        @relation("FightGladiatorB")
+  fights_won       fight[]        @relation("FightWinner")
+  fight_events     fight_event[]
+
+  @@index([user_id])
+  @@index([is_active])
+}
+
+model gladiator_stats {
+  gladiator_id     String @id
+  strength         Int    @default(50)
+  speed            Int    @default(50)
+  endurance        Int    @default(50)
+  technique        Int    @default(50)
+  level            Int    @default(1)
+  experience_points Int   @default(0)
+  elo_rating       Int    @default(1000)
+  wins             Int    @default(0)
+  losses           Int    @default(0)
+
+  gladiator gladiator @relation(fields: [gladiator_id], references: [id], onDelete: Cascade)
+}
+
+model gladiator_memory {
+  id            String   @id @default(uuid())
+  gladiator_id  String
+  memory_type   String   // strategy, opponent, general
+  content       String   @db.Text
+  priority      Int      @default(5)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+
+  gladiator gladiator @relation(fields: [gladiator_id], references: [id], onDelete: Cascade)
+
+  @@index([gladiator_id, memory_type])
+  @@index([gladiator_id, is_active])
+}
+
+model fight {
+  id               String   @id @default(uuid())
+  gladiator_a_id   String
+  gladiator_b_id   String
+  winner_id        String?
+  duration_seconds Int?
+  replay_data      Json?
+  elo_change_a     Int      @default(0)
+  elo_change_b     Int      @default(0)
+  is_ranked        Boolean  @default(false)
+  status           String   @default("pending") // pending, simulating, completed, error
+  created_at       DateTime @default(now())
+
+  gladiator_a gladiator    @relation("FightGladiatorA", fields: [gladiator_a_id], references: [id])
+  gladiator_b gladiator    @relation("FightGladiatorB", fields: [gladiator_b_id], references: [id])
+  winner      gladiator?   @relation("FightWinner", fields: [winner_id], references: [id])
+  events      fight_event[]
+
+  @@index([gladiator_a_id])
+  @@index([gladiator_b_id])
+  @@index([winner_id])
+  @@index([status])
+  @@index([created_at])
+}
+
+model fight_event {
+  id                   String  @id @default(uuid())
+  fight_id             String
+  timestamp_ms         Int
+  actor_gladiator_id   String
+  action               String  // strike, heavy_strike, block, dodge, clinch
+  result               String  // hit, miss, blocked, dodged
+  damage_dealt         Int     @default(0)
+  stamina_cost         Int     @default(0)
+  health_after_actor   Int
+  health_after_target  Int
+  stamina_after_actor  Int     @default(100)
+  stamina_after_target Int     @default(100)
+  ai_reasoning         String? @db.Text
+  position_actor       Json?
+  position_target      Json?
+
+  fight    fight     @relation(fields: [fight_id], references: [id], onDelete: Cascade)
+  actor    gladiator @relation(fields: [actor_gladiator_id], references: [id])
+
+  @@index([fight_id, timestamp_ms])
+  @@index([actor_gladiator_id])
 }

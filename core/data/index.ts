@@ -16,7 +16,11 @@ import panelLog from './panelLog';
 import agentTemplate from './agentTemplate';
 import auditLog from './auditLog';
 import ffxivProfile from './ffxivProfile';
+import gladiator from './gladiator';
+import gladiatorMemory from './gladiatorMemory';
+import fight from './fight';
+import fightEvent from './fightEvent';
 
-const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile };
+const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile, gladiator, gladiatorMemory, fight, fightEvent };
 
 export default Data;
