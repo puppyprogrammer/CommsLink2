@@ -46,9 +46,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activityBar
 
   useEffect(() => {
     if (!isLoading && !isLoggedIn) {
-      router.push('/login');
+      const returnUrl = pathname && pathname !== '/chat' ? `?returnUrl=${encodeURIComponent(pathname)}` : '';
+      router.push(`/login${returnUrl}`);
     }
-  }, [isLoading, isLoggedIn, router]);
+  }, [isLoading, isLoggedIn, router, pathname]);
 
   useEffect(() => {
     if (!session?.token) return;
