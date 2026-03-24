@@ -56,12 +56,20 @@ const checkMonthlyCredits = async (userId: string, ip: string): Promise<number> 
  * Register a new user from the FFXIVoices plugin.
  * Creates a user row + ffxiv_profile in one flow.
  */
+/** Pick default voice based on character gender */
+const defaultVoiceForGender = (gender?: string): string => {
+  if (gender === 'female') return 'el:m3yAHyFEFKtbCIM5n7GF'; // Ash (Donor)
+  if (gender === 'male') return 'el:JBFqnCBsd6RMkjVDRZzb';   // George (Donor)
+  return 'Joanna'; // Polly fallback
+};
+
 const register = async (
   username: string,
   password: string,
   contentId?: string,
   charName?: string,
   ip?: string,
+  gender?: string,
 ): Promise<FfxivAuthResult> => {
   const existing = await Data.user.findByUsername(username);
   if (existing) {
@@ -79,11 +87,12 @@ const register = async (
   // Mark initial free credits as granted
   await Data.user.update(user.id, { last_free_credit_at: new Date() });
 
-  // Create FFXIV profile
+  // Create FFXIV profile with gender-based default voice
   const profile = await Data.ffxivProfile.create({
     user_id: user.id,
     content_id: contentId,
     char_name: charName,
+    voice_id: defaultVoiceForGender(gender),
     registration_ip: ip,
   });
 
@@ -111,6 +120,7 @@ const login = async (
   contentId?: string,
   charName?: string,
   ip?: string,
+  gender?: string,
 ): Promise<FfxivAuthResult> => {
   const user = await Data.user.findByUsername(username);
   if (!user) {
@@ -129,6 +139,7 @@ const login = async (
       user_id: user.id,
       content_id: contentId,
       char_name: charName,
+      voice_id: defaultVoiceForGender(gender),
       registration_ip: ip,
     });
   } else if (contentId || charName) {

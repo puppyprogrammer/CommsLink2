@@ -85,6 +85,7 @@ const ffxivRoutes: ServerRoute[] = [
           password: Joi.string().min(6).required(),
           contentId: Joi.string().optional(),
           charName: Joi.string().optional(),
+          gender: Joi.string().valid('male', 'female').optional(),
         }),
       },
     },
@@ -97,14 +98,15 @@ const ffxivRoutes: ServerRoute[] = [
         );
       }
 
-      const { username, password, contentId, charName } = request.payload as {
+      const { username, password, contentId, charName, gender } = request.payload as {
         username: string;
         password: string;
         contentId?: string;
         charName?: string;
+        gender?: string;
       };
 
-      const result = await register(username, password, contentId, charName, ip);
+      const result = await register(username, password, contentId, charName, ip, gender);
       return h.response(result).code(201);
     },
   },
@@ -121,6 +123,7 @@ const ffxivRoutes: ServerRoute[] = [
           password: Joi.string().min(6).required(),
           contentId: Joi.string().optional(),
           charName: Joi.string().optional(),
+          gender: Joi.string().valid('male', 'female').optional(),
         }),
       },
     },
@@ -133,14 +136,15 @@ const ffxivRoutes: ServerRoute[] = [
         );
       }
 
-      const { username, password, contentId, charName } = request.payload as {
+      const { username, password, contentId, charName, gender } = request.payload as {
         username: string;
         password: string;
         contentId?: string;
         charName?: string;
+        gender?: string;
       };
 
-      return login(username, password, contentId, charName, ip);
+      return login(username, password, contentId, charName, ip, gender);
     },
   },
 
