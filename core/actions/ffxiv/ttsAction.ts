@@ -59,9 +59,18 @@ const generateTTS = async (
     const elVoiceId = selectedVoice.substring(3);
     const mp3Buffer = await elevenlabsAdapter.generateSpeechMp3(text.trim(), elVoiceId);
 
-    // ElevenLabs: 18 credits per 50 chars
+    // ElevenLabs: 18 credits per 50 chars (~$0.30/1K chars)
     const creditCost = Math.max(18, Math.ceil(text.length / 50) * 18);
     await Data.user.deductCredits(user.id, creditCost);
+
+    await Data.creditUsageLog.create({
+      user_id: user.id,
+      service: 'elevenlabs-tts',
+      model: 'eleven_multilingual_v2',
+      characters: text.length,
+      raw_cost_usd: text.length * 0.0003,
+      credits_charged: creditCost,
+    });
 
     return { buffer: mp3Buffer, format: 'mp3' };
   } else {
@@ -90,6 +99,15 @@ const generateTTS = async (
 
     // Polly: 1 credit flat per message
     await Data.user.deductCredits(user.id, 1);
+
+    await Data.creditUsageLog.create({
+      user_id: user.id,
+      service: 'polly-tts',
+      model: selectedVoice,
+      characters: text.length,
+      raw_cost_usd: text.length * 0.000004,
+      credits_charged: 1,
+    });
 
     return { buffer: wavBuffer, format: 'wav' };
   }

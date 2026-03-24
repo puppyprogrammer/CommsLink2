@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Button, Paper, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, Paper, CircularProgress, Tabs, Tab } from '@mui/material';
 import DashboardLayout from '@/layouts/dashboard';
 import useSession from '@/lib/session/useSession';
 
@@ -14,14 +14,38 @@ type Transaction = {
   description: string;
   created_at: string;
 };
+type UsageLog = {
+  id: string;
+  service: string;
+  model: string | null;
+  characters: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  credits_charged: number;
+  created_at: string;
+};
+
+const serviceLabel = (service: string): string => {
+  const map: Record<string, string> = {
+    'grok': 'AI Chat (Grok)',
+    'claude': 'AI Chat (Claude)',
+    'polly-tts': 'Voice (Polly)',
+    'elevenlabs-tts': 'Voice (ElevenLabs)',
+    'polly': 'Voice (Polly)',
+    'ec2': 'Terminal',
+  };
+  return map[service] || service;
+};
 
 const CreditsPage = () => {
   const { session } = useSession();
   const [balance, setBalance] = useState<number | null>(null);
   const [packs, setPacks] = useState<CreditPack[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [usage, setUsage] = useState<UsageLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<string | null>(null);
+  const [tab, setTab] = useState(0);
 
   useEffect(() => {
     if (!session?.token) return;
@@ -31,11 +55,13 @@ const CreditsPage = () => {
       fetch('/api/v1/credits/status', { headers }).then((r) => r.json()),
       fetch('/api/v1/credits/packs').then((r) => r.json()),
       fetch('/api/v1/credits/transactions', { headers }).then((r) => r.json()),
+      fetch('/api/v1/credits/usage', { headers }).then((r) => r.json()),
     ])
-      .then(([status, packsData, txns]) => {
+      .then(([status, packsData, txns, usageData]) => {
         setBalance(status.balance);
         setPacks(packsData.packs || []);
         setTransactions(Array.isArray(txns) ? txns : []);
+        setUsage(Array.isArray(usageData) ? usageData : []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -55,7 +81,7 @@ const CreditsPage = () => {
       });
       const data = await res.json();
       if (data.url) {
-        window.location.href = data.url; // Redirect to Stripe checkout
+        window.location.href = data.url;
       }
     } catch (err) {
       console.error('Purchase failed:', err);
@@ -160,25 +186,36 @@ const CreditsPage = () => {
           ))}
         </Box>
 
-        {/* Recent Transactions */}
-        {transactions.length > 0 && (
+        {/* Activity Tabs */}
+        {(transactions.length > 0 || usage.length > 0) && (
           <>
-            <Typography sx={{
-              fontSize: '0.85rem',
-              color: '#4dd8d0',
-              fontWeight: 600,
-              mb: 1,
-              letterSpacing: 0.5,
-            }}>
-              Recent Activity
-            </Typography>
+            <Tabs
+              value={tab}
+              onChange={(_, v) => setTab(v)}
+              sx={{
+                mb: 1,
+                minHeight: 32,
+                '& .MuiTab-root': {
+                  minHeight: 32,
+                  py: 0.5,
+                  fontSize: '0.8rem',
+                  color: '#556b82',
+                  '&.Mui-selected': { color: '#4dd8d0' },
+                },
+                '& .MuiTabs-indicator': { backgroundColor: '#4dd8d0' },
+              }}
+            >
+              <Tab label={`Transactions (${transactions.length})`} />
+              <Tab label={`Usage (${usage.length})`} />
+            </Tabs>
+
             <Box sx={{
-              maxHeight: 300,
+              maxHeight: 350,
               overflowY: 'auto',
               borderRadius: 1,
               border: '1px solid rgba(255,255,255,0.05)',
             }}>
-              {transactions.slice(0, 20).map((tx) => (
+              {tab === 0 && transactions.slice(0, 30).map((tx) => (
                 <Box
                   key={tx.id}
                   sx={{
@@ -193,7 +230,7 @@ const CreditsPage = () => {
                 >
                   <Box>
                     <Typography sx={{ fontSize: '0.75rem', color: '#8ba4bd' }}>
-                      {tx.description}
+                      {tx.description || tx.type}
                     </Typography>
                     <Typography sx={{ fontSize: '0.6rem', color: '#445566' }}>
                       {new Date(tx.created_at).toLocaleString()}
@@ -205,10 +242,56 @@ const CreditsPage = () => {
                     color: tx.amount > 0 ? '#4dd8d0' : '#f44',
                     fontFamily: 'monospace',
                   }}>
-                    {tx.amount > 0 ? '+' : ''}{tx.amount}
+                    {tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString()}
                   </Typography>
                 </Box>
               ))}
+
+              {tab === 1 && usage.slice(0, 50).map((u) => (
+                <Box
+                  key={u.id}
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    px: 1.5,
+                    py: 0.75,
+                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                    '&:last-child': { borderBottom: 'none' },
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ fontSize: '0.75rem', color: '#8ba4bd' }}>
+                      {serviceLabel(u.service)}
+                      {u.model ? ` — ${u.model}` : ''}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.6rem', color: '#445566' }}>
+                      {new Date(u.created_at).toLocaleString()}
+                      {u.characters ? ` · ${u.characters} chars` : ''}
+                      {u.input_tokens ? ` · ${u.input_tokens}/${u.output_tokens} tokens` : ''}
+                    </Typography>
+                  </Box>
+                  <Typography sx={{
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    color: '#f44',
+                    fontFamily: 'monospace',
+                  }}>
+                    -{u.credits_charged}
+                  </Typography>
+                </Box>
+              ))}
+
+              {tab === 0 && transactions.length === 0 && (
+                <Typography sx={{ p: 2, fontSize: '0.75rem', color: '#445566', textAlign: 'center' }}>
+                  No transactions yet
+                </Typography>
+              )}
+              {tab === 1 && usage.length === 0 && (
+                <Typography sx={{ p: 2, fontSize: '0.75rem', color: '#445566', textAlign: 'center' }}>
+                  No usage yet
+                </Typography>
+              )}
             </Box>
           </>
         )}
