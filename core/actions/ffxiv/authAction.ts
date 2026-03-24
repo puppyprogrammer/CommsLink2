@@ -15,6 +15,8 @@ type FfxivAuthResult = {
   };
 };
 
+const MONTHLY_FREE_CREDITS = 1_000;
+
 const getSecret = (): string => {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error('JWT_SECRET environment variable is required');
@@ -26,7 +28,7 @@ const signFfxivToken = (id: string, username: string): string =>
 
 /** Check and grant monthly free credits if eligible */
 const checkMonthlyCredits = async (userId: string, ip: string): Promise<number> => {
-  const user = await Data.ffxivUser.findById(userId);
+  const user = await Data.user.findById(userId);
   if (!user) return 0;
 
   const now = new Date();
@@ -38,19 +40,22 @@ const checkMonthlyCredits = async (userId: string, ip: string): Promise<number> 
   }
 
   // Check if this IP already claimed free credits this month (prevent multi-account abuse)
-  const ipClaimsThisMonth = await Data.ffxivUser.countFreeCreditsThisMonth(ip);
+  const ipClaimsThisMonth = await Data.ffxivProfile.countFreeCreditsThisMonth(ip);
   if (ipClaimsThisMonth > 0) {
     return 0;
   }
 
-  // Grant 10,000 free monthly credits
-  const MONTHLY_FREE_CREDITS = 10_000;
-  await Data.ffxivUser.addCredits(userId, MONTHLY_FREE_CREDITS);
-  await Data.ffxivUser.update(userId, { last_free_credit_at: now });
+  // Grant free monthly credits
+  await Data.user.addCredits(userId, MONTHLY_FREE_CREDITS);
+  await Data.user.update(userId, { last_free_credit_at: now });
   console.log(`[FFXIVoices] Granted ${MONTHLY_FREE_CREDITS} monthly credits to user ${userId} (IP: ${ip})`);
   return MONTHLY_FREE_CREDITS;
 };
 
+/**
+ * Register a new user from the FFXIVoices plugin.
+ * Creates a user row + ffxiv_profile in one flow.
+ */
 const register = async (
   username: string,
   password: string,
@@ -58,23 +63,29 @@ const register = async (
   charName?: string,
   ip?: string,
 ): Promise<FfxivAuthResult> => {
-  const existing = await Data.ffxivUser.findByUsername(username);
+  const existing = await Data.user.findByUsername(username);
   if (existing) {
     throw Boom.conflict('Username already taken');
   }
 
   const passwordHash = await passwordHelper.hashPassword(password);
 
-  const user = await Data.ffxivUser.create({
+  // Create user account
+  const user = await Data.user.create({
     username,
     password_hash: passwordHash,
+  });
+
+  // Mark initial free credits as granted
+  await Data.user.update(user.id, { last_free_credit_at: new Date() });
+
+  // Create FFXIV profile
+  const profile = await Data.ffxivProfile.create({
+    user_id: user.id,
     content_id: contentId,
     char_name: charName,
     registration_ip: ip,
   });
-
-  // Mark free credits as granted for this month
-  await Data.ffxivUser.update(user.id, { last_free_credit_at: new Date() });
 
   const token = signFfxivToken(user.id, user.username);
 
@@ -83,13 +94,17 @@ const register = async (
     user: {
       id: user.id,
       username: user.username,
-      charName: user.char_name,
-      voiceId: user.voice_id,
+      charName: profile.char_name,
+      voiceId: profile.voice_id,
       credits: user.credit_balance,
     },
   };
 };
 
+/**
+ * Login from the FFXIVoices plugin.
+ * Uses the main user table for auth. Auto-creates ffxiv_profile if missing.
+ */
 const login = async (
   username: string,
   password: string,
@@ -97,7 +112,7 @@ const login = async (
   charName?: string,
   ip?: string,
 ): Promise<FfxivAuthResult> => {
-  const user = await Data.ffxivUser.findByUsername(username);
+  const user = await Data.user.findByUsername(username);
   if (!user) {
     throw Boom.unauthorized('Invalid username or password');
   }
@@ -107,11 +122,20 @@ const login = async (
     throw Boom.unauthorized('Invalid username or password');
   }
 
-  if (contentId || charName) {
+  // Get or create FFXIV profile
+  let profile = await Data.ffxivProfile.findByUserId(user.id);
+  if (!profile) {
+    profile = await Data.ffxivProfile.create({
+      user_id: user.id,
+      content_id: contentId,
+      char_name: charName,
+      registration_ip: ip,
+    });
+  } else if (contentId || charName) {
     const updateData: Partial<{ content_id: string; char_name: string }> = {};
     if (contentId) updateData.content_id = contentId;
     if (charName) updateData.char_name = charName;
-    await Data.ffxivUser.update(user.id, updateData);
+    profile = await Data.ffxivProfile.update(user.id, updateData);
   }
 
   // Check and grant monthly free credits
@@ -127,8 +151,8 @@ const login = async (
     user: {
       id: user.id,
       username: user.username,
-      charName: charName || user.char_name,
-      voiceId: user.voice_id,
+      charName: profile.char_name,
+      voiceId: profile.voice_id,
       credits: user.credit_balance + bonusCredits,
     },
   };

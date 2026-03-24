@@ -92,9 +92,9 @@ const calculateEC2Credits = (
  * Credit top-up packs (one-time purchases).
  */
 const CREDIT_PACKS = [
-  { id: 'pack_100', credits: 100, priceUsd: 1.99 },
-  { id: 'pack_500', credits: 500, priceUsd: 7.99 },
-  { id: 'pack_1500', credits: 1500, priceUsd: 19.99 },
+  { id: 'pack_10k', credits: 10_000, priceUsd: 6.00 },
+  { id: 'pack_25k', credits: 25_000, priceUsd: 10.00 },
+  { id: 'pack_50k', credits: 50_000, priceUsd: 18.00 },
 ] as const;
 
 export {

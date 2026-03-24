@@ -22,7 +22,8 @@ model user {
   volume         Float   @default(1.0)
   hear_own_voice Boolean @default(false)
 
-  credit_balance Int      @default(10000)
+  credit_balance      Int       @default(1000)
+  last_free_credit_at DateTime?
   last_room_id   String?
 
   created_at DateTime @default(now())
@@ -35,6 +36,7 @@ model user {
   machines             machine[]
   room_memberships         room_member[]
   payment_transactions     payment_transaction[]
+  ffxiv_profile        ffxiv_profile?
 
   @@index([stripe_customer_id])
   @@index([username])
@@ -320,19 +322,18 @@ model audit_log {
   @@index([created_at])
 }
 
-model ffxiv_user {
-  id                  String    @id @default(uuid())
-  username            String    @unique
-  password_hash       String
-  content_id          String?
-  char_name           String?
-  voice_id            String    @default("Joanna")
-  credit_balance      Int       @default(10000)
-  registration_ip     String?   @db.VarChar(45)
-  last_free_credit_at DateTime?
-  created_at          DateTime  @default(now())
-  updated_at          DateTime  @updatedAt
+model ffxiv_profile {
+  id              String   @id @default(uuid())
+  user_id         String   @unique
+  content_id      String?
+  char_name       String?
+  voice_id        String   @default("Joanna")
+  registration_ip String?  @db.VarChar(45)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
-  @@index([username])
+  user user @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
   @@index([content_id])
 }

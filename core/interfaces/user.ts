@@ -19,6 +19,7 @@ type UpdateUserDTO = {
   voice_id?: string;
   volume?: number;
   hear_own_voice?: boolean;
+  last_free_credit_at?: Date;
 };
 
 type UserListItem = {

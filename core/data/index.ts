@@ -15,8 +15,8 @@ import paymentTransaction from './paymentTransaction';
 import panelLog from './panelLog';
 import agentTemplate from './agentTemplate';
 import auditLog from './auditLog';
-import ffxivUser from './ffxivUser';
+import ffxivProfile from './ffxivProfile';
 
-const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivUser };
+const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile };
 
 export default Data;

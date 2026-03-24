@@ -36,26 +36,32 @@ const createWavHeader = (pcmLength: number, sampleRate: number, channels: number
 /**
  * Generate TTS audio for an FFXIVoices user.
  * Routes to ElevenLabs (MP3) for voices prefixed with "el:", otherwise Polly (WAV).
+ * Credits are deducted from the unified user.credit_balance.
  */
 const generateTTS = async (
   userId: string,
   text: string,
   voiceId?: string,
 ): Promise<TTSResult> => {
-  const user = await Data.ffxivUser.findById(userId);
+  const user = await Data.user.findById(userId);
   if (!user) throw Boom.notFound('User not found');
   if (user.credit_balance <= 0) throw Boom.paymentRequired('Insufficient credits');
 
-  const selectedVoice = voiceId || user.voice_id || 'Joanna';
+  // Get voice from profile if not specified
+  let selectedVoice = voiceId;
+  if (!selectedVoice) {
+    const profile = await Data.ffxivProfile.findByUserId(userId);
+    selectedVoice = profile?.voice_id || 'Joanna';
+  }
 
   if (selectedVoice.startsWith('el:')) {
     // ElevenLabs premium voice — returns MP3 (PCM requires Pro tier)
     const elVoiceId = selectedVoice.substring(3);
     const mp3Buffer = await elevenlabsAdapter.generateSpeechMp3(text.trim(), elVoiceId);
 
-    // ElevenLabs: ~$0.30/1K chars, 1 credit = $0.001 → 18 credits per 50 chars
+    // ElevenLabs: 18 credits per 50 chars
     const creditCost = Math.max(18, Math.ceil(text.length / 50) * 18);
-    await Data.ffxivUser.deductCredits(user.id, creditCost);
+    await Data.user.deductCredits(user.id, creditCost);
 
     return { buffer: mp3Buffer, format: 'mp3' };
   } else {
@@ -82,9 +88,8 @@ const generateTTS = async (
     const wavHeader = createWavHeader(pcmBuffer.length, 16000, 1, 16);
     const wavBuffer = Buffer.concat([wavHeader, pcmBuffer]);
 
-    // Polly: 1 credit flat per message (essentially free)
-    const creditCost = 1;
-    await Data.ffxivUser.deductCredits(user.id, creditCost);
+    // Polly: 1 credit flat per message
+    await Data.user.deductCredits(user.id, 1);
 
     return { buffer: wavBuffer, format: 'wav' };
   }

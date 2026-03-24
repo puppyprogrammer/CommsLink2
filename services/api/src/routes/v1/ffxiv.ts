@@ -28,7 +28,7 @@ import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 
 type FfxivJwtPayload = {
   id: string;
-  email: string;
+  username: string;
   type: string;
 };
 
@@ -173,21 +173,21 @@ const ffxivRoutes: ServerRoute[] = [
         z?: number;
       };
 
-      const user = await Data.ffxivUser.findById(decoded.id);
+      const user = await Data.user.findById(decoded.id);
       if (!user) {
         throw Boom.notFound('User not found');
       }
 
+      const profile = await Data.ffxivProfile.findByUserId(decoded.id);
+
       // Dedup: if this exact message was already processed recently, skip TTS
-      // (multiple clients send the same chat message they see)
       const dedupKey = message.toLowerCase().trim();
       const lastSeen = recentMessages.get(dedupKey);
       if (lastSeen && Date.now() - lastSeen < 5000) {
-        // Already processed — just update this user's position and return
         if (zone || mapId || x || y || z) {
           updatePlayerPosition(decoded.id, zone || 0, mapId || 0, x || 0, y || 0, z || 0);
         }
-        return h.response({ status: 'duplicate', voice: user.voice_id }).code(200);
+        return h.response({ status: 'duplicate', voice: profile?.voice_id || 'Joanna' }).code(200);
       }
       recentMessages.set(dedupKey, Date.now());
 
@@ -201,10 +201,10 @@ const ffxivRoutes: ServerRoute[] = [
 
       // Queue TTS generation async — don't block the response
       generateTTS(decoded.id, message).then((result) => {
-        console.log(`[FFXIVoices] TTS done for ${user.char_name}, ${result.buffer.length} bytes (${result.format}), broadcasting...`);
+        console.log(`[FFXIVoices] TTS done for ${profile?.char_name || user.username}, ${result.buffer.length} bytes (${result.format}), broadcasting...`);
         broadcastAudio(
           decoded.id,
-          user.char_name || 'Unknown',
+          profile?.char_name || user.username,
           message,
           result.buffer,
           zone || 0,
@@ -218,7 +218,7 @@ const ffxivRoutes: ServerRoute[] = [
 
       return h.response({
         status: 'queued',
-        voice: user.voice_id,
+        voice: profile?.voice_id || 'Joanna',
         jobId,
       }).code(202);
     },
@@ -280,10 +280,10 @@ const ffxivRoutes: ServerRoute[] = [
 
       const { voiceId } = request.payload as { voiceId: string };
 
-      const user = await Data.ffxivUser.update(decoded.id, { voice_id: voiceId });
+      const profile = await Data.ffxivProfile.update(decoded.id, { voice_id: voiceId });
 
       return {
-        voiceId: user.voice_id,
+        voiceId: profile.voice_id,
         message: 'Voice updated successfully',
       };
     },
@@ -296,8 +296,10 @@ const ffxivRoutes: ServerRoute[] = [
     options: { auth: false },
     handler: async (request: Request) => {
       const decoded = validateFfxivAuth(request);
-      const user = await Data.ffxivUser.findById(decoded.id);
+      const user = await Data.user.findById(decoded.id);
       if (!user) throw Boom.notFound('User not found');
+
+      const profile = await Data.ffxivProfile.findByUserId(decoded.id);
 
       // Calculate next free credit date (30 days after last grant, or now if never granted)
       const lastGrant = user.last_free_credit_at || user.created_at;
@@ -306,8 +308,8 @@ const ffxivRoutes: ServerRoute[] = [
       return {
         id: user.id,
         username: user.username,
-        charName: user.char_name,
-        voiceId: user.voice_id,
+        charName: profile?.char_name || null,
+        voiceId: profile?.voice_id || 'Joanna',
         credit_balance: user.credit_balance,
         next_free_credits: nextFreeCredits.toISOString(),
       };
@@ -379,16 +381,9 @@ const ffxivRoutes: ServerRoute[] = [
         throw Boom.unauthorized('Invalid token');
       }
 
-      // Check if user is admin (support both commslink and ffxiv tokens)
-      if (decoded.type === 'ffxiv') {
-        // For now, only the first registered FFXIV user is admin
-        // TODO: add is_admin field to ffxiv_user
-        const user = await Data.ffxivUser.findById(decoded.id);
-        if (!user) throw Boom.unauthorized('User not found');
-      } else {
-        const user = await Data.user.findById(decoded.id);
-        if (!user || !user.is_admin) throw Boom.forbidden('Admin access required');
-      }
+      // Check admin — works with both CommsLink and FFXIV tokens (same user table now)
+      const user = await Data.user.findById(decoded.id);
+      if (!user || !user.is_admin) throw Boom.forbidden('Admin access required');
 
       const version = request.query.version as string;
       const changelog = request.query.changelog as string || '';

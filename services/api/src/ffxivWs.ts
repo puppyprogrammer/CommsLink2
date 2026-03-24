@@ -40,10 +40,10 @@ const init = () => {
 
           // Look up user for charName
           const { default: Data } = await import('../../../core/data');
-          const user = await Data.ffxivUser.findById(userId);
+          const profile = await Data.ffxivProfile.findByUserId(userId);
 
           players.set(userId, {
-            ws, userId, charName: user?.char_name || 'Unknown',
+            ws, userId, charName: profile?.char_name || 'Unknown',
             hearSelf: data.hearSelf === true,
             hearAll: true,
             muted: new Set(),
