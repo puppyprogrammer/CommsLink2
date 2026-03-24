@@ -1,5 +1,6 @@
 import prisma from '../../adapters/prisma';
 
+import type { Prisma } from '../../../prisma/client';
 import type { fight_event } from '../../../prisma/client';
 
 type CreateFightEventDTO = {
@@ -15,8 +16,8 @@ type CreateFightEventDTO = {
   stamina_after_actor?: number;
   stamina_after_target?: number;
   ai_reasoning?: string;
-  position_actor?: Record<string, unknown>;
-  position_target?: Record<string, unknown>;
+  position_actor?: Prisma.InputJsonValue;
+  position_target?: Prisma.InputJsonValue;
 };
 
 /**

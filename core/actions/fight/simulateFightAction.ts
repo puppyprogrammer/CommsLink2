@@ -4,7 +4,7 @@ import Boom from '@hapi/boom';
 import claudeAdapter from '../../adapters/claude';
 import Data from '../../data';
 
-import type { gladiator_stats, gladiator_memory } from '../../../prisma/client';
+import type { Prisma, gladiator_stats, gladiator_memory } from '../../../prisma/client';
 
 // ┌──────────────────────────────────────────┐
 // │ Types                                    │
@@ -38,8 +38,8 @@ type FightEventRecord = {
   stamina_after_actor: number;
   stamina_after_target: number;
   ai_reasoning: string;
-  position_actor: Record<string, unknown>;
-  position_target: Record<string, unknown>;
+  position_actor: Prisma.InputJsonValue;
+  position_target: Prisma.InputJsonValue;
 };
 
 // ┌──────────────────────────────────────────┐

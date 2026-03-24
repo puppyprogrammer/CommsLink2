@@ -1,16 +1,17 @@
 import prisma from '../../adapters/prisma';
 
+import type { Prisma } from '../../../prisma/client';
 import type { gladiator, gladiator_stats } from '../../../prisma/client';
 
 type CreateGladiatorDTO = {
   user_id: string;
   name: string;
-  avatar_config?: Record<string, unknown>;
+  avatar_config?: Prisma.InputJsonValue;
 };
 
 type UpdateGladiatorDTO = {
   name?: string;
-  avatar_config?: Record<string, unknown>;
+  avatar_config?: Prisma.InputJsonValue;
   is_active?: boolean;
 };
 
@@ -27,7 +28,9 @@ type GladiatorWithStats = gladiator & {
 const create = async (data: CreateGladiatorDTO): Promise<GladiatorWithStats> => {
   const gladiator = await prisma.gladiator.create({
     data: {
-      ...data,
+      user_id: data.user_id,
+      name: data.name,
+      ...(data.avatar_config !== undefined ? { avatar_config: data.avatar_config } : {}),
       stats: {
         create: {
           strength: 50,

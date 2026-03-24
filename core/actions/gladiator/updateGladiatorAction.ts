@@ -3,9 +3,11 @@ import Boom from '@hapi/boom';
 
 import Data from '../../data';
 
+import type { Prisma } from '../../../prisma/client';
+
 type UpdateFields = {
   name?: string;
-  avatar_config?: Record<string, unknown>;
+  avatar_config?: Prisma.InputJsonValue;
 };
 
 /**

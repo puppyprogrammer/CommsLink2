@@ -1,5 +1,6 @@
 import prisma from '../../adapters/prisma';
 
+import type { Prisma } from '../../../prisma/client';
 import type { fight } from '../../../prisma/client';
 
 type CreateFightDTO = {
@@ -11,7 +12,7 @@ type CreateFightDTO = {
 type UpdateFightDTO = {
   winner_id?: string | null;
   duration_seconds?: number;
-  replay_data?: Record<string, unknown>;
+  replay_data?: Prisma.InputJsonValue;
   elo_change_a?: number;
   elo_change_b?: number;
   status?: string;

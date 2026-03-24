@@ -83,7 +83,7 @@ const gladiatorRoutes: ServerRoute[] = [
       tracer.trace('CONTROLLER.GLADIATOR.UPDATE', async () => {
         const { id: userId } = request.auth.credentials as unknown as AuthCredentials;
         const { id } = request.params;
-        const payload = request.payload as { name?: string; avatar_config?: Record<string, unknown> };
+        const payload = request.payload as { name?: string; avatar_config?: object };
         return updateGladiatorAction(id, userId, payload);
       }),
   },
