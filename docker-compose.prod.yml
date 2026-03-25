@@ -34,6 +34,7 @@ services:
     env_file: .env.production
     ports:
       - "127.0.0.1:4000:4000"
+      - "0.0.0.0:8080:8080"
     environment:
       DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/commslink
       JWT_SECRET: ${JWT_SECRET}
@@ -53,6 +54,8 @@ services:
       AGENT_VERSION: "1.8.6"
     volumes:
       - commslink_uploads:/app/uploads
+      - commslink_plugin_releases:/app/data/plugin-releases
+      - commslink_game_releases:/app/data/game-releases
       - ./packages/terminal-agent/bin:/app/terminal-agent-bin:ro
     depends_on:
       mysql:
@@ -79,3 +82,5 @@ services:
 volumes:
   commslink_mysql_data:
   commslink_uploads:
+  commslink_plugin_releases:
+  commslink_game_releases:
