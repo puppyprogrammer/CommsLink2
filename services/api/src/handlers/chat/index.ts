@@ -5059,6 +5059,7 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
     // Determine initial room: last room user was in, or first membership
     const initRoom = async () => {
+      console.log(`[InitRoom] Starting for ${socket.user.username} (${socket.user.id})`);
       const dbUser = await Data.user.findById(socket.user.id);
       let targetRoom = "";
 
@@ -5092,6 +5093,8 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
           if (targetRoom) break;
         }
       }
+
+      console.log(`[InitRoom] ${socket.user.username}: targetRoom=${targetRoom || '(none)'}, last_room_id=${dbUser?.last_room_id || '(none)'}`);
 
       // No rooms at all — send to about page
       if (!targetRoom) {
