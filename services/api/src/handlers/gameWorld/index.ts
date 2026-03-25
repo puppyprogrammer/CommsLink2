@@ -2,6 +2,7 @@ import type { Namespace, Socket } from 'socket.io';
 
 import jwtHelper from '../../../../../core/helpers/jwt';
 import Data from '../../../../../core/data';
+import addXPAction from '../../../../../core/actions/character/addXPAction';
 
 import {
   resolveAttack,
@@ -228,7 +229,7 @@ const registerGameWorldHandler = (gameNs: Namespace): void => {
           // DB updates (fire and forget)
           Data.playerCharacter.recordKill(player.characterId).catch(console.error);
           Data.playerCharacter.recordDeath(players.get(result.victimId)!.characterId).catch(console.error);
-          Data.playerCharacter.addXP(player.characterId, XP_PER_KILL).catch(console.error);
+          addXPAction(player.characterId, XP_PER_KILL).catch(console.error);
 
           // Schedule respawn
           const victim = players.get(result.victimId);

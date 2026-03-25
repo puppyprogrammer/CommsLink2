@@ -524,3 +524,20 @@ model inventory_item {
   @@unique([character_id, slot_index])
   @@unique([character_id, equip_slot])
 }
+
+// ┌──────────────────────────────────────────┐
+// │ Game World — Leveling                    │
+// └──────────────────────────────────────────┘
+
+model level_definition {
+  level       Int @id
+  xp_required Int
+
+  strength_bonus  Int @default(0)
+  defense_bonus   Int @default(0)
+  speed_bonus     Int @default(0)
+  health_bonus    Int @default(0)
+  stamina_bonus   Int @default(0)
+
+  created_at DateTime @default(now())
+}
