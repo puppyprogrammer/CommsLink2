@@ -2039,7 +2039,7 @@ PORT=4000
 
 ### 16.3 EC2 Deployment Plan
 
-1. **Prepare EC2** (the `CommsLink2` t2.medium instance at 3.134.145.169):
+1. **Prepare EC2** (the `CommsLink2` t2.medium instance at <PROD_EC2_IP>):
    - Install Node 18.20.8 via nvm
    - Install MySQL 8.0
    - Install nginx
@@ -2082,7 +2082,7 @@ PORT=4000
 
 5. **Data Migration**: Export existing SQLite data from the `commslink` t3.micro instance, transform to MySQL-compatible INSERT statements, import into the new MySQL database.
 
-6. **DNS Cutover**: Point commslink.net to the new `CommsLink2` instance (3.134.145.169) once verified.
+6. **DNS Cutover**: Point commslink.net to the new `CommsLink2` instance (<PROD_EC2_IP>) once verified.
 
 ---
 
@@ -2186,8 +2186,8 @@ PORT=4000
 
 ### 18.3 DNS Cutover
 
-1. Verify new app is fully functional on `3.134.145.169`
-2. Update Route 53 / DNS provider: `commslink.net` A record -> `3.134.145.169`
+1. Verify new app is fully functional on `<PROD_EC2_IP>`
+2. Update Route 53 / DNS provider: `commslink.net` A record -> `<PROD_EC2_IP>`
 3. Update Stripe webhook URL
 4. Update `CLIENT_URL` env var
 5. Monitor for 24 hours

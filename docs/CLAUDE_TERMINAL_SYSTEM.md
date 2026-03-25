@@ -342,11 +342,11 @@ cd packages/terminal-agent
 npm run package
 
 # 2. Upload to EC2
-scp -i PuppyCo.pem bin/commslink-agent-win.exe ec2-user@3.134.145.169:~/CommsLink2/packages/terminal-agent/bin/
-scp -i PuppyCo.pem bin/commslink-agent-linux ec2-user@3.134.145.169:~/CommsLink2/packages/terminal-agent/bin/
+scp -i <key>.pem bin/commslink-agent-win.exe ec2-user@<EC2_IP>:~/CommsLink2/packages/terminal-agent/bin/
+scp -i <key>.pem bin/commslink-agent-linux ec2-user@<EC2_IP>:~/CommsLink2/packages/terminal-agent/bin/
 
 # 3. Rebuild API/web containers if code changed
-ssh ec2-user@3.134.145.169 "cd ~/CommsLink2 && docker-compose build --no-cache && docker-compose up -d"
+ssh ec2-user@<EC2_IP> "cd ~/CommsLink2 && docker-compose build --no-cache && docker-compose up -d"
 ```
 
 ### Version Tracking

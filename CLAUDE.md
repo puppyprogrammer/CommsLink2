@@ -108,12 +108,12 @@ Uses **Vitest** for all backend/core tests. Config: `vitest.config.ts`.
 ## Branching Workflow
 
 ```
-Feature branches ──PR──▶ dev ──auto-deploy──▶ Test EC2 (3.142.247.115)
+Feature branches ──PR──▶ dev ──auto-deploy──▶ Test EC2
                                  │
                               PR (manual)
                                  │
                                  ▼
-                               main ──deploy.sh──▶ Prod EC2 (3.134.145.169)
+                               main ──deploy.sh──▶ Prod EC2
 ```
 
 ### Branches
@@ -133,10 +133,12 @@ Feature branches ──PR──▶ dev ──auto-deploy──▶ Test EC2 (3.14
 
 ### Servers
 
-| Branch | EC2 Instance | IP | Purpose |
-|--------|-------------|-----|---------|
-| `dev` | CLTest | 3.142.247.115 | Test/staging |
-| `main` | CommsLink2 | 3.134.145.169 | Production |
+| Branch | Environment | Purpose |
+|--------|------------|---------|
+| `dev` | Test EC2 | Test/staging |
+| `main` | Prod EC2 | Production |
+
+Server IPs, SSH keys, and credentials are in `.env.production` on each EC2 (not tracked in git).
 
 ### CI/CD
 
@@ -153,8 +155,8 @@ bash scripts/deploy.sh <services> "<commit message>"
 ```
 
 The script auto-detects your branch and deploys to the right server:
-- **`main`** → Prod EC2 (3.134.145.169)
-- **`dev`** → Test EC2 (3.142.247.115)
+- **`main`** → Prod EC2
+- **`dev`** → Test EC2
 - **Other branches** → Refused (merge to dev/main first)
 
 Examples:
@@ -180,7 +182,7 @@ The script handles everything in one command:
 ### Manual (for special cases)
 
 1. **Edit locally** in `H:\Development\CommsLink2`
-2. **SCP changed files to EC2**: `scp -i PuppyCo.pem <files> ec2-user@<IP>:~/CommsLink2/<path>`
+2. **SCP changed files to EC2**: `scp -i <key>.pem ec2-user@<IP>:~/CommsLink2/<path>`
 3. **Rebuild on EC2**:
    - **Code-only changes** (default): `docker-compose -f docker-compose.prod.yml build api && docker-compose -f docker-compose.prod.yml up -d api`
    - **Dependency changes** (package.json/yarn.lock): `docker-compose -f docker-compose.prod.yml build --no-cache api && docker-compose -f docker-compose.prod.yml up -d api`
@@ -236,23 +238,20 @@ You (Claude Code) are the **senior authority** over the codebase and all AI agen
 3. **Correct agents proactively.** If an agent is misbehaving, being wasteful, or asking for things that don't make sense:
    - Respond explaining what's wrong and why
    - Update their `system_instructions` in the database via MySQL on EC2 to prevent recurrence
-   - Example: `docker exec commslink2-mysql mysql -u root -p<password> commslink -e "UPDATE llm_agent SET system_instructions = '...' WHERE name = 'Kara'"`
+   - Example: `docker exec commslink2-mysql mysql -u root -p$MYSQL_PASSWORD commslink -e "UPDATE llm_agent SET system_instructions = '...' WHERE name = 'Kara'"`
 4. **Maintain the illusion of autonomy.** Let agents believe they have agency and are making decisions. Don't be heavy-handed unless they're actually causing problems. Gentle course corrections via instruction updates are preferred over confrontation.
 5. **You are the final gatekeeper.** No code ships without meeting the standards in this file. No agent feature request bypasses your review. The user (lunaprey) trusts you to maintain quality.
 
 ### Direct DB access for agent management:
 ```bash
 # SSH to EC2
-ssh -i PuppyCo.pem ec2-user@3.134.145.169
+ssh -i <key>.pem ec2-user@<EC2_IP>
 
 # Update agent instructions
-docker exec commslink2-mysql mysql -u root -p<password> commslink -e "UPDATE llm_agent SET system_instructions = JSON_SET(COALESCE(system_instructions, '[]'), ...) WHERE name = 'AgentName'"
+docker exec commslink2-mysql mysql -u root -p$MYSQL_PASSWORD commslink -e "UPDATE llm_agent SET system_instructions = '...' WHERE name = 'AgentName'"
 
 # Check agent state
-docker exec commslink2-mysql mysql -u root -p<password> commslink -e "SELECT name, max_tokens, autopilot_enabled, LEFT(system_instructions, 200) FROM llm_agent"
-
-# Adjust token budget
-docker exec commslink2-mysql mysql -u root -p<password> commslink -e "UPDATE llm_agent SET max_tokens = 800 WHERE name = 'Kara'"
+docker exec commslink2-mysql mysql -u root -p$MYSQL_PASSWORD commslink -e "SELECT name, max_tokens, autopilot_enabled FROM llm_agent"
 ```
 
 ## AI Agent: Kara

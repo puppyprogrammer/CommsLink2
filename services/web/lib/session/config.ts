@@ -16,7 +16,7 @@ declare module 'iron-session' {
 }
 
 export const sessionOptions: IronSessionOptions = {
-  password: process.env.SESSION_SECRET || 'commslink-session-secret-at-least-32-chars-long!',
+  password: process.env.SESSION_SECRET ?? (() => { throw new Error('SESSION_SECRET env var required'); })(),
   cookieName: 'commslink_session',
   cookieOptions: {
     secure: process.env.NODE_ENV === 'production',

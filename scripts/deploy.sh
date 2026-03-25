@@ -3,8 +3,8 @@
 # Handles: git commit, SCP changed files, docker rebuild, git push
 #
 # Deploys based on current branch:
-#   main → Prod EC2 (3.134.145.169)
-#   dev  → Test EC2 (3.142.247.115)
+#   main → Prod EC2
+#   dev  → Test EC2
 #   other → Refused (merge to dev/main first)
 #
 # Usage: ./scripts/deploy.sh <services> <commit message>
@@ -15,16 +15,23 @@
 #   ./scripts/deploy.sh api "Fix chat handler bug"
 #   ./scripts/deploy.sh "api web" "Update frontend and backend"
 #   ./scripts/deploy.sh web "New terminal panel UI"
+#
+# Configure via environment variables or a .deploy.env file:
+#   DEPLOY_PEM, DEPLOY_PROD_EC2, DEPLOY_TEST_EC2
 
-PEM="H:/Development/AIMMO/PuppyCo.pem"
-PROD_EC2="ec2-user@3.134.145.169"
-TEST_EC2="ec2-user@3.142.247.115"
+if [ -f "$(dirname "$0")/../.deploy.env" ]; then
+  source "$(dirname "$0")/../.deploy.env"
+fi
+
+PEM="${DEPLOY_PEM:?Set DEPLOY_PEM to your SSH key path}"
+PROD_EC2="${DEPLOY_PROD_EC2:?Set DEPLOY_PROD_EC2 (e.g. ec2-user@1.2.3.4)}"
+TEST_EC2="${DEPLOY_TEST_EC2:?Set DEPLOY_TEST_EC2 (e.g. ec2-user@5.6.7.8)}"
 REMOTE="~/CommsLink2"
 
 SERVICES="${1:-api}"
 MSG="${2:-Deploy: $SERVICES $(date '+%Y-%m-%d %H:%M')}"
 
-cd "H:/Development/CommsLink2"
+cd "$(dirname "$0")/.."
 
 # ── Branch detection ──
 CURRENT_BRANCH=$(git branch --show-current)
@@ -150,7 +157,7 @@ done
 # ── Step 5: Git push ──
 echo ""
 echo "[5/5] Pushing to GitHub ($CURRENT_BRANCH)..."
-cd "H:/Development/CommsLink2"
+cd "$(dirname "$0")/.."
 git push origin "$CURRENT_BRANCH" 2>&1 && echo "  Pushed" || echo "  Push failed (or nothing to push)"
 
 echo ""
