@@ -20,7 +20,8 @@ import gladiator from './gladiator';
 import gladiatorMemory from './gladiatorMemory';
 import fight from './fight';
 import fightEvent from './fightEvent';
+import playerCharacter from './playerCharacter';
 
-const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile, gladiator, gladiatorMemory, fight, fightEvent };
+const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile, gladiator, gladiatorMemory, fight, fightEvent, playerCharacter };
 
 export default Data;

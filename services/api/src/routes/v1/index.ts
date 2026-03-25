@@ -14,6 +14,7 @@ import { agentTemplateRoutes } from './agentTemplate';
 import { ffxivRoutes } from './ffxiv';
 import { gladiatorRoutes } from './gladiator';
 import { fightRoutes } from './fight';
+import { characterRoutes } from './character';
 
 /**
  * Register all v1 API routes.
@@ -36,6 +37,7 @@ const registerRoutes = (server: Server): void => {
     ...ffxivRoutes,
     ...gladiatorRoutes,
     ...fightRoutes,
+    ...characterRoutes,
   ]);
 };
 

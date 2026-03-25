@@ -9,6 +9,7 @@ import Data from '../../../core/data';
 
 import { registerRoutes } from './routes/v1';
 import { registerSocketHandlers } from './handlers/chat';
+import { registerGameWorldHandler } from './handlers/gameWorld';
 
 /**
  * Create and configure the Hapi server.
@@ -66,6 +67,12 @@ const createServer = async (): Promise<Hapi.Server> => {
   });
 
   await registerSocketHandlers(io);
+
+  // ┌──────────────────────────────────────────┐
+  // │ Game World (Socket.IO /game namespace)   │
+  // └──────────────────────────────────────────┘
+  const gameNs = io.of('/game');
+  registerGameWorldHandler(gameNs);
 
   return server;
 };

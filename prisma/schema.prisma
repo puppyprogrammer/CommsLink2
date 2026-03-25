@@ -38,6 +38,7 @@ model user {
   payment_transactions     payment_transaction[]
   ffxiv_profile        ffxiv_profile?
   gladiators           gladiator[]
+  player_character     player_character?
 
   @@index([stripe_customer_id])
   @@index([username])
@@ -441,4 +442,32 @@ model fight_event {
 
   @@index([fight_id, timestamp_ms])
   @@index([actor_gladiator_id])
+}
+
+// ┌──────────────────────────────────────────┐
+// │ Game World — Player Characters           │
+// └──────────────────────────────────────────┘
+
+model player_character {
+  id          String   @id @default(uuid())
+  user_id     String   @unique
+  name        String
+  level       Int      @default(1)
+  xp          Int      @default(0)
+  max_health  Int      @default(100)
+  max_stamina Int      @default(100)
+  strength    Int      @default(10)
+  defense     Int      @default(10)
+  speed       Int      @default(10)
+  kills       Int      @default(0)
+  deaths      Int      @default(0)
+  spawn_x     Float    @default(2)
+  spawn_y     Float    @default(0.5)
+  spawn_z     Float    @default(-2)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  user user @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
 }
