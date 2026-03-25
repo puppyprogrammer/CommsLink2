@@ -297,7 +297,8 @@ const registerGameWorldHandler = (gameNs: Namespace): void => {
     });
 
     // ── Disconnect ──
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason: string) => {
+      console.log(`[GameWorld] ${username} disconnect reason: ${reason}`);
       const player = players.get(userId);
       if (player) {
         // Save position to DB
