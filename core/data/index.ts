@@ -21,7 +21,9 @@ import gladiatorMemory from './gladiatorMemory';
 import fight from './fight';
 import fightEvent from './fightEvent';
 import playerCharacter from './playerCharacter';
+import itemDefinition from './itemDefinition';
+import inventoryItem from './inventoryItem';
 
-const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile, gladiator, gladiatorMemory, fight, fightEvent, playerCharacter };
+const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile, gladiator, gladiatorMemory, fight, fightEvent, playerCharacter, itemDefinition, inventoryItem };
 
 export default Data;

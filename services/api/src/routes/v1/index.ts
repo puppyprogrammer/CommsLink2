@@ -15,6 +15,7 @@ import { ffxivRoutes } from './ffxiv';
 import { gladiatorRoutes } from './gladiator';
 import { fightRoutes } from './fight';
 import { characterRoutes } from './character';
+import { inventoryRoutes } from './inventory';
 
 /**
  * Register all v1 API routes.
@@ -38,6 +39,7 @@ const registerRoutes = (server: Server): void => {
     ...gladiatorRoutes,
     ...fightRoutes,
     ...characterRoutes,
+    ...inventoryRoutes,
   ]);
 };
 

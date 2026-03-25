@@ -467,7 +467,60 @@ model player_character {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  user user @relation(fields: [user_id], references: [id])
+  user            user             @relation(fields: [user_id], references: [id])
+  inventory_items inventory_item[]
 
   @@index([user_id])
+}
+
+// ┌──────────────────────────────────────────┐
+// │ Game World — Items & Inventory           │
+// └──────────────────────────────────────────┘
+
+model item_definition {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String? @db.Text
+  icon_name   String
+  item_type   String  // weapon, shield, helmet, chest, legs, boots, gloves, ring, amulet, consumable, material, quest
+  slot        String? // main_hand, off_hand, head, chest, legs, feet, hands, ring, neck
+  rarity      String  @default("common")
+  stackable   Boolean @default(false)
+  max_stack   Int     @default(1)
+
+  strength_bonus  Int @default(0)
+  defense_bonus   Int @default(0)
+  speed_bonus     Int @default(0)
+  health_bonus    Int @default(0)
+  stamina_bonus   Int @default(0)
+
+  buy_price   Int @default(0)
+  sell_price   Int @default(0)
+
+  created_at DateTime @default(now())
+
+  inventory_items inventory_item[]
+
+  @@index([item_type])
+  @@index([rarity])
+}
+
+model inventory_item {
+  id           String  @id @default(uuid())
+  character_id String
+  item_def_id  String
+  quantity     Int     @default(1)
+  slot_index   Int?
+  is_equipped  Boolean @default(false)
+  equip_slot   String?
+
+  character player_character @relation(fields: [character_id], references: [id], onDelete: Cascade)
+  item_def  item_definition  @relation(fields: [item_def_id], references: [id])
+
+  created_at DateTime @default(now())
+
+  @@index([character_id])
+  @@index([character_id, is_equipped])
+  @@unique([character_id, slot_index])
+  @@unique([character_id, equip_slot])
 }
