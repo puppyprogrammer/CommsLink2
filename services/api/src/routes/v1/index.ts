@@ -16,6 +16,7 @@ import { gladiatorRoutes } from './gladiator';
 import { fightRoutes } from './fight';
 import { characterRoutes } from './character';
 import { inventoryRoutes } from './inventory';
+import { gameUpdateRoutes } from './gameUpdate';
 
 /**
  * Register all v1 API routes.
@@ -40,6 +41,7 @@ const registerRoutes = (server: Server): void => {
     ...fightRoutes,
     ...characterRoutes,
     ...inventoryRoutes,
+    ...gameUpdateRoutes,
   ]);
 };
 
