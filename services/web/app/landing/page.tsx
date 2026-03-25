@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { Box, Typography, Button, Container } from '@mui/material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
-import ApiIcon from '@mui/icons-material/Api';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import ChromeReaderModeIcon from '@mui/icons-material/ChromeReaderMode';
 
@@ -40,16 +39,6 @@ const products = [
     cta: 'Get Extension',
     color: '#f0883e',
     live: true,
-  },
-  {
-    name: 'Voice API',
-    tagline: 'TTS + STT + Sentiment for Developers',
-    description: 'Speech-to-text, sentiment analysis, and emotion-aware text-to-speech in one API. Powered by Amazon Transcribe, Comprehend, and Polly.',
-    icon: <ApiIcon sx={{ fontSize: 48 }} />,
-    href: '/api',
-    cta: 'Coming Soon',
-    color: '#66bb6a',
-    live: false,
   },
 ];
 
@@ -175,7 +164,7 @@ const LandingPage = () => {
         </Typography>
         <Box sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
+          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
           gap: 3,
         }}>
           {products.map((p) => (
