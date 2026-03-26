@@ -656,3 +656,29 @@ model shop_transaction {
   @@index([shop_id, created_at])
   @@index([character_id, created_at])
 }
+
+// ┌──────────────────────────────────────────┐
+// │ Game World — Battle Records              │
+// └──────────────────────────────────────────┘
+
+model battle_record {
+  id                String   @id @default(uuid())
+  army_a_user_id    String
+  army_b_user_id    String
+  winner_user_id    String?
+  army_a_size       Int
+  army_b_size       Int
+  army_a_casualties Int      @default(0)
+  army_b_casualties Int      @default(0)
+  duration_seconds  Int?
+  tier              String?
+  tactics_a         String?  @db.Text
+  tactics_b         String?  @db.Text
+  status            String   @default("active") // active, completed, draw
+  created_at        DateTime @default(now())
+
+  @@index([army_a_user_id])
+  @@index([army_b_user_id])
+  @@index([winner_user_id])
+  @@index([status])
+}

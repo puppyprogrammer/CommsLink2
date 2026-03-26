@@ -2,8 +2,9 @@ import Joi from 'joi';
 import Boom from '@hapi/boom';
 import tracer from '../../../../../core/lib/tracer';
 import Data from '../../../../../core/data';
+import spawnAIArmyAction from '../../../../../core/actions/army/spawnAIArmyAction';
 import { players, broadcastAll } from '../../handlers/gameSync/combat';
-import { activeNPCs, npcStates } from '../../handlers/gameSync/ai/npcEngine';
+import { activeNPCs, npcStates, registerPlayerNPCs } from '../../handlers/gameSync/ai/npcEngine';
 import { calculateFormationPositions } from '../../handlers/gameSync/ai/formations';
 import type { PlayerSyncState } from '../../handlers/gameSync/combat';
 import type { NPCBrain } from '../../handlers/gameSync/ai/behaviorTree';
@@ -309,6 +310,64 @@ const encounterRoutes: ServerRoute[] = [
         console.log(`[TestBot] Spawned ${botName} at [${botPos.map(n => n.toFixed(0)).join(',')}]`);
 
         return { bot_id: botId, name: botName, position: botPos };
+      }),
+  },
+
+  // ── Spawn persistent AI army (full Grok brains, DB-backed) ──
+  {
+    method: 'POST',
+    path: '/api/v1/encounter/spawn-army',
+    options: {
+      auth: 'jwt',
+      validate: {
+        payload: Joi.object({
+          tier: Joi.string().valid('patrol', 'warband', 'company', 'army', 'legion').required(),
+          position: Joi.array().items(Joi.number()).length(3).optional(),
+          facing: Joi.number().optional(),
+        }),
+      },
+    },
+    handler: async (request: Request) =>
+      tracer.trace('CONTROLLER.ENCOUNTER.SPAWN_ARMY', async () => {
+        const credentials = request.auth.credentials as unknown as AuthCredentials;
+        const { tier, position, facing } = request.payload as {
+          tier: string; position?: [number, number, number]; facing?: number;
+        };
+
+        // Calculate spawn position 30m ahead of player
+        const cmdState = players.get(credentials.id);
+        const spawnPos: [number, number, number] = position || (cmdState
+          ? [
+            cmdState.pos[0] + Math.sin(cmdState.rot * Math.PI / 180) * 30,
+            cmdState.pos[1],
+            cmdState.pos[2] + Math.cos(cmdState.rot * Math.PI / 180) * 30,
+          ]
+          : [30, 0.5, 30]);
+
+        const spawnFacing = facing ?? (cmdState
+          ? (Math.atan2(cmdState.pos[0] - spawnPos[0], cmdState.pos[2] - spawnPos[2]) * 180 / Math.PI)
+          : 180);
+
+        // Spawn the persistent army
+        const result = await spawnAIArmyAction(tier, spawnPos, spawnFacing);
+
+        // Register their NPCs in the game engine (full Grok brains)
+        await registerPlayerNPCs(result.commander_user_id);
+
+        // Create battle record
+        const army = await Data.playerCharacter.getArmyStructure(result.commander_user_id);
+
+        console.log(`[Encounter] Persistent AI army spawned: "${result.centurion_name}" (${tier}, ${result.army_size} units) with Grok brains`);
+
+        return {
+          commander_user_id: result.commander_user_id,
+          centurion_name: result.centurion_name,
+          army_size: result.army_size,
+          tier,
+          doctrine: result.doctrine,
+          position: spawnPos,
+          facing: spawnFacing,
+        };
       }),
   },
 ];
