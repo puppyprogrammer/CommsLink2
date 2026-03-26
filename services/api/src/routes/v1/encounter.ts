@@ -138,7 +138,7 @@ const encounterRoutes: ServerRoute[] = [
             counterAttack: rand(40, 70), flankTendency: rand(20, 50),
             flankDirection: 50, retreatThreshold: 15, pursuit: 70,
             groupCohesion: 60, commanderProtection: 40, selfPreservation: 30,
-            agenda: 'guard_position', // Hold formation until player gets close
+            agenda: 'seek_combat', // Actively engage enemies
             targetId: null, lastGrokCall: 0,
             grokIntervalMs: 999999, // No Grok calls for encounter NPCs
             situationLog: [],

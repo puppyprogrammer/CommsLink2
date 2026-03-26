@@ -265,8 +265,14 @@ setInterval(() => {
       const staminaCost = decision.action === 'attack_heavy' ? 25 : 10;
       if (npc.stamina >= staminaCost) {
         npc.stamina -= staminaCost;
+        const targetName = decision.faceTarget ? (players.get(decision.faceTarget)?.username || decision.faceTarget.substring(0, 8)) : 'none';
+        console.log(`[NPC:${brain.name}] ATTACKING ${targetName} (${decision.action})`);
         broadcastAll({ type: 'npc_combat_action', id, action: decision.action, target_id: decision.faceTarget });
-        // Combat resolution happens in the main combat module via resolveAttack
+
+        // Actually run hit detection
+        const { resolveAttack } = require('../combat');
+        const attackType = decision.action === 'attack_heavy' ? 'heavy' : 'light';
+        resolveAttack(npc, attackType as 'light' | 'heavy');
       }
     } else if (decision.action === 'dodge' && npc.stamina >= 20) {
       npc.stamina -= 20;
