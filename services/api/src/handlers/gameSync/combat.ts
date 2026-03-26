@@ -193,20 +193,21 @@ const resolveAttack = (attacker: PlayerSyncState, attackType: 'light' | 'heavy')
       const victimBrain = npcEngine.activeNPCs.get(id);
 
       if (victimBrain) {
-        // NPC permanent death — mark in DB, remove from engine after delay
-        Data.playerCharacter.update(victim.characterId, { is_alive: false }).catch(() => {});
+        // NPC permanent death — remove from engine after death animation, then delete from DB
         setTimeout(() => {
           npcEngine.activeNPCs.delete(id);
           players.delete(id);
           broadcastAll({ type: 'player_left', id });
-          // Fill leadership gaps and rebuild chain of command
-          Data.playerCharacter.fillLeadershipGaps(victimBrain.commanderUserId)
+
+          // Delete from DB (permanent death — gone forever)
+          Data.playerCharacter.deleteRecruit(victim.characterId)
+            .then(() => Data.playerCharacter.fillLeadershipGaps(victimBrain.commanderUserId))
             .then(() => {
               const { rebuildChainOfCommand } = require('./ai/npcEngine');
               return rebuildChainOfCommand(victimBrain.commanderUserId);
             })
             .catch(() => {});
-          console.log(`[Combat] NPC ${victimBrain.name} permanently killed`);
+          console.log(`[Combat] NPC ${victimBrain.name} permanently killed — removed from army`);
         }, 5000);
       } else {
         // Real player — respawn after 5 seconds
