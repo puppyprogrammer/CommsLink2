@@ -6,6 +6,7 @@ import createCharacterAction from '../../../../../core/actions/character/createC
 import getCharacterAction from '../../../../../core/actions/character/getCharacterAction';
 import addXPAction from '../../../../../core/actions/character/addXPAction';
 import Data from '../../../../../core/data';
+import grokAdapter from '../../../../../core/adapters/grok';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -160,6 +161,72 @@ const characterRoutes: ServerRoute[] = [
         if (!recruit.is_npc || recruit.commander_id !== credentials.id) throw Boom.forbidden('Not your recruit');
         await Data.playerCharacter.update(id, { ai_instructions: instructions } as Record<string, unknown>);
         return { success: true };
+      }),
+  },
+  // ── Chat with recruit ──
+  {
+    method: 'POST',
+    path: '/api/v1/recruits/{id}/chat',
+    options: {
+      auth: 'jwt',
+      validate: {
+        params: Joi.object({ id: Joi.string().uuid().required() }),
+        payload: Joi.object({ message: Joi.string().max(500).required() }),
+      },
+    },
+    handler: async (request: Request) =>
+      tracer.trace('CONTROLLER.RECRUITS.CHAT', async () => {
+        const credentials = request.auth.credentials as unknown as AuthCredentials;
+        const { id } = request.params;
+        const { message } = request.payload as { message: string };
+
+        const recruit = await Data.playerCharacter.findById(id);
+        if (!recruit) throw Boom.notFound('Recruit not found');
+        if (!recruit.is_npc || recruit.commander_id !== credentials.id) throw Boom.forbidden('Not your recruit');
+
+        const memories = recruit.ai_memories ? JSON.parse(recruit.ai_memories as string) : [];
+        const recentMemories = memories.slice(-10).join('\n') || 'No memories yet.';
+
+        const systemPrompt = `You are ${recruit.name}, a ${recruit.npc_type?.replace(/_/g, ' ') || 'recruit'} companion in a medieval combat world.
+
+PERSONALITY (0-100): humor=${recruit.trait_humor}, obedience=${recruit.trait_obedience}, bravery=${recruit.trait_bravery}, curiosity=${recruit.trait_curiosity}, verbosity=${recruit.trait_verbosity}
+DISPOSITION: mood=${recruit.mood}, loyalty=${recruit.loyalty}, familiarity=${recruit.familiarity}, attraction=${recruit.attraction}, warmth=${recruit.warmth}, respect=${recruit.respect}
+
+Your commander's instructions for you:
+${recruit.ai_instructions || 'Follow and protect your commander.'}
+
+Your memories:
+${recentMemories}
+
+Respond in character. Keep responses short (1-3 sentences). Be natural — use the personality traits to shape your tone. A high-humor recruit cracks jokes. A low-obedience recruit might push back. High attraction means flirty undertones. High fear means nervous.
+
+After your response, on a NEW line write:
+EMOTION: (one of: neutral, happy, angry, fearful, sarcastic, flirty, sad, determined)`;
+
+        const grokResponse = await grokAdapter.chatCompletion(
+          systemPrompt,
+          [{ role: 'user', content: message }],
+          'grok-3-mini',
+          200,
+        );
+
+        const responseText = grokResponse.text || '';
+
+        // Parse emotion from response
+        let emotion = 'neutral';
+        let cleanResponse = responseText;
+        const emotionMatch = responseText.match(/EMOTION:\s*(\w+)/i);
+        if (emotionMatch) {
+          emotion = emotionMatch[1].toLowerCase();
+          cleanResponse = responseText.replace(/\n?EMOTION:\s*\w+/i, '').trim();
+        }
+
+        // Store conversation in memories
+        memories.push(`[Chat] Commander said: "${message}" — I replied: "${cleanResponse.substring(0, 100)}"`);
+        if (memories.length > 30) memories.splice(0, memories.length - 30);
+        Data.playerCharacter.update(id, { ai_memories: JSON.stringify(memories) } as Record<string, unknown>).catch(console.error);
+
+        return { response: cleanResponse, emotion };
       }),
   },
   // ── Quick command to recruits ──
