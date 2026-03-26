@@ -14,8 +14,9 @@ type ChatResponse = {
 };
 
 type DispatchResult = {
+  responders: string[];
+  listeners: string[];
   responses: ChatResponse[];
-  listeners_notified: number;
   commands_issued: string[];
 };
 
@@ -142,9 +143,14 @@ Respond with ONLY valid JSON:
       }
     }
 
+    const listenerIds = army
+      .filter((u) => !responderIds.includes(u.id))
+      .map((u) => u.id);
+
     return {
+      responders: responderIds,
+      listeners: listenerIds,
       responses,
-      listeners_notified: army.length - responderIds.length,
       commands_issued: commands,
     };
   });
