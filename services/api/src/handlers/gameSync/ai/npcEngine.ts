@@ -430,4 +430,4 @@ setInterval(() => {
   }
 }, 30_000);
 
-export { registerPlayerNPCs, unregisterPlayerNPCs, rebuildChainOfCommand, activeNPCs, npcStates };
+export { registerPlayerNPCs, unregisterPlayerNPCs, rebuildChainOfCommand, activeNPCs, npcStates, armySpeechLog };

@@ -187,10 +187,50 @@ const resolveAttack = (attacker: PlayerSyncState, attackType: 'light' | 'heavy')
       Data.playerCharacter.recordDeath(victim.characterId).catch(() => {});
       addXPAction(attacker.characterId, XP_PER_KILL).catch(() => {});
 
-      // Check if this is an NPC (has a brain) — NPCs die permanently
-      // Use require to avoid circular dependency (npcEngine imports from combat)
-      const npcEngine = require('./ai/npcEngine') as { activeNPCs: Map<string, { commanderUserId: string; name: string }> };
+      // Log death to both armies' speech logs so NPCs have context
+      const npcEngine = require('./ai/npcEngine') as {
+        activeNPCs: Map<string, { commanderUserId: string; name: string; situationLog: string[]; fear: number; mood: number }>;
+        armySpeechLog: Map<string, { name: string; text: string; time: number }[]>;
+      };
       const victimBrain = npcEngine.activeNPCs.get(id);
+      const attackerBrain = npcEngine.activeNPCs.get(attacker.userId);
+
+      // Notify attacker's army: "We killed [victim]!"
+      const attackerArmy = attackerBrain?.commanderUserId || attacker.userId;
+      if (!npcEngine.armySpeechLog.has(attackerArmy)) npcEngine.armySpeechLog.set(attackerArmy, []);
+      npcEngine.armySpeechLog.get(attackerArmy)!.push({
+        name: '[Battle]',
+        text: `${attacker.username} killed enemy ${victim.username}!`,
+        time: Date.now(),
+      });
+
+      // Notify victim's army: "We lost [victim]!"
+      const victimArmy = victimBrain?.commanderUserId || id;
+      if (victimArmy !== attackerArmy) {
+        if (!npcEngine.armySpeechLog.has(victimArmy)) npcEngine.armySpeechLog.set(victimArmy, []);
+        npcEngine.armySpeechLog.get(victimArmy)!.push({
+          name: '[Battle]',
+          text: `${victim.username} has fallen to ${attacker.username}!`,
+          time: Date.now(),
+        });
+      }
+
+      // Add death to nearby allies' personal situation logs (for Grok emotional reaction)
+      for (const [npcId, brain] of npcEngine.activeNPCs) {
+        if (npcId === id) continue; // Skip the dead one
+        const isAlly = brain.commanderUserId === (victimBrain?.commanderUserId || '');
+        const isAttackerAlly = brain.commanderUserId === (attackerBrain?.commanderUserId || attacker.userId);
+        if (isAlly) {
+          brain.situationLog.push(`[Death] Our ally ${victim.username} was killed by ${attacker.username}`);
+          // Increase fear for allies
+          brain.fear = Math.min(100, brain.fear + 10);
+        } else if (isAttackerAlly) {
+          brain.situationLog.push(`[Kill] Our side killed enemy ${victim.username}`);
+          // Boost morale for attacker's allies
+          brain.mood = Math.min(100, brain.mood + 5);
+        }
+        if (brain.situationLog.length > 20) brain.situationLog.shift();
+      }
 
       if (victimBrain) {
         // NPC permanent death — remove from engine after death animation, then delete from DB
