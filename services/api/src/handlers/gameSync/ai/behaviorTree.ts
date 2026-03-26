@@ -50,8 +50,8 @@ type NPCBrain = {
   agenda: string;
   targetId: string | null;
   lastGrokCall: number;
-  grokIntervalMs: number; // How often this NPC thinks (tier-based)
-  situationLog: string[];  // Recent events for Grok context
+  grokIntervalMs: number;
+  situationLog: string[];
 };
 
 type BehaviorAction = 'idle' | 'walk' | 'run' | 'attack_light' | 'attack_heavy' | 'block' | 'dodge';
@@ -60,9 +60,9 @@ type BehaviorDecision = {
   action: BehaviorAction;
   moveTarget: [number, number, number] | null;
   faceTarget: string | null;
+  reason: string;
 };
 
-/** Find the commander's position in the player list. */
 const getCommanderPos = (brain: NPCBrain, players: Map<string, PlayerSyncState>): [number, number, number] | null => {
   const commander = players.get(brain.commanderUserId);
   return commander ? commander.pos : null;
@@ -80,13 +80,10 @@ const findNearestEnemy = (
 
   for (const [id, p] of players) {
     if (id === npcUserId || id === commanderUserId || p.isDead) continue;
-
-    // Check if this entity is a friendly NPC (same commander)
     if (allBrains) {
       const otherBrain = allBrains.get(id);
       if (otherBrain && otherBrain.commanderUserId === commanderUserId) continue;
     }
-
     const dx = npcPos[0] - p.pos[0];
     const dz = npcPos[2] - p.pos[2];
     const dist = Math.sqrt(dx * dx + dz * dz);
@@ -120,119 +117,107 @@ const evaluateBehavior = (
   const distToCommander = commanderPos ? dist3d(npc.pos, commanderPos) : 999;
   const distToEnemy = nearestEnemy?.distance ?? 999;
 
-  // ── Agenda: flee ──
+  // ── 1. Flee (highest priority) ──
   if (brain.agenda === 'flee' || brain.fear > 80) {
     if (commanderPos) {
-      return { action: 'run', moveTarget: commanderPos, faceTarget: null };
+      return { action: 'run', moveTarget: commanderPos, faceTarget: null, reason: 'FLEE: fear/agenda' };
     }
-    // Flee away from enemy
     if (nearestEnemy) {
       const dx = npc.pos[0] - nearestEnemy.state.pos[0];
       const dz = npc.pos[2] - nearestEnemy.state.pos[2];
       const len = Math.sqrt(dx * dx + dz * dz) || 1;
-      return { action: 'run', moveTarget: [npc.pos[0] + (dx / len) * 10, npc.pos[1], npc.pos[2] + (dz / len) * 10], faceTarget: null };
+      return { action: 'run', moveTarget: [npc.pos[0] + (dx / len) * 10, npc.pos[1], npc.pos[2] + (dz / len) * 10], faceTarget: null, reason: 'FLEE: away from enemy' };
     }
-    return { action: 'idle', moveTarget: null, faceTarget: null };
+    return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'FLEE: nowhere to go' };
   }
 
-  // ── HP check: retreat if low ──
+  // ── 2. HP retreat ──
   const hpPercent = npc.hp / npc.maxHp * 100;
   if (hpPercent < brain.retreatThreshold && brain.selfPreservation > 40) {
     if (commanderPos && distToCommander > 3) {
-      return { action: 'run', moveTarget: commanderPos, faceTarget: nearestEnemy?.userId ?? null };
+      return { action: 'run', moveTarget: commanderPos, faceTarget: nearestEnemy?.userId ?? null, reason: `RETREAT: HP ${hpPercent.toFixed(0)}% < threshold ${brain.retreatThreshold}` };
     }
-    // Block if enemy close and retreating
     if (distToEnemy < 4) {
-      return { action: 'block', moveTarget: null, faceTarget: nearestEnemy?.userId ?? null };
+      return { action: 'block', moveTarget: null, faceTarget: nearestEnemy?.userId ?? null, reason: 'RETREAT: blocking, enemy close' };
     }
   }
 
-  // ── Commander protection ──
+  // ── 3. Guard position — BEFORE combat approach ──
+  if (brain.agenda === 'guard_position') {
+    // Only react to enemies within melee range (5m), don't chase
+    if (nearestEnemy && distToEnemy < 5) {
+      if (distToEnemy < 2.5 && npc.stamina >= 10 && Math.random() * 100 < brain.aggression) {
+        return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'GUARD: melee counter-attack' };
+      }
+      return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'GUARD: blocking nearby enemy' };
+    }
+    return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'GUARD: holding position' };
+  }
+
+  // ── 4. Commander protection ──
   if (brain.commanderProtection > 60 && commanderPos && nearestEnemy) {
-    // Is an enemy close to the commander?
     const enemyToCommander = dist3d(nearestEnemy.state.pos, commanderPos);
     if (enemyToCommander < 5 && distToCommander > 3) {
-      // Rush to protect
-      return { action: 'run', moveTarget: commanderPos, faceTarget: nearestEnemy.userId };
+      return { action: 'run', moveTarget: commanderPos, faceTarget: nearestEnemy.userId, reason: 'PROTECT: enemy near commander' };
     }
   }
 
-  // ── Combat: enemy in range ──
-  if (nearestEnemy && distToEnemy < 15) {
+  // ── 5. Combat (only if agenda allows) ──
+  if (nearestEnemy && distToEnemy < 15 && brain.agenda !== 'rest' && brain.agenda !== 'socialize') {
     const inAttackRange = distToEnemy < 2.5;
     const inApproachRange = distToEnemy < 8;
 
-    // If enemy just attacked us (we're in hit state), consider counter-attack
     if (npc.action === 'hit' || npc.action === 'block') {
       if (Math.random() * 100 < brain.counterAttack && inAttackRange && npc.stamina >= 10) {
-        return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId };
+        return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: counter-attack after hit/block' };
       }
     }
 
-    // In attack range: decide attack vs block vs dodge
     if (inAttackRange) {
       const roll = Math.random() * 100;
 
-      // Dodge if enemy is attacking and we're brave/agile enough
       if (nearestEnemy.state.action.startsWith('attack') && npc.stamina >= 20 && roll < 20) {
-        return { action: 'dodge', moveTarget: null, faceTarget: nearestEnemy.userId };
+        return { action: 'dodge', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: dodge incoming attack' };
       }
-
-      // Block if defensive
       if (roll < brain.defense && brain.aggression < 70) {
-        return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId };
+        return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: `COMBAT: block (def=${brain.defense}, roll=${roll.toFixed(0)})` };
       }
-
-      // Attack if aggressive enough
       if (roll < brain.aggression && npc.stamina >= 10) {
         const heavy = npc.stamina >= 25 && Math.random() < 0.3;
-        return { action: heavy ? 'attack_heavy' : 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId };
+        return { action: heavy ? 'attack_heavy' : 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: `COMBAT: attack (agg=${brain.aggression}, roll=${roll.toFixed(0)})` };
       }
-
-      // Flank: circle around enemy
       if (brain.flankTendency > 30) {
         const dir = brain.flankDirection > 50 ? 1 : -1;
         const angle = Math.atan2(npc.pos[0] - nearestEnemy.state.pos[0], npc.pos[2] - nearestEnemy.state.pos[2]);
         const circleAngle = angle + (dir * 0.5);
         const tx = nearestEnemy.state.pos[0] + Math.sin(circleAngle) * 2;
         const tz = nearestEnemy.state.pos[2] + Math.cos(circleAngle) * 2;
-        return { action: 'walk', moveTarget: [tx, npc.pos[1], tz], faceTarget: nearestEnemy.userId };
+        return { action: 'walk', moveTarget: [tx, npc.pos[1], tz], faceTarget: nearestEnemy.userId, reason: 'COMBAT: flanking' };
       }
-
-      // Default: block
-      return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId };
+      return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: default block in range' };
     }
 
-    // Approaching: move toward enemy
-    if (inApproachRange && brain.aggression > 30) {
-      return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId };
+    // Only approach if aggressive enough and agenda permits
+    if (inApproachRange && brain.aggression > 30 && (brain.agenda === 'seek_combat' || brain.agenda === 'protect_commander')) {
+      return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `COMBAT: approaching enemy (agg=${brain.aggression})` };
     }
   }
 
-  // ── Follow commander ──
+  // ── 6. Follow commander ──
   if (brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') {
     if (commanderPos) {
       if (distToCommander > 12) {
-        return { action: 'run', moveTarget: commanderPos, faceTarget: null };
+        return { action: 'run', moveTarget: commanderPos, faceTarget: null, reason: `FOLLOW: running to commander (${distToCommander.toFixed(1)}m)` };
       }
       if (distToCommander > 5) {
-        return { action: 'walk', moveTarget: commanderPos, faceTarget: null };
+        return { action: 'walk', moveTarget: commanderPos, faceTarget: null, reason: `FOLLOW: walking to commander (${distToCommander.toFixed(1)}m)` };
       }
-      // Within 5m — separation force handles spacing, just idle
     }
   }
 
-  // ── Hold position ──
-  if (brain.agenda === 'guard_position') {
-    if (nearestEnemy && nearestEnemy.distance < 5) {
-      return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId };
-    }
-    return { action: 'idle', moveTarget: null, faceTarget: null };
-  }
-
-  // ── Default: idle near commander ──
-  return { action: 'idle', moveTarget: null, faceTarget: null };
+  // ── 7. Default idle ──
+  return { action: 'idle', moveTarget: null, faceTarget: null, reason: `IDLE: agenda=${brain.agenda}, distCmd=${distToCommander.toFixed(1)}, distEnemy=${distToEnemy.toFixed(1)}` };
 };
 
-export type { NPCBrain, BehaviorDecision };
+export type { NPCBrain, BehaviorDecision, BehaviorAction };
 export { evaluateBehavior, getCommanderPos, findNearestEnemy };

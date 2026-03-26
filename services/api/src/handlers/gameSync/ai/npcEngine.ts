@@ -136,7 +136,12 @@ const unregisterPlayerNPCs = (commanderUserId: string): void => {
 // │ Behavior Tree Tick (every 500ms)         │
 // └──────────────────────────────────────────┘
 
+let auditTickCounter = 0;
+
 setInterval(() => {
+  auditTickCounter++;
+  const shouldLog = auditTickCounter % 20 === 0; // Log every 10 seconds (20 * 500ms)
+
   for (const [id, brain] of activeNPCs) {
     const npc = npcStates.get(id);
     if (!npc || npc.isDead) continue;
@@ -146,6 +151,10 @@ setInterval(() => {
         Date.now() - npc.actionStartTime < 600) continue;
 
     const decision = evaluateBehavior(brain, npc, players, activeNPCs);
+
+    if (shouldLog) {
+      console.log(`[NPC:${brain.name}] agenda=${brain.agenda} action=${decision.action} | ${decision.reason}`);
+    }
 
     // Apply decision
     if (decision.faceTarget) {
