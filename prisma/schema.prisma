@@ -467,8 +467,9 @@ model player_character {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  user            user             @relation(fields: [user_id], references: [id])
-  inventory_items inventory_item[]
+  user              user               @relation(fields: [user_id], references: [id])
+  inventory_items   inventory_item[]
+  shop_transactions shop_transaction[]
 
   @@index([user_id])
 }
@@ -499,7 +500,9 @@ model item_definition {
 
   created_at DateTime @default(now())
 
-  inventory_items inventory_item[]
+  inventory_items   inventory_item[]
+  shop_stock        shop_stock[]
+  shop_transactions shop_transaction[]
 
   @@index([item_type])
   @@index([rarity])
@@ -540,4 +543,58 @@ model level_definition {
   stamina_bonus   Int @default(0)
 
   created_at DateTime @default(now())
+}
+
+// ┌──────────────────────────────────────────┐
+// │ Game World — Shops                       │
+// └──────────────────────────────────────────┘
+
+model shop {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  display_name  String
+  shop_type     String
+  description   String?  @db.Text
+  buy_markup    Float    @default(1.0)
+  sell_discount Float    @default(0.5)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+
+  stock        shop_stock[]
+  transactions shop_transaction[]
+
+  @@index([shop_type])
+  @@index([is_active])
+}
+
+model shop_stock {
+  id             String @id @default(uuid())
+  shop_id        String
+  item_def_id    String
+  quantity       Int    @default(-1)
+  price_override Int?
+
+  shop     shop            @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+  item_def item_definition @relation(fields: [item_def_id], references: [id])
+
+  @@unique([shop_id, item_def_id])
+  @@index([shop_id])
+}
+
+model shop_transaction {
+  id           String   @id @default(uuid())
+  shop_id      String
+  character_id String
+  item_def_id  String
+  quantity     Int
+  total_price  Int
+  type         String
+  created_at   DateTime @default(now())
+
+  shop      shop             @relation(fields: [shop_id], references: [id])
+  character player_character @relation(fields: [character_id], references: [id])
+  item_def  item_definition  @relation(fields: [item_def_id], references: [id])
+
+  @@index([shop_id, created_at])
+  @@index([character_id, created_at])
 }

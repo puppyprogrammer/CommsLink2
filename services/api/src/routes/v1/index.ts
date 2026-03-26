@@ -17,6 +17,7 @@ import { fightRoutes } from './fight';
 import { characterRoutes } from './character';
 import { inventoryRoutes } from './inventory';
 import { gameUpdateRoutes } from './gameUpdate';
+import { shopRoutes } from './shop';
 
 /**
  * Register all v1 API routes.
@@ -42,6 +43,7 @@ const registerRoutes = (server: Server): void => {
     ...characterRoutes,
     ...inventoryRoutes,
     ...gameUpdateRoutes,
+    ...shopRoutes,
   ]);
 };
 

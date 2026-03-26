@@ -94,5 +94,11 @@ const findFirstOpenSlot = async (characterId: string): Promise<number | null> =>
   return null;
 };
 
+const findByCharacterAndItem = async (characterId: string, itemDefId: string): Promise<InventoryItemWithDef | null> =>
+  prisma.inventory_item.findFirst({
+    where: { character_id: characterId, item_def_id: itemDefId, is_equipped: false },
+    include: { item_def: true },
+  }) as Promise<InventoryItemWithDef | null>;
+
 export type { InventoryItemWithDef };
-export default { findByCharacter, findEquipped, findById, addItem, removeItem, updateQuantity, equipItem, unequipItem, moveItem, getEquippedInSlot, findFirstOpenSlot };
+export default { findByCharacter, findEquipped, findById, addItem, removeItem, updateQuantity, equipItem, unequipItem, moveItem, getEquippedInSlot, findFirstOpenSlot, findByCharacterAndItem };
