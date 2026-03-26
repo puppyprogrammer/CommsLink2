@@ -18,6 +18,8 @@ import type { NPCBrain } from './behaviorTree';
 const activeNPCs = new Map<string, NPCBrain>();
 // ── NPC sync states (keyed by NPC character ID, separate from player states) ──
 const npcStates = new Map<string, PlayerSyncState>();
+// ── Recent speech per army (keyed by commanderUserId) — nearby NPCs can hear and respond ──
+const armySpeechLog = new Map<string, { name: string; text: string; time: number }[]>();
 
 // Grok interval by NPC tier (ms)
 const GROK_INTERVALS: Record<string, number> = {
@@ -342,12 +344,20 @@ setInterval(async () => {
       nearbyEnemies.push(`${p.username} at ${dist.toFixed(1)}m (HP: ${p.hp}/${p.maxHp})`);
     }
 
+    // Get recent ally speech this NPC could hear
+    const recentSpeech = (armySpeechLog.get(brain.commanderUserId) || [])
+      .filter((s) => s.name !== brain.name) // Don't include own speech
+      .slice(-3) // Last 3 things said
+      .map((s) => `${s.name} said: "${s.text}"`)
+      .join('\n');
+
     const situation = [
       `My HP: ${npc.hp}/${npc.maxHp}, Stamina: ${npc.stamina}/${npc.maxStamina}`,
       `Distance to commander: ${distToCommander}m`,
       `Current action: ${npc.action}, Agenda: ${brain.agenda}`,
       nearbyAllies.length > 0 ? `Nearby allies: ${nearbyAllies.join(', ')}` : '',
       nearbyEnemies.length > 0 ? `ENEMIES NEARBY: ${nearbyEnemies.join(', ')}` : 'The area is peaceful. No enemies in sight.',
+      recentSpeech ? `\nRecent conversation nearby:\n${recentSpeech}\n(You can respond to what they said, agree, joke, or add your own thought. Or stay quiet.)` : '',
     ].filter(Boolean).join('\n');
 
     // Load instructions from DB (may have been updated by player)
@@ -370,14 +380,25 @@ setInterval(async () => {
       // Apply weight changes
       await applyGrokResponse(brain, parsed);
 
-      // If NPC has something to say, broadcast it
+      // If NPC has something to say, broadcast it and log for allies to hear
       if (parsed.say) {
+        const emotion = brain.mood > 70 ? 'happy' : brain.mood < 30 ? 'sad' : brain.fear > 50 ? 'fearful' : 'neutral';
         broadcastAll({
           type: 'npc_say',
           id,
           text: parsed.say,
-          emotion: brain.mood > 70 ? 'happy' : brain.mood < 30 ? 'sad' : brain.fear > 50 ? 'fearful' : 'neutral',
+          emotion,
         });
+
+        // Add to army speech log so nearby allies can respond
+        if (!armySpeechLog.has(brain.commanderUserId)) {
+          armySpeechLog.set(brain.commanderUserId, []);
+        }
+        const log = armySpeechLog.get(brain.commanderUserId)!;
+        log.push({ name: brain.name, text: parsed.say, time: Date.now() });
+        // Keep last 10 messages, expire after 60s
+        const cutoff = Date.now() - 60_000;
+        while (log.length > 10 || (log.length > 0 && log[0].time < cutoff)) log.shift();
       }
     } catch (err) {
       // Grok call failed — that's fine, keep using existing weights
