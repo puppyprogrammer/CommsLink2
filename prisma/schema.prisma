@@ -682,3 +682,21 @@ model battle_record {
   @@index([winner_user_id])
   @@index([status])
 }
+
+// ┌──────────────────────────────────────────┐
+// │ Game World — Vegetation / Ecosystem      │
+// └──────────────────────────────────────────┘
+
+model world_vegetation {
+  id           Int      @id @default(autoincrement())
+  x            Float
+  z            Float
+  type         String   @default("grass")
+  growth_stage Int      @default(0)
+  health       Int      @default(100)
+  planted_at   DateTime @default(now())
+  last_growth  DateTime @default(now())
+  planted_by   String?
+
+  @@index([x, z])
+}

@@ -7,6 +7,7 @@ import Data from '../../../../../core/data';
 import { players, handleMessage, loadWeaponRange } from './combat';
 import type { PlayerSyncState } from './combat';
 import { registerPlayerNPCs, unregisterPlayerNPCs } from './ai/npcEngine';
+import { initVegetationSystem, checkTrampling } from './vegetation';
 
 // ┌──────────────────────────────────────────┐
 // │ Stamina Regeneration (5/sec)             │
@@ -27,6 +28,9 @@ setInterval(() => {
 
 const registerGameSyncHandler = (wss: WebSocketServer): void => {
   console.log('[GameSync] Raw WebSocket handler registered');
+
+  // Initialize vegetation & world time system
+  initVegetationSystem();
 
   wss.on('connection', async (ws: WebSocket, request: IncomingMessage) => {
     try {

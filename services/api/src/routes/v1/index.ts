@@ -20,6 +20,7 @@ import { gameUpdateRoutes } from './gameUpdate';
 import { shopRoutes } from './shop';
 import { armyRoutes } from './army';
 import { encounterRoutes } from './encounter';
+import { worldRoutes } from './world';
 
 /**
  * Register all v1 API routes.
@@ -48,6 +49,7 @@ const registerRoutes = (server: Server): void => {
     ...shopRoutes,
     ...armyRoutes,
     ...encounterRoutes,
+    ...worldRoutes,
   ]);
 };
 

@@ -289,6 +289,12 @@ const handleMessage = (userId: string, msg: { type: string; [key: string]: unkno
         rot: player.rot,
         action: player.action,
       });
+
+      // Trampling check (throttled — only when walking/running)
+      if (msg.action === 'walk' || msg.action === 'run') {
+        const { checkTrampling } = require('./vegetation');
+        checkTrampling(player.pos[0], player.pos[2]).catch(() => {});
+      }
       break;
     }
 
