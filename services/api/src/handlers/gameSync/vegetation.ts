@@ -84,6 +84,72 @@ const vegetationTick = async (): Promise<void> => {
       id: newVeg.id, x: newX, z: newZ, vegType: 'grass', growth_stage: 0, health: 100,
     });
   }
+
+  // Trees drop seeds — mature trees have 3% chance to spawn a sapling nearby
+  // Seeds fall further than grass (5-10m) and need more space (3m minimum gap)
+  const matureTrees = await prisma.world_vegetation.findMany({
+    where: { growth_stage: 4, type: { startsWith: 'tree_' }, health: { gte: 60 } },
+    take: 100,
+  });
+
+  for (const tree of matureTrees) {
+    if (Math.random() > 0.03) continue; // 3% chance per tick
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 5 + Math.random() * 5; // 5-10m from parent
+    const newX = tree.x + Math.cos(angle) * dist;
+    const newZ = tree.z + Math.sin(angle) * dist;
+
+    // Trees need more space — 3m minimum from any other tree
+    const nearbyTrees = await prisma.world_vegetation.count({
+      where: {
+        x: { gte: newX - 3, lte: newX + 3 },
+        z: { gte: newZ - 3, lte: newZ + 3 },
+        type: { startsWith: 'tree_' },
+      },
+    });
+    if (nearbyTrees > 0) continue;
+
+    // Don't spawn on top of dense grass either
+    const nearbyAll = await prisma.world_vegetation.count({
+      where: { x: { gte: newX - 1, lte: newX + 1 }, z: { gte: newZ - 1, lte: newZ + 1 } },
+    });
+    if (nearbyAll > 2) continue;
+
+    const newTree = await prisma.world_vegetation.create({
+      data: { x: newX, z: newZ, type: tree.type, growth_stage: 0, health: 100 },
+    });
+
+    broadcastNearby(newX, newZ, 200, {
+      type: 'vegetation_spawned',
+      id: newTree.id, x: newX, z: newZ, vegType: tree.type, growth_stage: 0, health: 100,
+    });
+  }
+
+  // Bushes also spread — 5% chance, 2-4m distance
+  const matureBushes = await prisma.world_vegetation.findMany({
+    where: { growth_stage: 4, type: 'bush', health: { gte: 70 } },
+    take: 100,
+  });
+
+  for (const bush of matureBushes) {
+    if (Math.random() > 0.05) continue;
+    const newX = bush.x + (Math.random() - 0.5) * 4;
+    const newZ = bush.z + (Math.random() - 0.5) * 4;
+
+    const nearby = await prisma.world_vegetation.count({
+      where: { x: { gte: newX - 1.5, lte: newX + 1.5 }, z: { gte: newZ - 1.5, lte: newZ + 1.5 } },
+    });
+    if (nearby > 0) continue;
+
+    const newBush = await prisma.world_vegetation.create({
+      data: { x: newX, z: newZ, type: 'bush', growth_stage: 0, health: 100 },
+    });
+
+    broadcastNearby(newX, newZ, 200, {
+      type: 'vegetation_spawned',
+      id: newBush.id, x: newX, z: newZ, vegType: 'bush', growth_stage: 0, health: 100,
+    });
+  }
 };
 
 // ── Trampling ──
