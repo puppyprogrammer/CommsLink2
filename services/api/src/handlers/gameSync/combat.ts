@@ -57,15 +57,16 @@ const broadcastAll = (msg: object): void => {
 // └──────────────────────────────────────────┘
 
 const ATTACK_RANGE = 2.5;
-const LIGHT_DMG = 5;           // Was 15 — slow grind, not quick kills
-const HEAVY_DMG = 12;          // Was 30 — heavy hits still hurt but don't one-shot
-const LIGHT_STAMINA = 8;       // Was 10 — can swing more before exhaustion
-const HEAVY_STAMINA = 20;      // Was 25
-const DODGE_STAMINA = 15;      // Was 20
-const BLOCK_REDUCTION = 0.85;  // Was 0.8 — shields are very strong, formations matter
+const LIGHT_DMG = 5;
+const HEAVY_DMG = 12;
+const LIGHT_STAMINA = 10;      // 10% of max stamina per swing
+const HEAVY_STAMINA = 20;      // 20% per heavy
+const DODGE_STAMINA = 15;
+const BLOCK_STAMINA_COST = 5;  // 5% stamina to absorb a hit
+const BLOCK_REDUCTION = 0.95;  // Blocks absorb 95% — shields are king
 const DODGE_WINDOW = 500;
-const DAMAGE_COOLDOWN = 500;   // Was 300 — slower combat pace
-const CRITICAL_MULTIPLIER = 1.5;
+const DAMAGE_COOLDOWN = 800;   // Slower pace — hits land every ~1s minimum
+const CRITICAL_MULTIPLIER = 2.0; // Flanking is devastating — the ONLY way to break a shield wall
 const XP_PER_KILL = 50;
 
 // ┌──────────────────────────────────────────┐
@@ -119,6 +120,13 @@ const resolveAttack = (attacker: PlayerSyncState, attackType: 'light' | 'heavy')
       finalDmg = Math.round(finalDmg * (1 - BLOCK_REDUCTION));
       const defReduction = victim.defense / 200;
       finalDmg = Math.round(finalDmg * (1 - defReduction));
+      // Blocking costs stamina — exhaustion breaks the shield wall
+      victim.stamina = Math.max(0, victim.stamina - BLOCK_STAMINA_COST);
+      // If stamina is 0, block fails — can't hold the shield up
+      if (victim.stamina <= 0) {
+        hitType = 'heavy'; // Shield dropped — full damage
+        finalDmg = isCritical ? Math.round(damage * CRITICAL_MULTIPLIER) : damage;
+      }
     }
 
     if (isCritical) hitType = 'critical';

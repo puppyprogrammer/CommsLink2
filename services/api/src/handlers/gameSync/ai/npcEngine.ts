@@ -187,9 +187,13 @@ setInterval(() => {
     const npc = npcStates.get(id);
     if (!npc || npc.isDead) continue;
 
-    // Don't override if NPC is mid-attack animation
+    // Attack cooldown — based on unit skill level (strength as proxy)
+    // Low skill (str 5-10): swing every 5-8s. High skill (str 20+): every 2-3s
+    const skillFactor = Math.max(5, npc.strength);
+    const attackCooldown = Math.max(2000, 8000 - skillFactor * 250); // 5→6.75s, 10→5.5s, 15→4.25s, 20→3s, 25→1.75s
+
     if ((npc.action === 'attack_light' || npc.action === 'attack_heavy') &&
-        Date.now() - npc.actionStartTime < 600) continue;
+        Date.now() - npc.actionStartTime < attackCooldown) continue;
 
     const decision = evaluateBehavior(brain, npc, players, activeNPCs);
 
