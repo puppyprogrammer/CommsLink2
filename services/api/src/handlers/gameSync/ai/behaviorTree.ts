@@ -212,23 +212,13 @@ const evaluateBehavior = (
   // ── Follow commander ──
   if (brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') {
     if (commanderPos) {
-      // Offset target so NPCs don't all converge on the exact same point
-      // Each NPC gets a consistent offset based on their characterId hash
-      const hash = brain.characterId.charCodeAt(0) + brain.characterId.charCodeAt(5);
-      const angle = (hash % 12) * (Math.PI * 2 / 12); // 12 evenly spaced positions
-      const offsetDist = 3.0;
-      const followTarget: [number, number, number] = [
-        commanderPos[0] + Math.cos(angle) * offsetDist,
-        commanderPos[1],
-        commanderPos[2] + Math.sin(angle) * offsetDist,
-      ];
-
       if (distToCommander > 12) {
-        return { action: 'run', moveTarget: followTarget, faceTarget: null };
+        return { action: 'run', moveTarget: commanderPos, faceTarget: null };
       }
       if (distToCommander > 5) {
-        return { action: 'walk', moveTarget: followTarget, faceTarget: null };
+        return { action: 'walk', moveTarget: commanderPos, faceTarget: null };
       }
+      // Within 5m — separation force handles spacing, just idle
     }
   }
 
