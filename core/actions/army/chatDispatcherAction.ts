@@ -16,17 +16,19 @@ type ChatResponse = {
 type DispatchResult = {
   responders: string[];
   listeners: string[];
-  responses: ChatResponse[];
   commands_issued: string[];
 };
 
-/** Dispatch a player's army chat message to the right units. */
-const chatDispatcherAction = async (userId: string, message: string): Promise<DispatchResult> =>
+/**
+ * Step 1: Dispatch — determine who responds (fast, ~200ms).
+ * Returns responder/listener lists immediately.
+ * Caller is responsible for triggering Step 2 (generating responses) asynchronously.
+ */
+const dispatchArmyChat = async (userId: string, message: string): Promise<DispatchResult & { _army: player_character[]; _responderIds: string[] }> =>
   tracer.trace('ACTION.ARMY.CHAT_DISPATCH', async () => {
     const army = await Data.playerCharacter.getArmyStructure(userId);
     if (army.length === 0) throw Boom.notFound('No army found');
 
-    // Build unit list for dispatcher
     const unitList = army.map((u) => ({
       id: u.id,
       name: u.name,
@@ -35,7 +37,7 @@ const chatDispatcherAction = async (userId: string, message: string): Promise<Di
       squad: u.squad_id ? `Squad ${u.squad_id?.toUpperCase()}` : '',
     }));
 
-    // ── Step 1: Dispatcher call (grok-code, cheap, fast) ──
+    // ── Dispatcher call (grok-code, fast) ──
     const dispatchPrompt = `You are a message routing system for a medieval army. Given a commander's message and a list of units, determine who should RESPOND verbally and who should just LISTEN silently.
 
 RULES:
@@ -43,12 +45,12 @@ RULES:
 - If a rank is mentioned ("Sergeants", "Decurions"), all units of that rank respond
 - If a group is mentioned ("Maniple 2", "Wolf Pack", "Squad 3A"), the leader of that group responds
 - If "everyone", "all", or "army" is mentioned, the Centurion responds (or highest rank if no Centurion)
-- If it's a general question/comment, pick 1-2 of the most verbose/relevant units to respond
+- If it's a general question/comment, pick 1-2 of the most verbal/relevant units to respond
 - NEVER have more than 3 units respond to a single message
 - If a quick command is detected (advance, retreat, hold, attack, defend, form up, flank), include it in commands
 
 UNITS:
-${unitList.map((u) => `- ${u.name} (${u.rank}, ${u.maniple} ${u.squad})`).join('\n')}
+${unitList.map((u) => `- ${u.name} [${u.id}] (${u.rank}, ${u.maniple} ${u.squad})`).join('\n')}
 
 Respond with ONLY valid JSON:
 {
@@ -69,7 +71,6 @@ Respond with ONLY valid JSON:
         200,
       );
 
-      // Parse JSON from response
       const text = dispatchResponse.text || '';
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -82,34 +83,20 @@ Respond with ONLY valid JSON:
       console.error('[ArmyChat] Dispatcher failed, falling back to centurion:', (err as Error).message);
     }
 
-    // Fallback: if dispatcher failed or returned no responders, use centurion or first officer
+    // Fallback
     if (responderIds.length === 0) {
       const centurion = army.find((u) => u.rank === 'centurion');
       const fallback = centurion || army.find((u) => u.rank === 'decurion') || army[0];
       if (fallback) responderIds = [fallback.id];
     }
 
-    // Cap at 3 responders
-    responderIds = responderIds.slice(0, 3);
+    // Validate IDs exist in army
+    responderIds = responderIds.filter((id) => army.some((u) => u.id === id)).slice(0, 3);
 
-    // ── Step 2: Get responses from each responder ──
-    const responses: ChatResponse[] = [];
+    const listenerIds = army.filter((u) => !responderIds.includes(u.id)).map((u) => u.id);
 
-    for (const responderId of responderIds) {
-      const unit = army.find((u) => u.id === responderId);
-      if (!unit) continue;
-
-      const response = await getUnitResponse(unit, message);
-      responses.push(response);
-    }
-
-    // ── Step 3: Notify listeners (append context to their situation log) ──
+    // Notify listeners (fire and forget)
     if (listenerContext) {
-      const listenerIds = army
-        .filter((u) => !responderIds.includes(u.id))
-        .map((u) => u.id);
-
-      // Update memories for listeners (fire and forget)
       for (const lid of listenerIds) {
         const unit = army.find((u) => u.id === lid);
         if (!unit) continue;
@@ -120,7 +107,7 @@ Respond with ONLY valid JSON:
       }
     }
 
-    // ── Step 4: Execute any quick commands ──
+    // Execute quick commands
     if (commands.length > 0) {
       const commandMap: Record<string, Record<string, unknown>> = {
         advance: { ai_agenda: 'seek_combat', bw_aggression: 70 },
@@ -132,31 +119,28 @@ Respond with ONLY valid JSON:
         'flank left': { bw_flank_tendency: 80, bw_flank_direction: 20 },
         'flank right': { bw_flank_tendency: 80, bw_flank_direction: 80 },
       };
-
       for (const cmd of commands) {
         const updates = commandMap[cmd.toLowerCase()];
         if (updates) {
-          for (const unit of army) {
-            Data.playerCharacter.update(unit.id, updates).catch(() => {});
-          }
+          for (const unit of army) Data.playerCharacter.update(unit.id, updates).catch(() => {});
         }
       }
     }
 
-    const listenerIds = army
-      .filter((u) => !responderIds.includes(u.id))
-      .map((u) => u.id);
-
     return {
       responders: responderIds,
       listeners: listenerIds,
-      responses,
       commands_issued: commands,
+      _army: army,
+      _responderIds: responderIds,
     };
   });
 
-/** Get an in-character response from a specific unit. */
-const getUnitResponse = async (unit: player_character, playerMessage: string): Promise<ChatResponse> => {
+/**
+ * Step 2: Generate a single unit's response (slow, 1-3s per unit).
+ * Called asynchronously for each responder after dispatch returns.
+ */
+const generateUnitResponse = async (unit: player_character, playerMessage: string): Promise<ChatResponse> => {
   const memories = unit.ai_memories ? JSON.parse(unit.ai_memories as string) : [];
   const recentMemories = memories.slice(-5).join('\n') || 'None.';
 
@@ -180,7 +164,7 @@ RANK: ${unit.rank} — ${unit.rank === 'centurion' ? 'You command the entire arm
 Recent memories: ${recentMemories}
 Commander's instructions: ${unit.ai_instructions || 'Serve loyally.'}
 
-Respond in character. Keep it to 1-2 sentences. Match your rank — a Centurion speaks differently than a Peasant.
+Respond in character. Keep it to 1-2 sentences. Match your rank.
 
 After your response, on a NEW line write:
 EMOTION: (one of: neutral, happy, angry, fearful, sarcastic, determined, respectful)`;
@@ -202,7 +186,6 @@ EMOTION: (one of: neutral, happy, angry, fearful, sarcastic, determined, respect
       cleanText = text.replace(/\n?EMOTION:\s*\w+/i, '').trim();
     }
 
-    // Store in unit's memories
     memories.push(`[Chat] Commander: "${playerMessage}" — I said: "${cleanText.substring(0, 80)}"`);
     if (memories.length > 30) memories.splice(0, memories.length - 30);
     Data.playerCharacter.update(unit.id, { ai_memories: JSON.stringify(memories) }).catch(() => {});
@@ -218,14 +201,12 @@ EMOTION: (one of: neutral, happy, angry, fearful, sarcastic, determined, respect
   } catch (err) {
     console.error(`[ArmyChat] Grok failed for ${unit.name}:`, (err as Error).message);
     return {
-      unit_id: unit.id,
-      name: unit.name,
-      rank: unit.rank,
+      unit_id: unit.id, name: unit.name, rank: unit.rank,
       unit_name: unit.maniple_name || 'Unassigned',
-      response: '*nods*',
-      emotion: 'neutral',
+      response: '*nods*', emotion: 'neutral',
     };
   }
 };
 
-export default chatDispatcherAction;
+export type { ChatResponse, DispatchResult };
+export { dispatchArmyChat, generateUnitResponse };

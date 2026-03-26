@@ -2,8 +2,9 @@ import Joi from 'joi';
 import Boom from '@hapi/boom';
 import tracer from '../../../../../core/lib/tracer';
 
-import chatDispatcherAction from '../../../../../core/actions/army/chatDispatcherAction';
+import { dispatchArmyChat, generateUnitResponse } from '../../../../../core/actions/army/chatDispatcherAction';
 import Data from '../../../../../core/data';
+import { broadcastAll } from '../../handlers/gameSync/combat';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -73,7 +74,36 @@ const armyRoutes: ServerRoute[] = [
       tracer.trace('CONTROLLER.ARMY.CHAT', async () => {
         const credentials = request.auth.credentials as unknown as AuthCredentials;
         const { message } = request.payload as { message: string };
-        return chatDispatcherAction(credentials.id, message);
+
+        // Step 1: Fast dispatch — returns immediately with responder/listener lists
+        const dispatch = await dispatchArmyChat(credentials.id, message);
+
+        // Step 2: Fire off Grok response generation asynchronously
+        // Responses are delivered via game-sync WebSocket as army_chat_response messages
+        for (const responderId of dispatch._responderIds) {
+          const unit = dispatch._army.find((u) => u.id === responderId);
+          if (!unit) continue;
+
+          // Each response fires independently — staggered delivery
+          generateUnitResponse(unit, message).then((response) => {
+            broadcastAll({
+              type: 'army_chat_response',
+              unit_id: response.unit_id,
+              name: response.name,
+              rank: response.rank,
+              unit_name: response.unit_name,
+              text: response.response,
+              emotion: response.emotion,
+            });
+          }).catch(console.error);
+        }
+
+        // Return dispatch result immediately (no responses yet — they come via WebSocket)
+        return {
+          responders: dispatch.responders,
+          listeners: dispatch.listeners,
+          commands_issued: dispatch.commands_issued,
+        };
       }),
   },
 
