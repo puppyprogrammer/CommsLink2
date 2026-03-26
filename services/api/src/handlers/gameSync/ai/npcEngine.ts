@@ -145,7 +145,7 @@ setInterval(() => {
     if ((npc.action === 'attack_light' || npc.action === 'attack_heavy') &&
         Date.now() - npc.actionStartTime < 600) continue;
 
-    const decision = evaluateBehavior(brain, npc, players);
+    const decision = evaluateBehavior(brain, npc, players, activeNPCs);
 
     // Apply decision
     if (decision.faceTarget) {

@@ -68,17 +68,25 @@ const getCommanderPos = (brain: NPCBrain, players: Map<string, PlayerSyncState>)
   return commander ? commander.pos : null;
 };
 
-/** Find nearest enemy (any player that isn't the commander or a friendly NPC). */
+/** Find nearest enemy. Excludes: self, commander, and any NPC with the same commander. */
 const findNearestEnemy = (
   npcPos: [number, number, number],
   npcUserId: string,
   commanderUserId: string,
   players: Map<string, PlayerSyncState>,
+  allBrains?: Map<string, NPCBrain>,
 ): { userId: string; distance: number; state: PlayerSyncState } | null => {
   let nearest: { userId: string; distance: number; state: PlayerSyncState } | null = null;
 
   for (const [id, p] of players) {
     if (id === npcUserId || id === commanderUserId || p.isDead) continue;
+
+    // Check if this entity is a friendly NPC (same commander)
+    if (allBrains) {
+      const otherBrain = allBrains.get(id);
+      if (otherBrain && otherBrain.commanderUserId === commanderUserId) continue;
+    }
+
     const dx = npcPos[0] - p.pos[0];
     const dz = npcPos[2] - p.pos[2];
     const dist = Math.sqrt(dx * dx + dz * dz);
@@ -104,9 +112,10 @@ const evaluateBehavior = (
   brain: NPCBrain,
   npc: PlayerSyncState,
   players: Map<string, PlayerSyncState>,
+  allBrains?: Map<string, NPCBrain>,
 ): BehaviorDecision => {
   const commanderPos = getCommanderPos(brain, players);
-  const nearestEnemy = findNearestEnemy(npc.pos, npc.userId, brain.commanderUserId, players);
+  const nearestEnemy = findNearestEnemy(npc.pos, npc.userId, brain.commanderUserId, players, allBrains);
 
   const distToCommander = commanderPos ? dist3d(npc.pos, commanderPos) : 999;
   const distToEnemy = nearestEnemy?.distance ?? 999;
