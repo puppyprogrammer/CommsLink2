@@ -475,6 +475,12 @@ model player_character {
   npc_class    String?
   is_alive     Boolean  @default(true)
 
+  // Army structure
+  rank         String   @default("soldier")  // soldier, sergeant, decurion, centurion
+  maniple_id   Int?                           // 1-10, which maniple
+  maniple_name String?                        // "Iron Guard", "Wolf Pack", etc.
+  squad_id     String?                        // "a" or "b"
+
   // AI personality traits (0-100, set at creation, mostly static)
   trait_humor       Int @default(50)
   trait_obedience   Int @default(50)

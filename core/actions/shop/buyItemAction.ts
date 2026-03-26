@@ -144,6 +144,10 @@ const buyItemAction = async (
         procreation_drive: rand(30, 20),
       });
 
+      // Auto-assign to army structure
+      const defaultRank = npcType === 'elite_champion' || npcType === 'veteran_knight' ? 'sergeant' : 'soldier';
+      await Data.playerCharacter.autoAssignRecruit(userId, recruit.id, defaultRank).catch(console.error);
+
       return {
         success: true,
         type: 'recruit',
