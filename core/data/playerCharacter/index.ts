@@ -295,5 +295,5 @@ const autoPromote = async (
 export default {
   create, findById, findByUserId, update, addXP, recordKill, recordDeath, updateSpawn,
   findRecruitsByCommander, deleteRecruit, getArmyStructure, findCenturion, findByManiple,
-  findBySquad, findByRank, autoAssignRecruit,
+  findBySquad, findByRank, autoAssignRecruit, fillLeadershipGaps,
 };

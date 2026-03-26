@@ -137,6 +137,10 @@ const characterRoutes: ServerRoute[] = [
           throw Boom.forbidden('Not your recruit');
         }
         await Data.playerCharacter.deleteRecruit(id);
+
+        // Fill any leadership gaps left by the dismissed unit
+        await Data.playerCharacter.fillLeadershipGaps(credentials.id);
+
         return { dismissed: true };
       }),
   },

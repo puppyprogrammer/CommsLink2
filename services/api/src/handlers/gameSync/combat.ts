@@ -153,16 +153,34 @@ const resolveAttack = (attacker: PlayerSyncState, attackType: 'light' | 'heavy')
       Data.playerCharacter.recordDeath(victim.characterId).catch(() => {});
       addXPAction(attacker.characterId, XP_PER_KILL).catch(() => {});
 
-      // Respawn after 5 seconds
-      setTimeout(() => {
-        if (!players.has(id)) return;
-        victim.isDead = false;
-        victim.hp = victim.maxHp;
-        victim.stamina = victim.maxStamina;
-        victim.action = 'idle';
-        victim.pos = [victim.spawnX, victim.spawnY, victim.spawnZ];
-        broadcastAll({ type: 'player_respawned', id, pos: victim.pos, hp: victim.hp });
-      }, 5000);
+      // Check if this is an NPC (has a brain) — NPCs die permanently
+      // Use require to avoid circular dependency (npcEngine imports from combat)
+      const npcEngine = require('./ai/npcEngine') as { activeNPCs: Map<string, { commanderUserId: string; name: string }> };
+      const victimBrain = npcEngine.activeNPCs.get(id);
+
+      if (victimBrain) {
+        // NPC permanent death — mark in DB, remove from engine after delay
+        Data.playerCharacter.update(victim.characterId, { is_alive: false }).catch(() => {});
+        setTimeout(() => {
+          npcEngine.activeNPCs.delete(id);
+          players.delete(id);
+          broadcastAll({ type: 'player_left', id });
+          // Fill leadership gaps caused by the death
+          Data.playerCharacter.fillLeadershipGaps(victimBrain.commanderUserId).catch(() => {});
+          console.log(`[Combat] NPC ${victimBrain.name} permanently killed`);
+        }, 5000);
+      } else {
+        // Real player — respawn after 5 seconds
+        setTimeout(() => {
+          if (!players.has(id)) return;
+          victim.isDead = false;
+          victim.hp = victim.maxHp;
+          victim.stamina = victim.maxStamina;
+          victim.action = 'idle';
+          victim.pos = [victim.spawnX, victim.spawnY, victim.spawnZ];
+          broadcastAll({ type: 'player_respawned', id, pos: victim.pos, hp: victim.hp });
+        }, 5000);
+      }
     }
   }
 };
