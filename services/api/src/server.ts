@@ -10,6 +10,8 @@ import Data from '../../../core/data';
 import { registerRoutes } from './routes/v1';
 import { registerSocketHandlers } from './handlers/chat';
 import { registerGameWorldHandler } from './handlers/gameWorld';
+import { WebSocketServer } from 'ws';
+import { registerGameSyncHandler } from './handlers/gameSync';
 
 /**
  * Create and configure the Hapi server.
@@ -73,6 +75,20 @@ const createServer = async (): Promise<Hapi.Server> => {
   // └──────────────────────────────────────────┘
   const gameNs = io.of('/game');
   registerGameWorldHandler(gameNs);
+
+  // ┌──────────────────────────────────────────┐
+  // │ Game Sync (Raw WebSocket on /game-sync)  │
+  // └──────────────────────────────────────────┘
+  const gameSyncWss = new WebSocketServer({ noServer: true });
+  server.listener.on('upgrade', (request, socket, head) => {
+    const url = new URL(request.url || '', `http://${request.headers.host}`);
+    if (url.pathname === '/game-sync') {
+      gameSyncWss.handleUpgrade(request, socket, head, (ws) => {
+        gameSyncWss.emit('connection', ws, request);
+      });
+    }
+  });
+  registerGameSyncHandler(gameSyncWss);
 
   return server;
 };
