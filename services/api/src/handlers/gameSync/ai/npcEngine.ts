@@ -75,6 +75,10 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       grokIntervalMs: GROK_INTERVALS[recruit.npc_type || ''] || 20_000,
       situationLog: recruit.ai_memories ? JSON.parse(recruit.ai_memories) : [],
       agendaLocked: false,
+      formationPos: null,
+      formationRot: null,
+      formationType: null,
+      formationAction: null,
     };
 
     activeNPCs.set(recruit.id, brain);

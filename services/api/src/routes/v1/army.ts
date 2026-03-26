@@ -6,6 +6,7 @@ import { dispatchArmyChat, generateUnitResponse } from '../../../../../core/acti
 import Data from '../../../../../core/data';
 import { broadcastAll } from '../../handlers/gameSync/combat';
 import { activeNPCs } from '../../handlers/gameSync/ai/npcEngine';
+import { calculateFormationPositions } from '../../handlers/gameSync/ai/formations';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -145,7 +146,7 @@ const armyRoutes: ServerRoute[] = [
       auth: 'jwt',
       validate: {
         payload: Joi.object({
-          command: Joi.string().valid('advance', 'retreat', 'hold', 'attack', 'defend', 'form_up', 'flank_left', 'flank_right', 'resume').required(),
+          command: Joi.string().valid('advance', 'retreat', 'hold', 'attack', 'defend', 'form_up', 'flank_left', 'flank_right', 'resume', 'formation_line', 'formation_column', 'formation_shield_wall', 'formation_wedge', 'formation_circle', 'formation_square', 'formation_loose').required(),
           target: Joi.string().optional(), // "all", "maniple_1", "squad_2a", or unit UUID
         }),
       },
@@ -157,6 +158,7 @@ const armyRoutes: ServerRoute[] = [
 
         // Resume = unlock agenda, let AI decide
         const isResume = command === 'resume';
+        const isFormation = command.startsWith('formation_');
 
         const commandMap: Record<string, Record<string, unknown>> = {
           advance: { ai_agenda: 'seek_combat', bw_aggression: 70 },
@@ -167,7 +169,14 @@ const armyRoutes: ServerRoute[] = [
           form_up: { ai_agenda: 'follow_commander' },
           flank_left: { bw_flank_tendency: 80, bw_flank_direction: 20 },
           flank_right: { bw_flank_tendency: 80, bw_flank_direction: 80 },
-          resume: {}, // No DB updates — just unlock the brain
+          resume: {},
+          formation_line: {},
+          formation_column: {},
+          formation_shield_wall: {},
+          formation_wedge: {},
+          formation_circle: {},
+          formation_square: {},
+          formation_loose: {},
         };
 
         const updates = commandMap[command];
@@ -192,19 +201,53 @@ const armyRoutes: ServerRoute[] = [
           units = [unit];
         }
 
+        // Handle formation commands — calculate positions using commander location
+        if (isFormation) {
+          const { players } = await import('../../handlers/gameSync/combat');
+          const cmdState = players.get(credentials.id);
+          const center: [number, number, number] = cmdState ? cmdState.pos : [0, 0.5, 0];
+          const facing = cmdState ? cmdState.rot : 0;
+          const formationType = command.replace('formation_', '');
+
+          const positions = calculateFormationPositions(
+            { type: formationType, center, facing, width: units.length * 2.5 },
+            units.length,
+          );
+
+          for (let i = 0; i < units.length; i++) {
+            const brain = activeNPCs.get(units[i].id);
+            if (brain) {
+              brain.agenda = 'formation';
+              brain.agendaLocked = true;
+              brain.formationPos = positions[i].pos as [number, number, number];
+              brain.formationRot = positions[i].rot;
+              brain.formationType = formationType;
+              brain.formationAction = formationType === 'shield_wall' ? 'block' : null;
+            }
+          }
+
+          console.log(`[Army] Formation ${formationType}: ${units.length} units assigned at [${center.map(n => n.toFixed(1)).join(',')}]`);
+          return { success: true, affected: units.length, formation: formationType };
+        }
+
         let affected = 0;
         for (const unit of units) {
-          await Data.playerCharacter.update(unit.id, updates);
+          if (!isResume) await Data.playerCharacter.update(unit.id, updates);
 
-          // Also update the in-memory brain so behavior tree picks it up immediately
           const brain = activeNPCs.get(unit.id);
           if (brain) {
             if (isResume) {
               brain.agendaLocked = false;
+              brain.formationPos = null;
+              brain.formationType = null;
+              brain.formationAction = null;
               console.log(`[Army] Unlocked agenda for ${brain.name} — AI resumes control`);
             } else if (updates.ai_agenda) {
               brain.agenda = updates.ai_agenda as string;
               brain.agendaLocked = true;
+              brain.formationPos = null; // Clear formation when switching to non-formation command
+              brain.formationType = null;
+              brain.formationAction = null;
             }
             if (updates.bw_aggression !== undefined) brain.aggression = updates.bw_aggression as number;
             if (updates.bw_defense !== undefined) brain.defense = updates.bw_defense as number;
@@ -322,6 +365,98 @@ const armyRoutes: ServerRoute[] = [
         await Data.playerCharacter.update(unit_id, { rank: new_rank });
 
         return { success: true, name: unit.name, new_rank };
+      }),
+  },
+
+  // ── Set formation ──
+  {
+    method: 'POST',
+    path: '/api/v1/army/formation',
+    options: {
+      auth: 'jwt',
+      validate: {
+        payload: Joi.object({
+          type: Joi.string().valid('line', 'column', 'shield_wall', 'wedge', 'circle', 'square', 'loose').required(),
+          center: Joi.array().items(Joi.number()).length(3).required(),
+          facing: Joi.number().required(),
+          width: Joi.number().optional(),
+          depth: Joi.number().optional(),
+          radius: Joi.number().optional(),
+          size: Joi.number().optional(),
+          spacing: Joi.number().optional(),
+          unit_ids: Joi.array().items(Joi.string()).optional(),
+        }),
+      },
+    },
+    handler: async (request: Request) =>
+      tracer.trace('CONTROLLER.ARMY.FORMATION', async () => {
+        const credentials = request.auth.credentials as unknown as AuthCredentials;
+        const payload = request.payload as {
+          type: string;
+          center: [number, number, number];
+          facing: number;
+          width?: number;
+          depth?: number;
+          radius?: number;
+          size?: number;
+          spacing?: number;
+          unit_ids?: string[];
+        };
+
+        // Get units to form up
+        let units: Awaited<ReturnType<typeof Data.playerCharacter.getArmyStructure>>;
+        if (payload.unit_ids && payload.unit_ids.length > 0) {
+          const army = await Data.playerCharacter.getArmyStructure(credentials.id);
+          units = army.filter((u) => payload.unit_ids!.includes(u.id));
+        } else {
+          units = await Data.playerCharacter.getArmyStructure(credentials.id);
+        }
+
+        if (units.length === 0) throw Boom.notFound('No units to form');
+
+        // Calculate positions
+        const positions = calculateFormationPositions(
+          {
+            type: payload.type,
+            center: payload.center,
+            facing: payload.facing,
+            width: payload.width,
+            depth: payload.depth,
+            radius: payload.radius,
+            size: payload.size,
+            spacing: payload.spacing,
+          },
+          units.length,
+        );
+
+        // Assign to each unit
+        const assignments = [];
+        for (let i = 0; i < units.length; i++) {
+          const unit = units[i];
+          const pos = positions[i];
+
+          // Update in-memory brain
+          const brain = activeNPCs.get(unit.id);
+          if (brain) {
+            brain.agenda = 'formation';
+            brain.agendaLocked = true;
+            brain.formationPos = pos.pos as [number, number, number];
+            brain.formationRot = pos.rot;
+            brain.formationType = payload.type;
+            brain.formationAction = payload.type === 'shield_wall' ? 'block' : null;
+          }
+
+          assignments.push({
+            unit_id: unit.id,
+            name: unit.name,
+            pos: pos.pos,
+            rot: pos.rot,
+          });
+        }
+
+        console.log(`[Army] Formation ${payload.type}: ${units.length} units assigned`);
+
+        return { formation: payload.type, assignments };
       }),
   },
 ];

@@ -50,6 +50,13 @@ const dispatchArmyChat = async (userId: string, message: string): Promise<Dispat
       [/\b(resume|as you were|carry on|free|autonomous|ai control)\b/i, 'resume'],
       [/\b(flank left|go left)\b/i, 'flank left'],
       [/\b(flank right|go right)\b/i, 'flank right'],
+      [/\b(form a line|line formation|line up)\b/i, 'formation_line'],
+      [/\b(shield wall|shieldwall)\b/i, 'formation_shield_wall'],
+      [/\b(column formation|single file)\b/i, 'formation_column'],
+      [/\b(wedge|v.?formation)\b/i, 'formation_wedge'],
+      [/\b(circle up|circle formation|surround)\b/i, 'formation_circle'],
+      [/\b(square formation|box formation)\b/i, 'formation_square'],
+      [/\b(spread out|scatter|loose formation)\b/i, 'formation_loose'],
     ];
     for (const [pattern, cmd] of commandPatterns) {
       if (pattern.test(msg)) commands.push(cmd);

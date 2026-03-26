@@ -52,7 +52,13 @@ type NPCBrain = {
   lastGrokCall: number;
   grokIntervalMs: number;
   situationLog: string[];
-  agendaLocked: boolean; // true = set by player command, Grok cannot override
+  agendaLocked: boolean;
+
+  // Formation
+  formationPos: [number, number, number] | null;
+  formationRot: number | null;
+  formationType: string | null;
+  formationAction: string | null; // 'block' for shield wall
 };
 
 type BehaviorAction = 'idle' | 'walk' | 'run' | 'attack_light' | 'attack_heavy' | 'block' | 'dodge';
@@ -153,6 +159,33 @@ const evaluateBehavior = (
       return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'GUARD: blocking nearby enemy' };
     }
     return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'GUARD: holding position' };
+  }
+
+  // ── 3.5 Formation — move to assigned position ──
+  if (brain.agenda === 'formation' && brain.formationPos) {
+    const distToFormation = dist3d(npc.pos, brain.formationPos);
+
+    // If enemy in melee range, react but don't leave position
+    if (nearestEnemy && distToEnemy < 3) {
+      if (distToEnemy < 2.5 && npc.stamina >= 10 && Math.random() * 100 < brain.aggression) {
+        return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'FORMATION: melee counter-attack' };
+      }
+      return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'FORMATION: blocking enemy at position' };
+    }
+
+    // Move to formation position
+    if (distToFormation > 8) {
+      return { action: 'run', moveTarget: brain.formationPos, faceTarget: null, reason: `FORMATION: running to position (${distToFormation.toFixed(1)}m)` };
+    }
+    if (distToFormation > 2) {
+      return { action: 'walk', moveTarget: brain.formationPos, faceTarget: null, reason: `FORMATION: walking to position (${distToFormation.toFixed(1)}m)` };
+    }
+
+    // In position — hold and face formation direction
+    if (brain.formationAction === 'block') {
+      return { action: 'block', moveTarget: null, faceTarget: null, reason: 'FORMATION: shield wall — blocking' };
+    }
+    return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'FORMATION: in position' };
   }
 
   // ── 4. Commander protection ──
