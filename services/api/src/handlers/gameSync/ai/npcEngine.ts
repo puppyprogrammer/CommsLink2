@@ -120,10 +120,13 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
   }
 
   // ── Second pass: assign chain of command (leaderId) ──
-  // Soldiers → their squad's sergeant
-  // Sergeants → their maniple's decurion
-  // Decurions → the centurion
-  // Centurion → the player commander
+  // Re-fetch from DB to get latest ranks after promotions
+  await rebuildChainOfCommand(commanderUserId);
+};
+
+/** Rebuild leaderId for all active NPCs of a commander. Call after promotions/deaths/recruits. */
+const rebuildChainOfCommand = async (commanderUserId: string): Promise<void> => {
+  const recruits = await Data.playerCharacter.findRecruitsByCommander(commanderUserId);
   const centurion = recruits.find((r) => r.rank === 'centurion');
 
   for (const recruit of recruits) {
@@ -146,7 +149,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
     } else if (recruit.rank === 'decurion') {
       brain.leaderId = centurion?.id || commanderUserId;
     } else if (recruit.rank === 'centurion') {
-      brain.leaderId = commanderUserId; // Centurion follows the player
+      brain.leaderId = commanderUserId;
     }
   }
 };
@@ -388,4 +391,4 @@ setInterval(() => {
   }
 }, 30_000);
 
-export { registerPlayerNPCs, unregisterPlayerNPCs, activeNPCs, npcStates };
+export { registerPlayerNPCs, unregisterPlayerNPCs, rebuildChainOfCommand, activeNPCs, npcStates };

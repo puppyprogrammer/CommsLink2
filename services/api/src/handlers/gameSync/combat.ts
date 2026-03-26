@@ -165,8 +165,13 @@ const resolveAttack = (attacker: PlayerSyncState, attackType: 'light' | 'heavy')
           npcEngine.activeNPCs.delete(id);
           players.delete(id);
           broadcastAll({ type: 'player_left', id });
-          // Fill leadership gaps caused by the death
-          Data.playerCharacter.fillLeadershipGaps(victimBrain.commanderUserId).catch(() => {});
+          // Fill leadership gaps and rebuild chain of command
+          Data.playerCharacter.fillLeadershipGaps(victimBrain.commanderUserId)
+            .then(() => {
+              const { rebuildChainOfCommand } = require('./ai/npcEngine');
+              return rebuildChainOfCommand(victimBrain.commanderUserId);
+            })
+            .catch(() => {});
           console.log(`[Combat] NPC ${victimBrain.name} permanently killed`);
         }, 5000);
       } else {
