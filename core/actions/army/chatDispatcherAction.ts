@@ -29,68 +29,143 @@ const dispatchArmyChat = async (userId: string, message: string): Promise<Dispat
     const army = await Data.playerCharacter.getArmyStructure(userId);
     if (army.length === 0) throw Boom.notFound('No army found');
 
-    const unitList = army.map((u) => ({
-      id: u.id,
-      name: u.name,
-      rank: u.rank,
-      maniple: u.maniple_id ? `Maniple ${u.maniple_id} "${u.maniple_name || ''}"` : 'Unassigned',
-      squad: u.squad_id ? `Squad ${u.squad_id?.toUpperCase()}` : '',
-    }));
-
-    // ── Dispatcher call (grok-code, fast) ──
-    const dispatchPrompt = `You are a message routing system for a medieval army. Given a commander's message and a list of units, determine who should RESPOND verbally and who should just LISTEN silently.
-
-RULES:
-- If a specific name is mentioned, only that unit responds
-- If a rank is mentioned ("Sergeants", "Decurions"), all units of that rank respond
-- If a group is mentioned ("Maniple 2", "Wolf Pack", "Squad 3A"), the leader of that group responds
-- If "everyone", "all", or "army" is mentioned, the Centurion responds (or highest rank if no Centurion)
-- If it's a general question/comment, pick 1-2 of the most verbal/relevant units to respond
-- NEVER have more than 3 units respond to a single message
-- If a quick command is detected (advance, retreat, hold, attack, defend, form up, flank), include it in commands
-
-UNITS:
-${unitList.map((u) => `- ${u.name} [${u.id}] (${u.rank}, ${u.maniple} ${u.squad})`).join('\n')}
-
-Respond with ONLY valid JSON:
-{
-  "responder_ids": ["id1"],
-  "listener_context": "brief summary for non-responders",
-  "commands": []
-}`;
-
+    // ── Fast pattern matching (no Grok call, <1ms) ──
     let responderIds: string[] = [];
     let listenerContext = '';
     let commands: string[] = [];
+    let usedFastPath = false;
 
-    try {
-      const dispatchResponse = await grokAdapter.chatCompletion(
-        dispatchPrompt,
-        [{ role: 'user', content: message }],
-        'grok-code-fast-1',
-        200,
-      );
+    const msg = message.toLowerCase().trim();
+    const centurion = army.find((u) => u.rank === 'centurion');
+    const highestRank = centurion || army.find((u) => u.rank === 'decurion') || army.find((u) => u.rank === 'sergeant') || army[0];
 
-      const text = dispatchResponse.text || '';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        responderIds = Array.isArray(parsed.responder_ids) ? parsed.responder_ids : [];
-        listenerContext = parsed.listener_context || '';
-        commands = Array.isArray(parsed.commands) ? parsed.commands : [];
+    // Detect quick commands
+    const commandPatterns: [RegExp, string][] = [
+      [/\b(hold|stay|stop|halt)\b/i, 'hold'],
+      [/\b(advance|forward|march|move out|charge)\b/i, 'advance'],
+      [/\b(retreat|fall back|pull back|withdraw)\b/i, 'retreat'],
+      [/\b(attack|fight|engage|kill)\b/i, 'attack'],
+      [/\b(defend|protect|shield)\b/i, 'defend'],
+      [/\b(form up|regroup|rally|on me)\b/i, 'form up'],
+      [/\b(flank left|go left)\b/i, 'flank left'],
+      [/\b(flank right|go right)\b/i, 'flank right'],
+    ];
+    for (const [pattern, cmd] of commandPatterns) {
+      if (pattern.test(msg)) commands.push(cmd);
+    }
+
+    // Check if a specific unit name is mentioned
+    const namedUnit = army.find((u) => msg.includes(u.name.toLowerCase()));
+    if (namedUnit) {
+      responderIds = [namedUnit.id];
+      listenerContext = `Commander addressed ${namedUnit.name}`;
+      usedFastPath = true;
+    }
+
+    // Check for rank addressing
+    if (!usedFastPath && /\bcenturion\b/i.test(msg) && centurion) {
+      responderIds = [centurion.id];
+      listenerContext = 'Commander addressed the Centurion';
+      usedFastPath = true;
+    }
+    if (!usedFastPath && /\bdecurion/i.test(msg)) {
+      responderIds = army.filter((u) => u.rank === 'decurion').map((u) => u.id).slice(0, 3);
+      listenerContext = 'Commander addressed Decurions';
+      usedFastPath = true;
+    }
+    if (!usedFastPath && /\bsergeant/i.test(msg)) {
+      responderIds = army.filter((u) => u.rank === 'sergeant').map((u) => u.id).slice(0, 3);
+      listenerContext = 'Commander addressed Sergeants';
+      usedFastPath = true;
+    }
+
+    // Check for squad/maniple addressing
+    if (!usedFastPath) {
+      const squadMatch = msg.match(/\bsquad\s*([a-b])\b/i);
+      if (squadMatch) {
+        const sqId = squadMatch[1].toLowerCase();
+        const squadLeader = army.find((u) => u.squad_id === sqId && (u.rank === 'sergeant' || u.rank === 'decurion'));
+        if (squadLeader) {
+          responderIds = [squadLeader.id];
+          listenerContext = `Commander addressed Squad ${sqId.toUpperCase()}`;
+          usedFastPath = true;
+        }
       }
-    } catch (err) {
-      console.error('[ArmyChat] Dispatcher failed, falling back to centurion:', (err as Error).message);
+    }
+    if (!usedFastPath) {
+      const manipleMatch = msg.match(/\bmaniple\s*(\d+)\b/i);
+      if (manipleMatch) {
+        const mId = parseInt(manipleMatch[1], 10);
+        const decurion = army.find((u) => u.maniple_id === mId && u.rank === 'decurion');
+        if (decurion) {
+          responderIds = [decurion.id];
+          listenerContext = `Commander addressed Maniple ${mId}`;
+          usedFastPath = true;
+        }
+      }
+      // Check maniple names
+      if (!usedFastPath) {
+        for (const u of army) {
+          if (u.maniple_name && msg.includes(u.maniple_name.toLowerCase())) {
+            const decurion = army.find((d) => d.maniple_id === u.maniple_id && d.rank === 'decurion');
+            if (decurion) {
+              responderIds = [decurion.id];
+              listenerContext = `Commander addressed ${u.maniple_name}`;
+              usedFastPath = true;
+              break;
+            }
+          }
+        }
+      }
     }
 
-    // Fallback
-    if (responderIds.length === 0) {
-      const centurion = army.find((u) => u.rank === 'centurion');
-      const fallback = centurion || army.find((u) => u.rank === 'decurion') || army[0];
-      if (fallback) responderIds = [fallback.id];
+    // "Everyone", "all", army-wide
+    if (!usedFastPath && /\b(everyone|all|army|troops|men)\b/i.test(msg)) {
+      if (highestRank) responderIds = [highestRank.id];
+      listenerContext = 'Commander addressed the army';
+      usedFastPath = true;
     }
 
-    // Validate IDs exist in army
+    // Commands without specific addressing → centurion/highest responds
+    if (!usedFastPath && commands.length > 0 && highestRank) {
+      responderIds = [highestRank.id];
+      listenerContext = `Commander issued: ${commands.join(', ')}`;
+      usedFastPath = true;
+    }
+
+    // ── Fall back to Grok only for ambiguous messages ──
+    if (!usedFastPath) {
+      console.log(`[ArmyChat] Fast path miss, using Grok for: "${message}"`);
+      const unitList = army.map((u) => `${u.name} [${u.id}] (${u.rank})`).join(', ');
+      try {
+        const t0 = Date.now();
+        const dispatchResponse = await grokAdapter.chatCompletion(
+          `Route this army message. Units: ${unitList}\nPick 1-2 responder IDs. JSON only: {"responder_ids":["id"],"listener_context":"summary","commands":[]}`,
+          [{ role: 'user', content: message }],
+          'grok-code-fast-1',
+          100,
+        );
+        console.log(`[ArmyChat] Grok dispatch took ${Date.now() - t0}ms`);
+
+        const text = dispatchResponse.text || '';
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          responderIds = Array.isArray(parsed.responder_ids) ? parsed.responder_ids : [];
+          listenerContext = parsed.listener_context || '';
+          if (Array.isArray(parsed.commands)) commands.push(...parsed.commands);
+        }
+      } catch (err) {
+        console.error('[ArmyChat] Grok dispatch failed:', (err as Error).message);
+      }
+    } else {
+      console.log(`[ArmyChat] Fast path: ${listenerContext} (${commands.length} commands)`);
+    }
+
+    // Final fallback
+    if (responderIds.length === 0 && highestRank) {
+      responderIds = [highestRank.id];
+    }
     responderIds = responderIds.filter((id) => army.some((u) => u.id === id)).slice(0, 3);
 
     const listenerIds = army.filter((u) => !responderIds.includes(u.id)).map((u) => u.id);
@@ -152,30 +227,19 @@ const generateUnitResponse = async (unit: player_character, playerMessage: strin
     ? `${rankTitle} of Maniple ${unit.maniple_id} "${unit.maniple_name || ''}" Squad ${unit.squad_id?.toUpperCase() || '?'}`
     : rankTitle;
 
-  const prompt = `You are ${unit.name}, a ${unitAssignment} in a medieval army.
-
-PERSONALITY: humor=${unit.trait_humor}, obedience=${unit.trait_obedience}, bravery=${unit.trait_bravery}, verbosity=${unit.trait_verbosity}
-DISPOSITION: mood=${unit.mood}, loyalty=${unit.loyalty}, respect=${unit.respect}, familiarity=${unit.familiarity}
-RANK: ${unit.rank} — ${unit.rank === 'centurion' ? 'You command the entire army. Speak with authority and strategic insight.' :
-  unit.rank === 'decurion' ? 'You command a maniple of 10. Speak with confidence about your unit.' :
-  unit.rank === 'sergeant' ? 'You lead a squad of 5. Speak practically about your squad.' :
-  'You are a soldier. Speak simply and respectfully.'}
-
-Recent memories: ${recentMemories}
-Commander's instructions: ${unit.ai_instructions || 'Serve loyally.'}
-
-Respond in character. Keep it to 1-2 sentences. Match your rank.
-
-After your response, on a NEW line write:
-EMOTION: (one of: neutral, happy, angry, fearful, sarcastic, determined, respectful)`;
+  const prompt = `You are ${unit.name}, ${rankTitle} in a medieval army. ${unit.rank === 'centurion' ? 'Speak with authority.' : unit.rank === 'soldier' ? 'Speak simply.' : 'Speak confidently.'}
+Humor:${unit.trait_humor} Bravery:${unit.trait_bravery} Mood:${unit.mood}
+Reply in 1 sentence, in character. End with EMOTION: (neutral/happy/angry/fearful/sarcastic/determined)`;
 
   try {
+    const t0 = Date.now();
     const grokResponse = await grokAdapter.chatCompletion(
       prompt,
       [{ role: 'user', content: playerMessage }],
-      unit.rank === 'centurion' ? 'grok-3-mini' : 'grok-code-fast-1',
-      150,
+      'grok-code-fast-1', // Always use fast model — even centurion (speed > quality for chat)
+      60,
     );
+    console.log(`[ArmyChat] ${unit.name} response took ${Date.now() - t0}ms`);
 
     const text = grokResponse.text || '*salutes*';
     let emotion = 'neutral';
