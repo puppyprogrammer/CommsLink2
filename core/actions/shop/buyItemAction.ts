@@ -147,6 +147,31 @@ const buyItemAction = async (
       // Auto-assign to army structure (rank determined by auto-promotion system)
       await Data.playerCharacter.autoAssignRecruit(userId, recruit.id).catch(console.error);
 
+      // Give the recruit starting equipment based on type
+      const weaponNames: Record<string, string> = {
+        peasant_levy: 'Iron Broadsword',
+        militia_swordsman: 'Iron Broadsword',
+        man_at_arms: 'Steel Rapier',
+        veteran_knight: 'War Halberd',
+        elite_champion: 'Zweihander',
+        crossbowman: 'Iron Broadsword',
+        shield_bearer: 'Iron Broadsword',
+      };
+      const shieldTypes = ['peasant_levy', 'militia_swordsman', 'man_at_arms', 'shield_bearer'];
+
+      const weaponDef = await Data.itemDefinition.findByName(weaponNames[npcType] || 'Iron Broadsword');
+      if (weaponDef) {
+        const wpn = await Data.inventoryItem.addItem(recruit.id, weaponDef.id, 1, 0);
+        await Data.inventoryItem.equipItem(wpn.id, 'main_hand').catch(() => {});
+      }
+      if (shieldTypes.includes(npcType)) {
+        const shieldDef = await Data.itemDefinition.findByName('Wooden Shield');
+        if (shieldDef) {
+          const shld = await Data.inventoryItem.addItem(recruit.id, shieldDef.id, 1, 1);
+          await Data.inventoryItem.equipItem(shld.id, 'off_hand').catch(() => {});
+        }
+      }
+
       return {
         success: true,
         type: 'recruit',
