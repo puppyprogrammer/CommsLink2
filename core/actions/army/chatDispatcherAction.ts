@@ -47,6 +47,7 @@ const dispatchArmyChat = async (userId: string, message: string): Promise<Dispat
       [/\b(attack|fight|engage|kill)\b/i, 'attack'],
       [/\b(defend|protect|shield)\b/i, 'defend'],
       [/\b(form up|regroup|rally|on me)\b/i, 'form up'],
+      [/\b(resume|as you were|carry on|free|autonomous|ai control)\b/i, 'resume'],
       [/\b(flank left|go left)\b/i, 'flank left'],
       [/\b(flank right|go right)\b/i, 'flank right'],
     ];

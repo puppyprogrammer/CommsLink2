@@ -145,7 +145,7 @@ const armyRoutes: ServerRoute[] = [
       auth: 'jwt',
       validate: {
         payload: Joi.object({
-          command: Joi.string().valid('advance', 'retreat', 'hold', 'attack', 'defend', 'form_up', 'flank_left', 'flank_right').required(),
+          command: Joi.string().valid('advance', 'retreat', 'hold', 'attack', 'defend', 'form_up', 'flank_left', 'flank_right', 'resume').required(),
           target: Joi.string().optional(), // "all", "maniple_1", "squad_2a", or unit UUID
         }),
       },
@@ -154,6 +154,9 @@ const armyRoutes: ServerRoute[] = [
       tracer.trace('CONTROLLER.ARMY.COMMAND', async () => {
         const credentials = request.auth.credentials as unknown as AuthCredentials;
         const { command, target } = request.payload as { command: string; target?: string };
+
+        // Resume = unlock agenda, let AI decide
+        const isResume = command === 'resume';
 
         const commandMap: Record<string, Record<string, unknown>> = {
           advance: { ai_agenda: 'seek_combat', bw_aggression: 70 },
@@ -164,6 +167,7 @@ const armyRoutes: ServerRoute[] = [
           form_up: { ai_agenda: 'follow_commander' },
           flank_left: { bw_flank_tendency: 80, bw_flank_direction: 20 },
           flank_right: { bw_flank_tendency: 80, bw_flank_direction: 80 },
+          resume: {}, // No DB updates — just unlock the brain
         };
 
         const updates = commandMap[command];
@@ -195,9 +199,12 @@ const armyRoutes: ServerRoute[] = [
           // Also update the in-memory brain so behavior tree picks it up immediately
           const brain = activeNPCs.get(unit.id);
           if (brain) {
-            if (updates.ai_agenda) {
+            if (isResume) {
+              brain.agendaLocked = false;
+              console.log(`[Army] Unlocked agenda for ${brain.name} — AI resumes control`);
+            } else if (updates.ai_agenda) {
               brain.agenda = updates.ai_agenda as string;
-              brain.agendaLocked = true; // Lock so Grok can't override player's command
+              brain.agendaLocked = true;
             }
             if (updates.bw_aggression !== undefined) brain.aggression = updates.bw_aggression as number;
             if (updates.bw_defense !== undefined) brain.defense = updates.bw_defense as number;
