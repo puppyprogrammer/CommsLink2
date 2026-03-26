@@ -297,6 +297,11 @@ setInterval(() => {
       npc.action = decision.action;
     }
 
+    // Determine status for client display
+    const isRetreating = decision.reason.includes('RETREAT');
+    const isFleeing = decision.reason.includes('FLEE');
+    const status = isFleeing ? 'fleeing' : isRetreating ? 'retreating' : brain.agenda === 'guard_position' ? 'holding' : brain.agenda === 'formation' ? 'formation' : brain.agenda === 'seek_combat' ? 'attacking' : brain.agenda === 'march' ? 'marching' : 'following';
+
     // Broadcast NPC position/state to all clients
     broadcastAll({
       type: 'npc_update',
@@ -308,6 +313,8 @@ setInterval(() => {
       maxHp: npc.maxHp,
       stamina: npc.stamina,
       mood: brain.mood,
+      fear: brain.fear,
+      status,
     });
   }
 }, 500);
