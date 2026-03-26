@@ -57,14 +57,14 @@ const broadcastAll = (msg: object): void => {
 // └──────────────────────────────────────────┘
 
 const ATTACK_RANGE = 2.5;
-const LIGHT_DMG = 15;
-const HEAVY_DMG = 30;
-const LIGHT_STAMINA = 10;
-const HEAVY_STAMINA = 25;
-const DODGE_STAMINA = 20;
-const BLOCK_REDUCTION = 0.8;
+const LIGHT_DMG = 5;           // Was 15 — slow grind, not quick kills
+const HEAVY_DMG = 12;          // Was 30 — heavy hits still hurt but don't one-shot
+const LIGHT_STAMINA = 8;       // Was 10 — can swing more before exhaustion
+const HEAVY_STAMINA = 20;      // Was 25
+const DODGE_STAMINA = 15;      // Was 20
+const BLOCK_REDUCTION = 0.85;  // Was 0.8 — shields are very strong, formations matter
 const DODGE_WINDOW = 500;
-const DAMAGE_COOLDOWN = 300;
+const DAMAGE_COOLDOWN = 500;   // Was 300 — slower combat pace
 const CRITICAL_MULTIPLIER = 1.5;
 const XP_PER_KILL = 50;
 
@@ -130,6 +130,8 @@ const resolveAttack = (attacker: PlayerSyncState, attackType: 'light' | 'heavy')
     // Knockback
     const kb = (attackType === 'heavy' || isCritical) ? 2 : 1;
     const knockback = [toVictim[0] * kb, toVictim[1] * kb];
+
+    console.log(`[Combat] ${attacker.username} → ${victim.username}: ${finalDmg} dmg (${hitType}), HP: ${victim.hp}/${victim.maxHp}`);
 
     broadcastAll({
       type: 'damage',
