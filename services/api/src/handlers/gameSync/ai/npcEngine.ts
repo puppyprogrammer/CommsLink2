@@ -79,6 +79,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       formationRot: null,
       formationType: null,
       formationAction: null,
+      marchDirection: null,
     };
 
     activeNPCs.set(recruit.id, brain);

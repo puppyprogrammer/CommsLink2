@@ -47,6 +47,7 @@ const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
   formationRot: null,
   formationType: null,
   formationAction: null,
+  marchDirection: null,
   ...overrides,
 });
 

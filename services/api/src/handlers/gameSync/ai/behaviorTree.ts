@@ -58,7 +58,10 @@ type NPCBrain = {
   formationPos: [number, number, number] | null;
   formationRot: number | null;
   formationType: string | null;
-  formationAction: string | null; // 'block' for shield wall
+  formationAction: string | null;
+
+  // March
+  marchDirection: [number, number] | null; // [dx, dz] normalized direction to march
 };
 
 type BehaviorAction = 'idle' | 'walk' | 'run' | 'attack_light' | 'attack_heavy' | 'block' | 'dodge';
@@ -186,6 +189,24 @@ const evaluateBehavior = (
       return { action: 'block', moveTarget: null, faceTarget: null, reason: 'FORMATION: shield wall — blocking' };
     }
     return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'FORMATION: in position' };
+  }
+
+  // ── 3.6 March — walk forward in a direction until ordered to stop ──
+  if (brain.agenda === 'march' && brain.marchDirection) {
+    // If enemy in melee range, fight but keep marching after
+    if (nearestEnemy && distToEnemy < 2.5 && npc.stamina >= 10) {
+      if (Math.random() * 100 < brain.aggression) {
+        return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'MARCH: engaging enemy on the move' };
+      }
+    }
+
+    // March forward — set target 20m ahead in march direction
+    const marchTarget: [number, number, number] = [
+      npc.pos[0] + brain.marchDirection[0] * 20,
+      npc.pos[1],
+      npc.pos[2] + brain.marchDirection[1] * 20,
+    ];
+    return { action: 'walk', moveTarget: marchTarget, faceTarget: null, reason: 'MARCH: advancing forward' };
   }
 
   // ── 4. Commander protection ──

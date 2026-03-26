@@ -161,7 +161,7 @@ const armyRoutes: ServerRoute[] = [
         const isFormation = command.startsWith('formation_');
 
         const commandMap: Record<string, Record<string, unknown>> = {
-          advance: { ai_agenda: 'seek_combat', bw_aggression: 70 },
+          advance: { ai_agenda: 'march' },
           retreat: { ai_agenda: 'follow_commander', bw_self_preservation: 80 },
           hold: { ai_agenda: 'guard_position' },
           attack: { ai_agenda: 'seek_combat', bw_aggression: 85, bw_defense: 30 },
@@ -245,9 +245,23 @@ const armyRoutes: ServerRoute[] = [
             } else if (updates.ai_agenda) {
               brain.agenda = updates.ai_agenda as string;
               brain.agendaLocked = true;
-              brain.formationPos = null; // Clear formation when switching to non-formation command
+              brain.formationPos = null;
               brain.formationType = null;
               brain.formationAction = null;
+
+              // Set march direction from commander's facing when advancing
+              if (brain.agenda === 'march') {
+                const { players: pMap } = await import('../../handlers/gameSync/combat');
+                const cmd = pMap.get(credentials.id);
+                if (cmd) {
+                  const rad = cmd.rot * Math.PI / 180;
+                  brain.marchDirection = [Math.sin(rad), Math.cos(rad)];
+                } else {
+                  brain.marchDirection = [0, 1]; // default: north
+                }
+              } else {
+                brain.marchDirection = null;
+              }
             }
             if (updates.bw_aggression !== undefined) brain.aggression = updates.bw_aggression as number;
             if (updates.bw_defense !== undefined) brain.defense = updates.bw_defense as number;
