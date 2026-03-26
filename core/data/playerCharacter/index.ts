@@ -186,10 +186,74 @@ const autoAssignRecruit = async (commanderId: string, recruitId: string): Promis
   }
 
   // ── Assign the new recruit as Soldier ──
-  return prisma.player_character.update({
+  const result = await prisma.player_character.update({
     where: { id: recruitId },
     data: { rank: 'soldier', maniple_id: targetManiple, maniple_name: manipuleName, squad_id: targetSquad },
   });
+
+  // ── Post-assignment: fill any leadership gaps across the army ──
+  await fillLeadershipGaps(commanderId);
+
+  return result;
+};
+
+/** Ensure every active maniple has a decurion and every squad has a sergeant. */
+const fillLeadershipGaps = async (commanderId: string): Promise<void> => {
+  const army = await getArmyStructure(commanderId);
+  const centurion = army.find((u) => u.rank === 'centurion');
+
+  // Find which maniples and squads exist
+  const maniples = new Map<number, { units: typeof army; hasDecurion: boolean; squads: Map<string, { units: typeof army; hasSergeant: boolean }> }>();
+
+  for (const unit of army) {
+    if (!unit.maniple_id || unit.rank === 'centurion') continue;
+
+    if (!maniples.has(unit.maniple_id)) {
+      maniples.set(unit.maniple_id, { units: [], hasDecurion: false, squads: new Map() });
+    }
+    const m = maniples.get(unit.maniple_id)!;
+    m.units.push(unit);
+    if (unit.rank === 'decurion') m.hasDecurion = true;
+
+    if (unit.squad_id) {
+      if (!m.squads.has(unit.squad_id)) {
+        m.squads.set(unit.squad_id, { units: [], hasSergeant: false });
+      }
+      const s = m.squads.get(unit.squad_id)!;
+      s.units.push(unit);
+      if (unit.rank === 'sergeant' || unit.rank === 'decurion') s.hasSergeant = true;
+    }
+  }
+
+  // Fill missing sergeants
+  for (const [mId, maniple] of maniples) {
+    for (const [sId, squad] of maniple.squads) {
+      if (!squad.hasSergeant && squad.units.length >= 2) {
+        const candidates = squad.units.filter((u) => u.rank === 'soldier' && u.is_alive);
+        candidates.sort((a, b) => b.xp - a.xp || a.created_at.getTime() - b.created_at.getTime());
+        if (candidates[0]) {
+          await prisma.player_character.update({ where: { id: candidates[0].id }, data: { rank: 'sergeant' } });
+          console.log(`[Army] Auto-promoted ${candidates[0].name} to sergeant (M${mId} S${sId} had none)`);
+        }
+      }
+    }
+  }
+
+  // Fill missing decurions (only for maniples with 2 squads)
+  for (const [mId, maniple] of maniples) {
+    if (!maniple.hasDecurion && maniple.squads.size >= 2) {
+      // Promote highest XP sergeant in this maniple
+      const candidates = maniple.units.filter((u) => u.rank === 'sergeant' && u.is_alive);
+      candidates.sort((a, b) => b.xp - a.xp || a.created_at.getTime() - b.created_at.getTime());
+      if (candidates[0]) {
+        await prisma.player_character.update({ where: { id: candidates[0].id }, data: { rank: 'decurion' } });
+        console.log(`[Army] Auto-promoted ${candidates[0].name} to decurion (M${mId} had none)`);
+        // That squad now needs a new sergeant — recurse
+        await fillLeadershipGaps(commanderId);
+        return; // Recursion handles the rest
+      }
+    }
+  }
 };
 
 /** Auto-promote the best candidate to fill a leadership gap. */

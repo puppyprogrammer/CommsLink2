@@ -124,29 +124,26 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
   // Sergeants → their maniple's decurion
   // Decurions → the centurion
   // Centurion → the player commander
+  const centurion = recruits.find((r) => r.rank === 'centurion');
+
   for (const recruit of recruits) {
     const brain = activeNPCs.get(recruit.id);
     if (!brain) continue;
 
     if (recruit.rank === 'soldier') {
-      // Find sergeant in same squad
       const sergeant = recruits.find((r) =>
         r.rank === 'sergeant' && r.maniple_id === recruit.maniple_id && r.squad_id === recruit.squad_id
       );
-      // Fall back to decurion in same maniple
       const decurion = recruits.find((r) =>
         r.rank === 'decurion' && r.maniple_id === recruit.maniple_id
       );
-      brain.leaderId = sergeant?.id || decurion?.id || commanderUserId;
+      brain.leaderId = sergeant?.id || decurion?.id || centurion?.id || commanderUserId;
     } else if (recruit.rank === 'sergeant') {
-      // Find decurion in same maniple
       const decurion = recruits.find((r) =>
         r.rank === 'decurion' && r.maniple_id === recruit.maniple_id
       );
-      brain.leaderId = decurion?.id || commanderUserId;
+      brain.leaderId = decurion?.id || centurion?.id || commanderUserId;
     } else if (recruit.rank === 'decurion') {
-      // Find centurion
-      const centurion = recruits.find((r) => r.rank === 'centurion');
       brain.leaderId = centurion?.id || commanderUserId;
     } else if (recruit.rank === 'centurion') {
       brain.leaderId = commanderUserId; // Centurion follows the player
