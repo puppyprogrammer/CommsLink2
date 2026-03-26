@@ -80,7 +80,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
 
     // Create a PlayerSyncState for the NPC (so combat resolution can find them)
     const spawnPos: [number, number, number] = commander
-      ? [commander.pos[0] + (Math.random() - 0.5) * 4, commander.pos[1], commander.pos[2] + (Math.random() - 0.5) * 4]
+      ? [commander.pos[0] + (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2 : -2), commander.pos[1], commander.pos[2] + (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2 : -2)]
       : [recruit.spawn_x, recruit.spawn_y, recruit.spawn_z];
 
     const npcState: PlayerSyncState = {
@@ -162,7 +162,7 @@ setInterval(() => {
       const dz = decision.moveTarget[2] - npc.pos[2];
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > 0.5) {
-        const speed = decision.action === 'run' ? 2.5 : 1.25; // units per tick (500ms tick → 5/s run, 2.5/s walk)
+        const speed = decision.action === 'run' ? 2.5 : 1.25;
         npc.pos = [
           npc.pos[0] + (dx / dist) * speed,
           decision.moveTarget[1],
@@ -172,6 +172,40 @@ setInterval(() => {
           npc.rot = Math.atan2(dx, dz) * 180 / Math.PI;
         }
       }
+    }
+
+    // ── Unit separation: push apart if too close to allies ──
+    const MIN_SEPARATION = 2.0;
+    let sepX = 0;
+    let sepZ = 0;
+    for (const [otherId, otherBrain] of activeNPCs) {
+      if (otherId === id) continue;
+      if (otherBrain.commanderUserId !== brain.commanderUserId) continue;
+      const otherNpc = npcStates.get(otherId);
+      if (!otherNpc) continue;
+      const sdx = npc.pos[0] - otherNpc.pos[0];
+      const sdz = npc.pos[2] - otherNpc.pos[2];
+      const sDist = Math.sqrt(sdx * sdx + sdz * sdz);
+      if (sDist < MIN_SEPARATION && sDist > 0.01) {
+        const pushStrength = (MIN_SEPARATION - sDist) / MIN_SEPARATION * 0.5;
+        sepX += (sdx / sDist) * pushStrength;
+        sepZ += (sdz / sDist) * pushStrength;
+      }
+    }
+    // Also push away from commander
+    const cmdState = players.get(brain.commanderUserId);
+    if (cmdState) {
+      const cdx = npc.pos[0] - cmdState.pos[0];
+      const cdz = npc.pos[2] - cmdState.pos[2];
+      const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+      if (cDist < MIN_SEPARATION && cDist > 0.01) {
+        const pushStrength = (MIN_SEPARATION - cDist) / MIN_SEPARATION * 0.5;
+        sepX += (cdx / cDist) * pushStrength;
+        sepZ += (cdz / cDist) * pushStrength;
+      }
+    }
+    if (sepX !== 0 || sepZ !== 0) {
+      npc.pos = [npc.pos[0] + sepX, npc.pos[1], npc.pos[2] + sepZ];
     }
 
     // Execute combat actions
