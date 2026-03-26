@@ -112,17 +112,16 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       spawnX: recruit.spawn_x,
       spawnY: recruit.spawn_y,
       spawnZ: recruit.spawn_z,
-      weaponRange: 1.0, // Default fists, updated below
+      weaponRange: 1.0,
       weaponName: 'Fists',
     };
 
-    npcStates.set(recruit.id, npcState);
+    // Load weapon range BEFORE registering — must be synchronous with state creation
+    const weapon = await loadWeaponRange(recruit.id);
+    npcState.weaponRange = weapon.range;
+    npcState.weaponName = weapon.name;
 
-    // Load weapon range from equipped items
-    loadWeaponRange(recruit.id).then((w) => {
-      npcState.weaponRange = w.range;
-      npcState.weaponName = w.name;
-    }).catch(() => {});
+    npcStates.set(recruit.id, npcState);
     // Also add to the main players map so combat resolution can find them
     players.set(recruit.id, npcState);
 
@@ -279,8 +278,10 @@ setInterval(() => {
       const staminaCost = decision.action === 'attack_heavy' ? 25 : 10;
       if (npc.stamina >= staminaCost) {
         npc.stamina -= staminaCost;
-        const targetName = decision.faceTarget ? (players.get(decision.faceTarget)?.username || decision.faceTarget.substring(0, 8)) : 'none';
-        console.log(`[NPC:${brain.name}] ATTACKING ${targetName} (${decision.action})`);
+        const target = decision.faceTarget ? players.get(decision.faceTarget) : null;
+        const targetName = target?.username || 'none';
+        const targetDist = target ? Math.sqrt((npc.pos[0]-target.pos[0])**2 + (npc.pos[2]-target.pos[2])**2).toFixed(1) : '?';
+        console.log(`[NPC:${brain.name}] ATTACKING ${targetName} at ${targetDist}m (${decision.action}, range=${npc.weaponRange})`);
         broadcastAll({ type: 'npc_combat_action', id, action: decision.action, target_id: decision.faceTarget });
 
         // Actually run hit detection
