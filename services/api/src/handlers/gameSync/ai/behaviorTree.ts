@@ -52,6 +52,7 @@ type NPCBrain = {
   lastGrokCall: number;
   grokIntervalMs: number;
   situationLog: string[];
+  agendaLocked: boolean; // true = set by player command, Grok cannot override
 };
 
 type BehaviorAction = 'idle' | 'walk' | 'run' | 'attack_light' | 'attack_heavy' | 'block' | 'dodge';

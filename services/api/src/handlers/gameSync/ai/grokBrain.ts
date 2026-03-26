@@ -96,7 +96,7 @@ SAY: (short in-character line, or NONE)
 MEMORY: (one thing worth remembering about this moment, or NONE)`;
 };
 
-/** Parse Grok's KEY: VALUE response format. Robust against malformed output. */
+/** Parse Grok's KEY: VALUE response format. Respects agendaLocked flag. */
 const parseGrokResponse = (text: string, currentBrain: NPCBrain): GrokResponse => {
   const result: GrokResponse = {
     agenda: currentBrain.agenda,
@@ -127,7 +127,12 @@ const parseGrokResponse = (text: string, currentBrain: NPCBrain): GrokResponse =
     const clamp = (n: number) => Math.max(0, Math.min(100, isNaN(n) ? 50 : n));
 
     switch (key) {
-      case 'AGENDA': if (validAgendas.includes(val.toLowerCase())) result.agenda = val.toLowerCase(); break;
+      case 'AGENDA':
+        // Only allow Grok to change agenda if NOT locked by player command
+        if (!currentBrain.agendaLocked && validAgendas.includes(val.toLowerCase())) {
+          result.agenda = val.toLowerCase();
+        }
+        break;
       case 'MOOD': result.mood = clamp(num); break;
       case 'FEAR': result.fear = clamp(num); break;
       case 'AGGRESSION': result.aggression = clamp(num); break;

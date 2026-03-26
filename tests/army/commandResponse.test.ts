@@ -42,6 +42,7 @@ const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
   lastGrokCall: 0,
   grokIntervalMs: 30000,
   situationLog: [],
+  agendaLocked: false,
   ...overrides,
 });
 

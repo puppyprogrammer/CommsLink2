@@ -120,6 +120,7 @@ const armyRoutes: ServerRoute[] = [
                   for (const [key, val] of Object.entries(updates)) {
                     (brain as Record<string, unknown>)[key] = val;
                   }
+                  if (updates.agenda) brain.agendaLocked = true;
                 }
               }
             }
@@ -194,7 +195,10 @@ const armyRoutes: ServerRoute[] = [
           // Also update the in-memory brain so behavior tree picks it up immediately
           const brain = activeNPCs.get(unit.id);
           if (brain) {
-            if (updates.ai_agenda) brain.agenda = updates.ai_agenda as string;
+            if (updates.ai_agenda) {
+              brain.agenda = updates.ai_agenda as string;
+              brain.agendaLocked = true; // Lock so Grok can't override player's command
+            }
             if (updates.bw_aggression !== undefined) brain.aggression = updates.bw_aggression as number;
             if (updates.bw_defense !== undefined) brain.defense = updates.bw_defense as number;
             if (updates.bw_commander_protection !== undefined) brain.commanderProtection = updates.bw_commander_protection as number;
