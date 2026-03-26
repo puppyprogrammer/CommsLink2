@@ -162,7 +162,7 @@ setInterval(() => {
       const dz = decision.moveTarget[2] - npc.pos[2];
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > 0.5) {
-        const speed = decision.action === 'run' ? 0.08 : 0.04; // units per tick
+        const speed = decision.action === 'run' ? 2.5 : 1.25; // units per tick (500ms tick → 5/s run, 2.5/s walk)
         npc.pos = [
           npc.pos[0] + (dx / dist) * speed,
           decision.moveTarget[1],
