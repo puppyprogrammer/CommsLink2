@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'http';
 import jwtHelper from '../../../../../core/helpers/jwt';
 import Data from '../../../../../core/data';
 
-import { players, handleMessage } from './combat';
+import { players, handleMessage, loadWeaponRange } from './combat';
 import type { PlayerSyncState } from './combat';
 import { registerPlayerNPCs, unregisterPlayerNPCs } from './ai/npcEngine';
 
@@ -44,6 +44,9 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
       const userId = decoded.id;
       const username = decoded.username;
 
+      // Load weapon range from equipped items — server-authoritative
+      const weapon = await loadWeaponRange(character.id);
+
       const state: PlayerSyncState = {
         userId,
         characterId: character.id,
@@ -64,6 +67,8 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
         spawnX: character.spawn_x,
         spawnY: character.spawn_y,
         spawnZ: character.spawn_z,
+        weaponRange: weapon.range,
+        weaponName: weapon.name,
       };
 
       players.set(userId, state);

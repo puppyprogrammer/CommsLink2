@@ -116,7 +116,18 @@ const characterRoutes: ServerRoute[] = [
       tracer.trace('CONTROLLER.RECRUITS.LIST', async () => {
         const credentials = request.auth.credentials as unknown as AuthCredentials;
         const recruits = await Data.playerCharacter.findRecruitsByCommander(credentials.id);
-        return { recruits };
+        // Include equipped items for each recruit
+        const recruitsWithGear = await Promise.all(recruits.map(async (r) => {
+          const equipped = await Data.inventoryItem.findEquipped(r.id);
+          return {
+            ...r,
+            equipped: equipped.map((e) => ({
+              equip_slot: e.equip_slot,
+              item_def: e.item_def,
+            })),
+          };
+        }));
+        return { recruits: recruitsWithGear };
       }),
   },
   // ── Dismiss a recruit ──

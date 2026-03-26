@@ -8,7 +8,7 @@ import { WebSocket } from 'ws';
 import grokAdapter from '../../../../../../core/adapters/grok';
 import Data from '../../../../../../core/data';
 
-import { players, broadcastAll } from '../combat';
+import { players, broadcastAll, loadWeaponRange } from '../combat';
 import type { PlayerSyncState } from '../combat';
 import { evaluateBehavior } from './behaviorTree';
 import { buildPrompt, parseGrokResponse, applyGrokResponse } from './grokBrain';
@@ -112,9 +112,17 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       spawnX: recruit.spawn_x,
       spawnY: recruit.spawn_y,
       spawnZ: recruit.spawn_z,
+      weaponRange: 1.0, // Default fists, updated below
+      weaponName: 'Fists',
     };
 
     npcStates.set(recruit.id, npcState);
+
+    // Load weapon range from equipped items
+    loadWeaponRange(recruit.id).then((w) => {
+      npcState.weaponRange = w.range;
+      npcState.weaponName = w.name;
+    }).catch(() => {});
     // Also add to the main players map so combat resolution can find them
     players.set(recruit.id, npcState);
 

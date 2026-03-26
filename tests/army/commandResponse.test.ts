@@ -25,7 +25,7 @@ const makePlayer = (id: string, pos: [number, number, number] = [0, 0, 0]): Play
   isDead: false,
   spawnX: 0,
   spawnY: 0,
-  spawnZ: 0,
+  spawnZ: 0, weaponRange: 2.5, weaponName: 'Iron Broadsword',
 });
 
 const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({

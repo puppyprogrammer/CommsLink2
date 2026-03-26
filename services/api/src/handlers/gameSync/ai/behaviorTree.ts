@@ -238,7 +238,7 @@ const evaluateBehavior = (
 
   // ── 5. Combat — any unit engages enemies within 15m ──
   if (nearestEnemy && distToEnemy < 15 && brain.agenda !== 'rest' && brain.agenda !== 'socialize') {
-    const inAttackRange = distToEnemy < 2.5;
+    const inAttackRange = distToEnemy < (npc.weaponRange || 1.0);
     const inCloseRange = distToEnemy < 8;
 
     // Counter-attack after being hit or blocking

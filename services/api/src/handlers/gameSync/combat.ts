@@ -26,6 +26,8 @@ type PlayerSyncState = {
   spawnX: number;
   spawnY: number;
   spawnZ: number;
+  weaponRange: number;   // Attack reach in meters: fists=1, sword=2.5, halberd=3.5
+  weaponName: string;    // For client rendering
 };
 
 const players = new Map<string, PlayerSyncState>();
@@ -56,7 +58,16 @@ const broadcastAll = (msg: object): void => {
 // │ Combat Constants                         │
 // └──────────────────────────────────────────┘
 
-const ATTACK_RANGE = 2.5;
+const FIST_RANGE = 1.0;
+const DEFAULT_ATTACK_RANGE = 2.5;
+
+// Weapon range lookup by item name — server-authoritative, no client input
+const WEAPON_RANGES: Record<string, number> = {
+  'Iron Broadsword': 2.5,
+  'Steel Rapier': 2.0,
+  'War Halberd': 3.5,
+  'Zweihander': 3.0,
+};
 const LIGHT_DMG = 5;
 const HEAVY_DMG = 12;
 const LIGHT_STAMINA = 10;      // 10% of max stamina per swing
@@ -68,6 +79,19 @@ const DODGE_WINDOW = 500;
 const DAMAGE_COOLDOWN = 800;   // Slower pace — hits land every ~1s minimum
 const CRITICAL_MULTIPLIER = 2.0; // Flanking is devastating — the ONLY way to break a shield wall
 const XP_PER_KILL = 50;
+
+/** Look up weapon range from DB for a character. Call once at spawn, cache on PlayerSyncState. */
+const loadWeaponRange = async (characterId: string): Promise<{ range: number; name: string }> => {
+  try {
+    const equipped = await Data.inventoryItem.findEquipped(characterId);
+    const weapon = equipped.find((e) => e.equip_slot === 'main_hand');
+    if (weapon && weapon.item_def) {
+      const name = (weapon.item_def as { name: string }).name;
+      return { range: WEAPON_RANGES[name] || DEFAULT_ATTACK_RANGE, name };
+    }
+  } catch { /* ignore */ }
+  return { range: FIST_RANGE, name: 'Fists' };
+};
 
 // ┌──────────────────────────────────────────┐
 // │ Combat Resolution                        │
@@ -81,11 +105,11 @@ const resolveAttack = (attacker: PlayerSyncState, attackType: 'light' | 'heavy')
   for (const [id, victim] of players) {
     if (id === attacker.userId || victim.isDead) continue;
 
-    // Distance check
+    // Distance check — uses attacker's weapon range
     const dx = attacker.pos[0] - victim.pos[0];
     const dz = attacker.pos[2] - victim.pos[2];
     const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist > ATTACK_RANGE) continue;
+    if (dist > (attacker.weaponRange || FIST_RANGE)) continue;
 
     // Facing check
     const attackerRad = attacker.rot * Math.PI / 180;
@@ -265,4 +289,4 @@ const handleMessage = (userId: string, msg: { type: string; [key: string]: unkno
 };
 
 export type { PlayerSyncState };
-export { players, broadcast, broadcastAll, handleMessage, resolveAttack };
+export { players, broadcast, broadcastAll, handleMessage, resolveAttack, loadWeaponRange, WEAPON_RANGES, FIST_RANGE };
