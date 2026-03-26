@@ -5,14 +5,27 @@ const XP_PER_LEVEL = 100;
 const HP_PER_LEVEL = 2;
 const STAT_PER_LEVEL = 1;
 
-const create = async (data: { user_id: string; name: string }): Promise<player_character> =>
+const create = async (data: {
+  user_id: string;
+  name: string;
+  is_npc?: boolean;
+  commander_id?: string;
+  npc_type?: string;
+  npc_class?: string;
+  strength?: number;
+  defense?: number;
+  speed?: number;
+  max_health?: number;
+  max_stamina?: number;
+}): Promise<player_character> =>
   prisma.player_character.create({ data });
 
 const findById = async (id: string): Promise<player_character | null> =>
   prisma.player_character.findUnique({ where: { id } });
 
+/** Find a real player's character (not NPC) by user ID. */
 const findByUserId = async (userId: string): Promise<player_character | null> =>
-  prisma.player_character.findUnique({ where: { user_id: userId } });
+  prisma.player_character.findFirst({ where: { user_id: userId, is_npc: false } });
 
 const update = async (id: string, data: Partial<{
   name: string;
@@ -23,6 +36,7 @@ const update = async (id: string, data: Partial<{
   strength: number;
   defense: number;
   speed: number;
+  is_alive: boolean;
 }>): Promise<player_character> =>
   prisma.player_character.update({ where: { id }, data });
 
@@ -33,7 +47,6 @@ const addXP = async (id: string, amount: number): Promise<player_character> => {
     data: { xp: { increment: amount } },
   });
 
-  // Check for level-ups
   const newLevel = Math.floor(char.xp / XP_PER_LEVEL) + 1;
   if (newLevel > char.level) {
     const levelsGained = newLevel - char.level;
@@ -61,4 +74,16 @@ const recordDeath = async (id: string): Promise<player_character> =>
 const updateSpawn = async (id: string, x: number, y: number, z: number): Promise<player_character> =>
   prisma.player_character.update({ where: { id }, data: { spawn_x: x, spawn_y: y, spawn_z: z } });
 
-export default { create, findById, findByUserId, update, addXP, recordKill, recordDeath, updateSpawn };
+/** Get all recruits (NPCs) commanded by a user. */
+const findRecruitsByCommander = async (userId: string): Promise<player_character[]> =>
+  prisma.player_character.findMany({
+    where: { commander_id: userId, is_npc: true },
+    orderBy: { created_at: 'asc' },
+  });
+
+/** Dismiss (delete) a recruit. */
+const deleteRecruit = async (id: string): Promise<void> => {
+  await prisma.player_character.delete({ where: { id } });
+};
+
+export default { create, findById, findByUserId, update, addXP, recordKill, recordDeath, updateSpawn, findRecruitsByCommander, deleteRecruit };
