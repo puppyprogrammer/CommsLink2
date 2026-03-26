@@ -231,7 +231,12 @@ const evaluateBehavior = (
     }
   }
 
-  // ── 5. Combat — any unit engages enemies within 8m, regardless of agenda ──
+  // ── 4.5. Seek combat — chase enemies from far away ──
+  if (nearestEnemy && distToEnemy >= 15 && distToEnemy < 50 && brain.agenda === 'seek_combat') {
+    return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `SEEK: running toward enemy (${distToEnemy.toFixed(1)}m)` };
+  }
+
+  // ── 5. Combat — any unit engages enemies within 15m ──
   if (nearestEnemy && distToEnemy < 15 && brain.agenda !== 'rest' && brain.agenda !== 'socialize') {
     const inAttackRange = distToEnemy < 2.5;
     const inCloseRange = distToEnemy < 8;
