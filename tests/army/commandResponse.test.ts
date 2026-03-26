@@ -237,14 +237,14 @@ describe('Army Command Response', () => {
 
       expect(decision.action).toBe('run');
       expect(decision.reason).toContain('COMBAT');
-      expect(decision.reason).toContain('approaching');
+      expect(decision.reason).toMatch(/closing|chasing|approaching/);
     });
 
-    it('NPC with follow_commander agenda should NOT approach distant enemy', () => {
+    it('NPC with follow_commander agenda DOES engage enemy within 8m', () => {
       const { players, brains } = setupWorld();
-      const commander = makePlayer('commander-1', [3, 0, 0]); // close
+      const commander = makePlayer('commander-1', [3, 0, 0]);
       const npc = makePlayer('npc-1', [0, 0, 0]);
-      const enemy = makePlayer('enemy-1', [7, 0, 0]); // 7m — approach range but agenda is follow
+      const enemy = makePlayer('enemy-1', [7, 0, 0]); // 7m — within close range
       const brain = makeBrain({ agenda: 'follow_commander', aggression: 80 });
 
       players.set('commander-1', commander);
@@ -254,9 +254,28 @@ describe('Army Command Response', () => {
 
       const decision = evaluateBehavior(brain, npc, players, brains);
 
-      // Should idle near commander, NOT approach enemy
-      expect(decision.action).toBe('idle');
-      expect(decision.reason).not.toContain('approaching');
+      // Within 8m: all units close to fight regardless of agenda
+      expect(decision.action).toBe('run');
+      expect(decision.reason).toContain('COMBAT');
+    });
+
+    it('NPC with follow_commander agenda should NOT chase enemy beyond 8m', () => {
+      const { players, brains } = setupWorld();
+      const commander = makePlayer('commander-1', [3, 0, 0]);
+      const npc = makePlayer('npc-1', [0, 0, 0]);
+      const enemy = makePlayer('enemy-1', [12, 0, 0]); // 12m — beyond close range
+      const brain = makeBrain({ agenda: 'follow_commander', aggression: 80 });
+
+      players.set('commander-1', commander);
+      players.set('npc-1', npc);
+      players.set('enemy-1', enemy);
+      brains.set('npc-1', brain);
+
+      const decision = evaluateBehavior(brain, npc, players, brains);
+
+      // Beyond 8m with follow agenda: follow leader, don't chase
+      expect(decision.action).toBe('idle'); // close to commander
+      expect(decision.reason).not.toContain('chasing');
     });
   });
 

@@ -231,17 +231,19 @@ const evaluateBehavior = (
     }
   }
 
-  // ── 5. Combat (only if agenda allows) ──
+  // ── 5. Combat — any unit engages enemies within 8m, regardless of agenda ──
   if (nearestEnemy && distToEnemy < 15 && brain.agenda !== 'rest' && brain.agenda !== 'socialize') {
     const inAttackRange = distToEnemy < 2.5;
-    const inApproachRange = distToEnemy < 8;
+    const inCloseRange = distToEnemy < 8;
 
+    // Counter-attack after being hit or blocking
     if (npc.action === 'hit' || npc.action === 'block') {
       if (Math.random() * 100 < brain.counterAttack && inAttackRange && npc.stamina >= 10) {
         return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: counter-attack after hit/block' };
       }
     }
 
+    // In melee range — fight
     if (inAttackRange) {
       const roll = Math.random() * 100;
 
@@ -266,9 +268,15 @@ const evaluateBehavior = (
       return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: default block in range' };
     }
 
-    // Only approach if aggressive enough and agenda permits
-    if (inApproachRange && brain.aggression > 30 && (brain.agenda === 'seek_combat' || brain.agenda === 'protect_commander')) {
-      return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `COMBAT: approaching enemy (agg=${brain.aggression})` };
+    // Close to enemy (< 8m) — CLOSE THE GAP to melee range
+    // ALL units do this, not just seek_combat — if an enemy is within 8m you fight
+    if (inCloseRange) {
+      return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `COMBAT: closing to melee (${distToEnemy.toFixed(1)}m)` };
+    }
+
+    // Far enemy (8-15m) — only chase if aggressive agenda
+    if (brain.aggression > 30 && (brain.agenda === 'seek_combat' || brain.agenda === 'protect_commander')) {
+      return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `COMBAT: chasing enemy (${distToEnemy.toFixed(1)}m)` };
     }
   }
 
