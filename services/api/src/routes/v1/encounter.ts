@@ -148,6 +148,7 @@ const encounterRoutes: ServerRoute[] = [
             formationType: tierConfig.formation,
             formationAction: tierConfig.formation === 'shield_wall' ? 'block' : null,
             marchDirection: null,
+            leaderId: enemyCommanderId, // All encounter units follow their commander
           };
 
           players.set(id, npcState);

@@ -60,8 +60,11 @@ type NPCBrain = {
   formationType: string | null;
   formationAction: string | null;
 
+  // Chain of command
+  leaderId: string | null; // Who this unit follows (sergeant → decurion → centurion → commander)
+
   // March
-  marchDirection: [number, number] | null; // [dx, dz] normalized direction to march
+  marchDirection: [number, number] | null;
 };
 
 type BehaviorAction = 'idle' | 'walk' | 'run' | 'attack_light' | 'attack_heavy' | 'block' | 'dodge';
@@ -76,6 +79,16 @@ type BehaviorDecision = {
 const getCommanderPos = (brain: NPCBrain, players: Map<string, PlayerSyncState>): [number, number, number] | null => {
   const commander = players.get(brain.commanderUserId);
   return commander ? commander.pos : null;
+};
+
+/** Get the position of this unit's direct leader in the chain of command. */
+const getLeaderPos = (brain: NPCBrain, players: Map<string, PlayerSyncState>): [number, number, number] | null => {
+  if (brain.leaderId) {
+    const leader = players.get(brain.leaderId);
+    if (leader && !leader.isDead) return leader.pos;
+  }
+  // Fallback to commander
+  return getCommanderPos(brain, players);
 };
 
 /** Find nearest enemy. Excludes: self, commander, and any NPC with the same commander. */
@@ -122,6 +135,7 @@ const evaluateBehavior = (
   allBrains?: Map<string, NPCBrain>,
 ): BehaviorDecision => {
   const commanderPos = getCommanderPos(brain, players);
+  const leaderPos = getLeaderPos(brain, players);
   const nearestEnemy = findNearestEnemy(npc.pos, npc.userId, brain.commanderUserId, players, allBrains);
 
   const distToCommander = commanderPos ? dist3d(npc.pos, commanderPos) : 999;
@@ -258,14 +272,15 @@ const evaluateBehavior = (
     }
   }
 
-  // ── 6. Follow commander ──
+  // ── 6. Follow leader (chain of command) ──
   if (brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') {
-    if (commanderPos) {
-      if (distToCommander > 12) {
-        return { action: 'run', moveTarget: commanderPos, faceTarget: null, reason: `FOLLOW: running to commander (${distToCommander.toFixed(1)}m)` };
+    if (leaderPos) {
+      const distToLeader = dist3d(npc.pos, leaderPos);
+      if (distToLeader > 12) {
+        return { action: 'run', moveTarget: leaderPos, faceTarget: null, reason: `FOLLOW: running to leader (${distToLeader.toFixed(1)}m)` };
       }
-      if (distToCommander > 5) {
-        return { action: 'walk', moveTarget: commanderPos, faceTarget: null, reason: `FOLLOW: walking to commander (${distToCommander.toFixed(1)}m)` };
+      if (distToLeader > 5) {
+        return { action: 'walk', moveTarget: leaderPos, faceTarget: null, reason: `FOLLOW: walking to leader (${distToLeader.toFixed(1)}m)` };
       }
     }
   }

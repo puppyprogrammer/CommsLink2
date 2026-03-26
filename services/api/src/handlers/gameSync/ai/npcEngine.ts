@@ -80,6 +80,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       formationType: null,
       formationAction: null,
       marchDirection: null,
+      leaderId: null, // Set in second pass after all units registered
     };
 
     activeNPCs.set(recruit.id, brain);
@@ -115,7 +116,41 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
     // Also add to the main players map so combat resolution can find them
     players.set(recruit.id, npcState);
 
-    console.log(`[NPC] Registered ${recruit.name} (${recruit.npc_type}) for commander ${commanderUserId}`);
+    console.log(`[NPC] Registered ${recruit.name} (${recruit.npc_type}, ${recruit.rank}) for commander ${commanderUserId}`);
+  }
+
+  // ── Second pass: assign chain of command (leaderId) ──
+  // Soldiers → their squad's sergeant
+  // Sergeants → their maniple's decurion
+  // Decurions → the centurion
+  // Centurion → the player commander
+  for (const recruit of recruits) {
+    const brain = activeNPCs.get(recruit.id);
+    if (!brain) continue;
+
+    if (recruit.rank === 'soldier') {
+      // Find sergeant in same squad
+      const sergeant = recruits.find((r) =>
+        r.rank === 'sergeant' && r.maniple_id === recruit.maniple_id && r.squad_id === recruit.squad_id
+      );
+      // Fall back to decurion in same maniple
+      const decurion = recruits.find((r) =>
+        r.rank === 'decurion' && r.maniple_id === recruit.maniple_id
+      );
+      brain.leaderId = sergeant?.id || decurion?.id || commanderUserId;
+    } else if (recruit.rank === 'sergeant') {
+      // Find decurion in same maniple
+      const decurion = recruits.find((r) =>
+        r.rank === 'decurion' && r.maniple_id === recruit.maniple_id
+      );
+      brain.leaderId = decurion?.id || commanderUserId;
+    } else if (recruit.rank === 'decurion') {
+      // Find centurion
+      const centurion = recruits.find((r) => r.rank === 'centurion');
+      brain.leaderId = centurion?.id || commanderUserId;
+    } else if (recruit.rank === 'centurion') {
+      brain.leaderId = commanderUserId; // Centurion follows the player
+    }
   }
 };
 
