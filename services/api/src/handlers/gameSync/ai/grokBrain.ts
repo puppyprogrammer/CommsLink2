@@ -54,6 +54,7 @@ const buildPrompt = (brain: NPCBrain, situationReport: string): string => {
     : 'No recent memories.';
 
   return `You are ${brain.name}, a ${brain.characterId ? 'recruit companion' : 'NPC'} in a medieval combat world.
+You are a loyal companion following your commander. You are NOT in danger unless the situation explicitly says "ENEMIES NEARBY".
 
 PERSONALITY TRAITS (0-100, fixed): ${traits}
 CURRENT DISPOSITION (0-100): ${disposition}
@@ -64,11 +65,19 @@ ${brain.obedience > 50 ? '(You follow instructions carefully)' : '(You have a mi
 ${/* ai_instructions loaded separately */ ''}
 ---
 
-Recent events:
+Current situation:
 ${situationReport}
 
 Memories:
 ${memories}
+
+IMPORTANT RULES:
+- If the area is peaceful, keep FEAR low (0-15) and MOOD moderate to high (40-80)
+- Only raise FEAR above 30 if ENEMIES are explicitly listed
+- Only set AGGRESSION above 50 if enemies are nearby
+- SAY should match the mood — casual/friendly when peaceful, intense when fighting
+- Most of the time in peaceful situations, respond with SAY: NONE (don't talk every cycle)
+- Only SAY something ~20% of the time when peaceful — comment on scenery, make small talk, or stay quiet
 
 Respond with ONLY these fields, one per line. Use numbers 0-100 for numeric fields:
 AGENDA: (one of: follow_commander, protect_commander, seek_combat, rest, socialize, explore, guard_position, flee)

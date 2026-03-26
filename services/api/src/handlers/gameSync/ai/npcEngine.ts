@@ -230,21 +230,31 @@ setInterval(async () => {
       : 'unknown';
 
     const nearbyEnemies: string[] = [];
+    const nearbyAllies: string[] = [];
     for (const [pid, p] of players) {
       if (pid === id || pid === brain.commanderUserId || p.isDead) continue;
       const dx = npc.pos[0] - p.pos[0];
       const dz = npc.pos[2] - p.pos[2];
       const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist < 15) nearbyEnemies.push(`${p.username} at ${dist.toFixed(1)}m (HP: ${p.hp}/${p.maxHp})`);
+      if (dist > 15) continue;
+
+      // Check if this is a friendly NPC (same commander)
+      const otherBrain = activeNPCs.get(pid);
+      if (otherBrain && otherBrain.commanderUserId === brain.commanderUserId) {
+        nearbyAllies.push(`${p.username} (ally, ${dist.toFixed(1)}m)`);
+        continue;
+      }
+
+      nearbyEnemies.push(`${p.username} at ${dist.toFixed(1)}m (HP: ${p.hp}/${p.maxHp})`);
     }
 
     const situation = [
       `My HP: ${npc.hp}/${npc.maxHp}, Stamina: ${npc.stamina}/${npc.maxStamina}`,
       `Distance to commander: ${distToCommander}m`,
       `Current action: ${npc.action}, Agenda: ${brain.agenda}`,
-      nearbyEnemies.length > 0 ? `Nearby enemies: ${nearbyEnemies.join(', ')}` : 'No enemies nearby.',
-      `My kills: ${brain.situationLog.filter(l => l.includes('killed')).length}, My deaths: ${brain.situationLog.filter(l => l.includes('died')).length}`,
-    ].join('\n');
+      nearbyAllies.length > 0 ? `Nearby allies: ${nearbyAllies.join(', ')}` : '',
+      nearbyEnemies.length > 0 ? `ENEMIES NEARBY: ${nearbyEnemies.join(', ')}` : 'The area is peaceful. No enemies in sight.',
+    ].filter(Boolean).join('\n');
 
     // Load instructions from DB (may have been updated by player)
     const dbChar = await Data.playerCharacter.findById(id).catch(() => null);
