@@ -5,20 +5,8 @@ const XP_PER_LEVEL = 100;
 const HP_PER_LEVEL = 2;
 const STAT_PER_LEVEL = 1;
 
-const create = async (data: {
-  user_id: string;
-  name: string;
-  is_npc?: boolean;
-  commander_id?: string;
-  npc_type?: string;
-  npc_class?: string;
-  strength?: number;
-  defense?: number;
-  speed?: number;
-  max_health?: number;
-  max_stamina?: number;
-}): Promise<player_character> =>
-  prisma.player_character.create({ data });
+const create = async (data: Record<string, unknown> & { user_id: string; name: string }): Promise<player_character> =>
+  prisma.player_character.create({ data: data as Parameters<typeof prisma.player_character.create>[0]['data'] });
 
 const findById = async (id: string): Promise<player_character | null> =>
   prisma.player_character.findUnique({ where: { id } });
@@ -27,17 +15,7 @@ const findById = async (id: string): Promise<player_character | null> =>
 const findByUserId = async (userId: string): Promise<player_character | null> =>
   prisma.player_character.findFirst({ where: { user_id: userId, is_npc: false } });
 
-const update = async (id: string, data: Partial<{
-  name: string;
-  level: number;
-  xp: number;
-  max_health: number;
-  max_stamina: number;
-  strength: number;
-  defense: number;
-  speed: number;
-  is_alive: boolean;
-}>): Promise<player_character> =>
+const update = async (id: string, data: Record<string, unknown>): Promise<player_character> =>
   prisma.player_character.update({ where: { id }, data });
 
 /** Add XP and handle level-ups. Each level = 100 XP, grants +2 HP, +1 str/def/spd. */

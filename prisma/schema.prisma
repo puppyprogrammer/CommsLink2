@@ -475,6 +475,47 @@ model player_character {
   npc_class    String?
   is_alive     Boolean  @default(true)
 
+  // AI personality traits (0-100, set at creation, mostly static)
+  trait_humor       Int @default(50)
+  trait_obedience   Int @default(50)
+  trait_bravery     Int @default(50)
+  trait_curiosity   Int @default(50)
+  trait_greed       Int @default(50)
+  trait_aggression  Int @default(50)
+  trait_verbosity   Int @default(50)
+
+  // AI disposition (0-100, changes over time via Grok)
+  mood              Int @default(50)   // 0=miserable, 100=joyful
+  fear              Int @default(0)
+  loyalty           Int @default(50)
+  familiarity       Int @default(10)
+  attraction        Int @default(0)
+  warmth            Int @default(50)
+  respect           Int @default(50)
+
+  // AI needs (0-100, tick up over time)
+  fatigue           Int @default(0)
+  hunger            Int @default(0)
+  procreation_drive Int @default(20)
+
+  // AI behavior weights (0-100, adjusted by Grok)
+  bw_aggression           Int @default(50)
+  bw_defense              Int @default(50)
+  bw_counter_attack       Int @default(50)
+  bw_flank_tendency       Int @default(30)
+  bw_flank_direction      Int @default(50)  // 0=always left, 100=always right, 50=no preference
+  bw_retreat_threshold    Int @default(25)   // HP% to start retreating
+  bw_pursuit              Int @default(50)
+  bw_group_cohesion       Int @default(50)
+  bw_commander_protection Int @default(50)
+  bw_self_preservation    Int @default(50)
+
+  // AI brain
+  ai_instructions String? @db.Text  // Player-written natural language instructions
+  ai_memories     String? @db.Text  // Accumulated memories (JSON array)
+  ai_agenda       String  @default("follow_commander")
+  ai_target_id    String? // Current target character ID
+
   user              user               @relation("PlayerCharacter", fields: [user_id], references: [id])
   commander         user?              @relation("CommanderRecruits", fields: [commander_id], references: [id])
   inventory_items   inventory_item[]
