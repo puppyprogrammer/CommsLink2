@@ -5,6 +5,7 @@ import tracer from '../../../../../core/lib/tracer';
 import { dispatchArmyChat, generateUnitResponse } from '../../../../../core/actions/army/chatDispatcherAction';
 import Data from '../../../../../core/data';
 import { broadcastAll } from '../../handlers/gameSync/combat';
+import { activeNPCs } from '../../handlers/gameSync/ai/npcEngine';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -98,6 +99,34 @@ const armyRoutes: ServerRoute[] = [
           }).catch(console.error);
         }
 
+        // Sync dispatched commands to in-memory brains
+        if (dispatch.commands_issued.length > 0) {
+          const commandMap: Record<string, Record<string, unknown>> = {
+            advance: { agenda: 'seek_combat', aggression: 70 },
+            retreat: { agenda: 'follow_commander', selfPreservation: 80 },
+            hold: { agenda: 'guard_position' },
+            attack: { agenda: 'seek_combat', aggression: 85 },
+            defend: { agenda: 'protect_commander', defense: 80, commanderProtection: 90 },
+            'form up': { agenda: 'follow_commander' },
+            'flank left': { flankTendency: 80, flankDirection: 20 },
+            'flank right': { flankTendency: 80, flankDirection: 80 },
+          };
+          for (const cmd of dispatch.commands_issued) {
+            const updates = commandMap[cmd.toLowerCase()];
+            if (updates) {
+              for (const unit of dispatch._army) {
+                const brain = activeNPCs.get(unit.id);
+                if (brain) {
+                  for (const [key, val] of Object.entries(updates)) {
+                    (brain as Record<string, unknown>)[key] = val;
+                  }
+                }
+              }
+            }
+          }
+          console.log(`[Army] Chat dispatched commands: ${dispatch.commands_issued.join(', ')}`);
+        }
+
         // Return dispatch result immediately (no responses yet — they come via WebSocket)
         return {
           responders: dispatch.responders,
@@ -161,9 +190,23 @@ const armyRoutes: ServerRoute[] = [
         let affected = 0;
         for (const unit of units) {
           await Data.playerCharacter.update(unit.id, updates);
+
+          // Also update the in-memory brain so behavior tree picks it up immediately
+          const brain = activeNPCs.get(unit.id);
+          if (brain) {
+            if (updates.ai_agenda) brain.agenda = updates.ai_agenda as string;
+            if (updates.bw_aggression !== undefined) brain.aggression = updates.bw_aggression as number;
+            if (updates.bw_defense !== undefined) brain.defense = updates.bw_defense as number;
+            if (updates.bw_commander_protection !== undefined) brain.commanderProtection = updates.bw_commander_protection as number;
+            if (updates.bw_self_preservation !== undefined) brain.selfPreservation = updates.bw_self_preservation as number;
+            if (updates.bw_flank_tendency !== undefined) brain.flankTendency = updates.bw_flank_tendency as number;
+            if (updates.bw_flank_direction !== undefined) brain.flankDirection = updates.bw_flank_direction as number;
+          }
+
           affected++;
         }
 
+        console.log(`[Army] Command "${command}" applied to ${affected} units (target: ${target || 'all'})`);
         return { success: true, affected };
       }),
   },
