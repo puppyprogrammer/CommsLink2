@@ -366,6 +366,9 @@ const unregisterPlayerNPCs = (commanderUserId: string): void => {
 // └──────────────────────────────────────────┘
 
 let auditTickCounter = 0;
+const lastBroadcastPos = new Map<string, [number, number, number]>();
+const lastBroadcastRot = new Map<string, number>();
+const lastBroadcastAction = new Map<string, string>();
 
 setInterval(() => {
   auditTickCounter++;
@@ -573,12 +576,24 @@ setInterval(() => {
     const isFleeing = decision.reason.includes('FLEE');
     const status = isFleeing ? 'fleeing' : isRetreating ? 'retreating' : brain.agenda === 'guard_position' ? 'holding' : brain.agenda === 'formation' ? 'formation' : brain.agenda === 'seek_combat' ? 'attacking' : brain.agenda === 'march' ? 'marching' : 'following';
 
-    // Collect for batched broadcast
-    npcUpdates.push({
-      id, pos: npc.pos, rot: npc.rot, action: npc.action,
-      hp: npc.hp, maxHp: npc.maxHp, stamina: npc.stamina,
-      mood: brain.mood, fear: brain.fear, status,
-    });
+    // Collect for batched broadcast — only include if something changed
+    const lastPos = lastBroadcastPos.get(id);
+    const posChanged = !lastPos
+      || Math.abs(npc.pos[0] - lastPos[0]) > 0.05
+      || Math.abs(npc.pos[2] - lastPos[2]) > 0.05
+      || Math.abs(npc.rot - (lastBroadcastRot.get(id) || 0)) > 1
+      || npc.action !== (lastBroadcastAction.get(id) || '');
+
+    if (posChanged) {
+      lastBroadcastPos.set(id, [npc.pos[0], npc.pos[1], npc.pos[2]]);
+      lastBroadcastRot.set(id, npc.rot);
+      lastBroadcastAction.set(id, npc.action);
+      npcUpdates.push({
+        id, pos: npc.pos, rot: npc.rot, action: npc.action,
+        hp: npc.hp, maxHp: npc.maxHp, stamina: npc.stamina,
+        mood: brain.mood, fear: brain.fear, status,
+      });
+    }
   }
 
   // Single batched broadcast — 1 message instead of 80

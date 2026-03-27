@@ -282,6 +282,10 @@ const handleMessage = (userId: string, msg: { type: string; [key: string]: unkno
 
   switch (msg.type) {
     case 'update': {
+      const oldPos = player.pos;
+      const oldRot = player.rot;
+      const oldAction = player.action;
+
       if (Array.isArray(msg.pos) && msg.pos.length === 3) {
         player.pos = msg.pos as [number, number, number];
       }
@@ -289,13 +293,22 @@ const handleMessage = (userId: string, msg: { type: string; [key: string]: unkno
       if (msg.action === 'idle' || msg.action === 'walk' || msg.action === 'run') {
         player.action = msg.action;
       }
-      broadcast(userId, {
-        type: 'player_update',
-        id: userId,
-        pos: player.pos,
-        rot: player.rot,
-        action: player.action,
-      });
+
+      // Only broadcast if something actually changed — prevents idle twitch
+      const posMoved = Math.abs(player.pos[0] - oldPos[0]) > 0.05
+        || Math.abs(player.pos[2] - oldPos[2]) > 0.05;
+      const rotChanged = Math.abs(player.rot - oldRot) > 1;
+      const actionChanged = player.action !== oldAction;
+
+      if (posMoved || rotChanged || actionChanged) {
+        broadcast(userId, {
+          type: 'player_update',
+          id: userId,
+          pos: player.pos,
+          rot: player.rot,
+          action: player.action,
+        });
+      }
 
       // Trampling check (throttled — only when walking/running)
       if (msg.action === 'walk' || msg.action === 'run') {
