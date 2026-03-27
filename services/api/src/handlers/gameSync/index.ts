@@ -32,20 +32,21 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
   // Initialize vegetation & world time system
   initVegetationSystem();
 
-  // Track pong responses — terminate connections that miss 2 consecutive pings
-  const pongReceived = new Set<WebSocket>();
+  // Track missed pongs — terminate after 3 consecutive misses (30s with no response)
+  const missedPongs = new Map<WebSocket, number>();
 
   // Ping every 10s — fast keepalive for high-latency international connections
   setInterval(() => {
     for (const [id, p] of players) {
       if (!p.ws || p.ws.readyState !== WebSocket.OPEN) continue;
-      // If we pinged last round and never got a pong, connection is dead
-      if (!pongReceived.has(p.ws)) {
-        console.log(`[GameSync] ${p.username} missed pong — terminating`);
+      const missed = (missedPongs.get(p.ws) || 0) + 1;
+      if (missed >= 3) {
+        console.log(`[GameSync] ${p.username} missed 3 pongs — terminating`);
+        missedPongs.delete(p.ws);
         p.ws.terminate();
         continue;
       }
-      pongReceived.delete(p.ws);
+      missedPongs.set(p.ws, missed);
       p.ws.ping();
     }
   }, 10000);
@@ -94,8 +95,8 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
       };
 
       players.set(userId, state);
-      pongReceived.add(ws); // Mark as alive on connect
-      ws.on('pong', () => pongReceived.add(ws));
+      missedPongs.set(ws, 0); // Start fresh
+      ws.on('pong', () => missedPongs.set(ws, 0));
       console.log(`[GameSync] ${username} connected (${players.size} online)`);
 
       // Send world state (all current players + NPCs)
@@ -154,7 +155,7 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
 
       // Handle disconnect
       ws.on('close', () => {
-        pongReceived.delete(ws);
+        missedPongs.delete(ws);
         const player = players.get(userId);
         if (player) {
           Data.playerCharacter.updateSpawn(
