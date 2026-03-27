@@ -413,10 +413,10 @@ const evaluateBehavior = (
       if (distToCmd > 20) {
         return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: sprinting to formation (${distToCmd.toFixed(1)}m from cmd)` };
       }
-      if (distToTarget > 4) {
+      if (distToTarget > 3) {
         return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: running to position (${distToTarget.toFixed(1)}m off)` };
       }
-      if (distToTarget > 1.0) {
+      if (distToTarget > 0.5) {
         return { action: 'walk', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: adjusting position (${distToTarget.toFixed(1)}m off)` };
       }
       // In position — idle

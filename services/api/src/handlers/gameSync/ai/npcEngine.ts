@@ -425,7 +425,7 @@ setInterval(() => {
     // ── Unit separation: push apart if too close to allies ──
     // Skip when in formation — formation positioning handles spacing precisely
     if (!brain.formationType) {
-      const MIN_SEPARATION = 2.0;
+      const MIN_SEPARATION = 1.0;
       let sepX = 0;
       let sepZ = 0;
       for (const [otherId, otherBrain] of activeNPCs) {
