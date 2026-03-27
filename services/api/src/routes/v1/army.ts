@@ -172,17 +172,19 @@ const armyRoutes: ServerRoute[] = [
           x2: Joi.number().optional(),
           y2: Joi.number().optional(),
           z2: Joi.number().optional(),
+          positions: Joi.array().items(Joi.object({ x: Joi.number().required(), y: Joi.number().required(), z: Joi.number().required() })).optional(),
         }),
       },
     },
     handler: async (request: Request) =>
       tracer.trace('CONTROLLER.ARMY.COMMAND', async () => {
         const credentials = request.auth.credentials as unknown as AuthCredentials;
-        const { command, target, x, y, z, x1, y1, z1, x2, y2, z2 } = request.payload as {
+        const { command, target, x, y, z, x1, y1, z1, x2, y2, z2, positions } = request.payload as {
           command: string; target?: string;
           x?: number; y?: number; z?: number;
           x1?: number; y1?: number; z1?: number;
           x2?: number; y2?: number; z2?: number;
+          positions?: { x: number; y: number; z: number }[];
         };
 
         // Resume = unlock agenda, let AI decide
@@ -262,48 +264,57 @@ const armyRoutes: ServerRoute[] = [
           return { success: true, affected: units.length, formation: formationType };
         }
 
-        // Handle move_to — direct order to a world position or formation line
+        // Handle move_to — direct order to world positions
         if (command === 'move_to') {
           let affected = 0;
 
-          if (x1 !== undefined && z1 !== undefined && x2 !== undefined && z2 !== undefined) {
-            // Line placement: distribute units along the line (x1,z1) → (x2,z2)
+          // Sort units by armyBlockIndex so positions map correctly
+          const sortedUnits = units
+            .map((u) => ({ unit: u, brain: activeNPCs.get(u.id) }))
+            .filter((u) => !!u.brain)
+            .sort((a, b) => (a.brain!.armyBlockIndex) - (b.brain!.armyBlockIndex));
+
+          if (positions && positions.length > 0) {
+            // Exact positions from client — one per unit, ordered by block index
+            for (let i = 0; i < sortedUnits.length; i++) {
+              const pos = positions[Math.min(i, positions.length - 1)];
+              sortedUnits[i].brain!.moveToTarget = [pos.x, pos.y, pos.z];
+              sortedUnits[i].brain!.agendaLocked = true;
+              sortedUnits[i].brain!.formationPos = null;
+              affected++;
+            }
+            console.log(`[Army] move_to positions: ${affected} units, ${positions.length} slots`);
+          } else if (x1 !== undefined && z1 !== undefined && x2 !== undefined && z2 !== undefined) {
+            // Line endpoints: server distributes units along the line
             const lineLen = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2);
             const dirX = lineLen > 0.1 ? (x2 - x1) / lineLen : 1;
             const dirZ = lineLen > 0.1 ? (z2 - z1) / lineLen : 0;
             const ROW_DEPTH = 1.5;
-            const COLS = Math.max(1, Math.ceil(lineLen / 1.5)); // ~1.5m spacing
-            const spacing = units.length <= COLS ? lineLen / Math.max(1, units.length - 1) : lineLen / Math.max(1, COLS - 1);
+            const COLS = Math.max(1, Math.ceil(lineLen / 1.5));
 
-            for (let i = 0; i < units.length; i++) {
-              const brain = activeNPCs.get(units[i].id);
-              if (!brain) continue;
+            for (let i = 0; i < sortedUnits.length; i++) {
               const col = i % COLS;
               const row = Math.floor(i / COLS);
-              // Position along the line + row offset perpendicular behind
               const t = COLS <= 1 ? 0.5 : col / (COLS - 1);
               const px = x1 + (x2 - x1) * t - dirZ * row * ROW_DEPTH;
               const pz = z1 + (z2 - z1) * t + dirX * row * ROW_DEPTH;
-              brain.moveToTarget = [px, y1 ?? 0, pz];
-              brain.agendaLocked = true;
-              brain.formationPos = null;
+              sortedUnits[i].brain!.moveToTarget = [px, y1 ?? 0, pz];
+              sortedUnits[i].brain!.agendaLocked = true;
+              sortedUnits[i].brain!.formationPos = null;
               affected++;
             }
-            console.log(`[Army] move_to line (${x1.toFixed(0)},${z1.toFixed(0)})→(${x2.toFixed(0)},${z2.toFixed(0)}): ${affected} units, ${COLS} cols`);
+            console.log(`[Army] move_to line: ${affected} units, ${COLS} cols`);
           } else if (x !== undefined && z !== undefined) {
             // Single point: all units march to same spot
-            for (const unit of units) {
-              const brain = activeNPCs.get(unit.id);
-              if (brain) {
-                brain.moveToTarget = [x, y ?? 0, z];
-                brain.agendaLocked = true;
-                brain.formationPos = null;
-                affected++;
-              }
+            for (const { brain } of sortedUnits) {
+              brain!.moveToTarget = [x, y ?? 0, z];
+              brain!.agendaLocked = true;
+              brain!.formationPos = null;
+              affected++;
             }
             console.log(`[Army] move_to point (${x.toFixed(0)}, ${z.toFixed(0)}): ${affected} units`);
           } else {
-            throw Boom.badRequest('move_to requires x,z or x1,z1,x2,z2');
+            throw Boom.badRequest('move_to requires positions[], x1/z1/x2/z2, or x/z');
           }
 
           return { success: true, affected, command };
