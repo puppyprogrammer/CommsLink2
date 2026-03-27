@@ -210,9 +210,13 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
     // Grass/bush: ~5 walks to kill (100 health / 20 damage = 5 steps)
     const dmg = veg.type === 'grass' ? 20 : 15; // bushes slightly tougher
     const newHealth = Math.max(0, veg.health - dmg);
+    // Growth stage regresses with health: 80-100=4, 60-79=3, 40-59=2, 20-39=1, 1-19=0
+    const newStage = newHealth <= 0 ? 0 : Math.min(4, Math.floor(newHealth / 20));
+    const stageChanged = newStage !== veg.growth_stage;
+
     await prisma.world_vegetation.update({
       where: { id: veg.id },
-      data: { health: newHealth },
+      data: { health: newHealth, growth_stage: newStage },
     });
 
     if (newHealth <= 0) {
@@ -221,8 +225,8 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
         detail: `health: ${veg.health}→0 (killed)`,
       } }).catch(() => {});
       broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_died', id: veg.id });
-    } else {
-      broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_damaged', id: veg.id, health: newHealth });
+    } else if (stageChanged) {
+      broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_grown', id: veg.id, growth_stage: newStage });
     }
   }
 };
