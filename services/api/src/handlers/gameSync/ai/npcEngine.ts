@@ -602,6 +602,8 @@ setInterval(() => {
   for (const [id] of activeNPCs) {
     const npc = npcStates.get(id);
     if (!npc || npc.isDead) continue;
+    // Only broadcast NPCs that are actually moving — idle units don't need 200ms updates
+    if (npc.action === 'idle' || npc.action === 'block') continue;
     positions.push({ id, pos: npc.pos, rot: npc.rot, action: npc.action });
   }
   if (positions.length > 0) {
