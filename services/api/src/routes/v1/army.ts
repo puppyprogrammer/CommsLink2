@@ -146,7 +146,7 @@ const armyRoutes: ServerRoute[] = [
       auth: 'jwt',
       validate: {
         payload: Joi.object({
-          command: Joi.string().valid('advance', 'retreat', 'hold', 'attack', 'defend', 'form_up', 'flank_left', 'flank_right', 'resume', 'formation_line', 'formation_column', 'formation_shield_wall', 'formation_wedge', 'formation_circle', 'formation_square', 'formation_loose').required(),
+          command: Joi.string().valid('advance', 'retreat', 'hold', 'attack', 'defend', 'form_up', 'flank_left', 'flank_right', 'resume', 'draw_weapons', 'sheathe_weapons', 'formation_line', 'formation_column', 'formation_shield_wall', 'formation_wedge', 'formation_circle', 'formation_square', 'formation_loose').required(),
           target: Joi.string().optional(), // "all", "maniple_1", "squad_2a", or unit UUID
         }),
       },
@@ -170,6 +170,8 @@ const armyRoutes: ServerRoute[] = [
           flank_left: { bw_flank_tendency: 80, bw_flank_direction: 20 },
           flank_right: { bw_flank_tendency: 80, bw_flank_direction: 80 },
           resume: {},
+          draw_weapons: {},
+          sheathe_weapons: {},
           formation_line: {},
           formation_column: {},
           formation_shield_wall: {},
@@ -228,6 +230,22 @@ const armyRoutes: ServerRoute[] = [
 
           console.log(`[Army] Formation ${formationType}: ${units.length} units assigned at [${center.map(n => n.toFixed(1)).join(',')}]`);
           return { success: true, affected: units.length, formation: formationType };
+        }
+
+        // Handle draw/sheathe weapons — purely visual, broadcast to all clients
+        if (command === 'draw_weapons' || command === 'sheathe_weapons') {
+          const action = command === 'draw_weapons' ? 'draw_weapon' : 'sheathe_weapon';
+          let affected = 0;
+          for (const unit of units) {
+            const brain = activeNPCs.get(unit.id);
+            if (brain) {
+              brain.weaponDrawn = command === 'draw_weapons';
+              broadcastAll({ type: 'npc_combat_action', id: unit.id, action, target_id: null });
+              affected++;
+            }
+          }
+          console.log(`[Army] ${command}: ${affected} units`);
+          return { success: true, affected, command };
         }
 
         let affected = 0;
