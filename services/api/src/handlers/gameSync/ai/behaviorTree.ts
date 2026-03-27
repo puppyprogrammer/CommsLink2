@@ -439,11 +439,11 @@ const evaluateBehavior = (
       const rightX = Math.cos(rad);
       const rightZ = -Math.sin(rad);
 
-      // Centurion (index 0): forms 3m behind the player
-      // Everyone else: forms relative to the anchor (centurion) — index 0 is the centurion's spot
-      // so non-centurion units use index-1 offset from the centurion position
+      // Centurion: forms 3m behind the player
+      // Everyone else: forms relative to the centurion (if exists) or 3m behind commander
       const isCenturion = brain.rank === 'centurion';
-      const behindDist = isCenturion ? 3 : (row * ROW_DEPTH);
+      const hasCenturionAnchor = anchorPos !== commanderPos; // true if we found a centurion
+      const behindDist = isCenturion ? 3 : hasCenturionAnchor ? (row * ROW_DEPTH) : (3 + row * ROW_DEPTH);
       const anchor = isCenturion ? commanderPos : anchorPos;
       const targetPos: [number, number, number] = [
         anchor[0] - fwdX * behindDist + rightX * colOffset,
