@@ -189,11 +189,11 @@ describe('Army Command Response', () => {
 
     it('NPC should idle when in formation position near leader', () => {
       const { players, brains } = setupWorld();
-      // Commander at [0,0,10] facing north (rot=0). Squad index 1 (center of row 0) = ~2.2m behind at [0,0,7.8]
-      // With rot=0: fwd=(0,1), behind = (0,-2.2), col offset for idx 1 center = 0
+      // Commander at [0,0,10] facing north (rot=0). 1 unit, COLS=1.
+      // Index 0: row=0, behind=3m. Target=[0,0,7].
       const commander = makePlayer('commander-1', [0, 0, 10]);
-      const npc = makePlayer('npc-1', [0, 0, 7.8]); // At the formation position
-      const brain = makeBrain({ agenda: 'follow_commander', leaderId: 'commander-1', squadIndex: 1 });
+      const npc = makePlayer('npc-1', [0, 0, 7]); // At the formation position
+      const brain = makeBrain({ agenda: 'follow_commander', leaderId: 'commander-1', armyBlockIndex: 0 });
 
       players.set('commander-1', commander);
       players.set('npc-1', npc);
