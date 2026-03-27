@@ -754,3 +754,18 @@ model player_relation {
   @@index([user_id])
   @@index([target_id])
 }
+
+model vegetation_log {
+  id         Int      @id @default(autoincrement())
+  veg_id     Int
+  veg_type   String
+  event      String   // "spawned" | "grew" | "died" | "trampled"
+  x          Float
+  z          Float
+  detail     String?  // e.g. "growth_stage: 2→3", "health: 20→0"
+  created_at DateTime @default(now())
+
+  @@index([veg_type])
+  @@index([event])
+  @@index([created_at])
+}

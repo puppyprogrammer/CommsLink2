@@ -61,6 +61,11 @@ const vegetationTick = async (): Promise<void> => {
       data: { growth_stage: veg.growth_stage + 1, last_growth: now },
     });
 
+    await prisma.vegetation_log.create({ data: {
+      veg_id: veg.id, veg_type: veg.type, event: 'grew', x: veg.x, z: veg.z,
+      detail: `growth_stage: ${veg.growth_stage}→${veg.growth_stage + 1}`,
+    } }).catch(() => {});
+
     broadcastNearby(veg.x, veg.z, 200, {
       type: 'vegetation_grown',
       id: veg.id,
@@ -90,6 +95,10 @@ const vegetationTick = async (): Promise<void> => {
     const newVeg = await prisma.world_vegetation.create({
       data: { x: newX, z: newZ, type: 'grass', growth_stage: 0, health: 100 },
     });
+
+    await prisma.vegetation_log.create({ data: {
+      veg_id: newVeg.id, veg_type: 'grass', event: 'spawned', x: newX, z: newZ,
+    } }).catch(() => {});
 
     broadcastNearby(newX, newZ, 200, {
       type: 'vegetation_spawned',
@@ -133,6 +142,10 @@ const vegetationTick = async (): Promise<void> => {
       data: { x: newX, z: newZ, type: tree.type, growth_stage: 0, health: 100 },
     });
 
+    await prisma.vegetation_log.create({ data: {
+      veg_id: newTree.id, veg_type: tree.type, event: 'spawned', x: newX, z: newZ,
+    } }).catch(() => {});
+
     broadcastNearby(newX, newZ, 200, {
       type: 'vegetation_spawned',
       id: newTree.id, x: newX, z: newZ, vegType: tree.type, growth_stage: 0, health: 100,
@@ -161,6 +174,10 @@ const vegetationTick = async (): Promise<void> => {
       data: { x: newX, z: newZ, type: 'bush', growth_stage: 0, health: 100 },
     });
 
+    await prisma.vegetation_log.create({ data: {
+      veg_id: newBush.id, veg_type: 'bush', event: 'spawned', x: newX, z: newZ,
+    } }).catch(() => {});
+
     broadcastNearby(newX, newZ, 200, {
       type: 'vegetation_spawned',
       id: newBush.id, x: newX, z: newZ, vegType: 'bush', growth_stage: 0, health: 100,
@@ -187,13 +204,22 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
   });
 
   for (const veg of nearbyVeg) {
-    const newHealth = Math.max(0, veg.health - 5);
+    // Trees can't be trampled — you can't walk through them
+    if (veg.type.startsWith('tree_')) continue;
+
+    // Grass/bush: ~5 walks to kill (100 health / 20 damage = 5 steps)
+    const dmg = veg.type === 'grass' ? 20 : 15; // bushes slightly tougher
+    const newHealth = Math.max(0, veg.health - dmg);
     await prisma.world_vegetation.update({
       where: { id: veg.id },
       data: { health: newHealth },
     });
 
     if (newHealth <= 0) {
+      await prisma.vegetation_log.create({ data: {
+        veg_id: veg.id, veg_type: veg.type, event: 'trampled', x: veg.x, z: veg.z,
+        detail: `health: ${veg.health}→0 (killed)`,
+      } }).catch(() => {});
       broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_died', id: veg.id });
     } else {
       broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_damaged', id: veg.id, health: newHealth });

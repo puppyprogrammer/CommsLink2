@@ -415,6 +415,11 @@ setInterval(() => {
         if (!decision.faceTarget) {
           npc.rot = Math.atan2(dx, dz) * 180 / Math.PI;
         }
+        // NPCs trample vegetation when moving (throttled — 10% chance per tick to reduce DB load)
+        if (Math.random() < 0.1) {
+          const { checkTrampling } = require('../vegetation');
+          checkTrampling(npc.pos[0], npc.pos[2]).catch(() => {});
+        }
       }
     }
 
