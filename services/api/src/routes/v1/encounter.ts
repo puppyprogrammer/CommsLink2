@@ -151,7 +151,7 @@ const encounterRoutes: ServerRoute[] = [
             formationRot: positions[i].rot,
             formationType: tierConfig.formation,
             formationAction: tierConfig.formation === 'shield_wall' ? 'block' : null,
-            marchDirection: null, moveToTarget: null, moveToFacing: null,
+            marchDirection: null, moveToTarget: null, moveToFacing: null, holdPosition: null, holdFacing: null,
             leaderId: enemyCommanderId, // All encounter units follow their commander
             rank: i === 0 ? 'centurion' : 'soldier',
             squadIndex: i,

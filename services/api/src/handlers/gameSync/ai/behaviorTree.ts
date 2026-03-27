@@ -73,6 +73,10 @@ type NPCBrain = {
   moveToTarget: [number, number, number] | null;
   moveToFacing: number | null; // Rotation in degrees to face on arrival
 
+  // Hold position (set on move_to arrival — continuously maintained like follow formation)
+  holdPosition: [number, number, number] | null;
+  holdFacing: number | null;
+
   // Combat visual state
   weaponDrawn: boolean;
 };
@@ -250,15 +254,15 @@ const evaluateBehavior = (
   // ── 2.5 Move-to — direct order to a world position ──
   if (brain.moveToTarget) {
     const distToTarget = dist3d(npc.pos, brain.moveToTarget);
-    if (distToTarget < 2) {
-      // Arrived — switch to guard position, face the commanded direction
-      if (brain.moveToFacing !== null) {
-        npc.rot = brain.moveToFacing;
-      }
+    if (distToTarget < 0.5) {
+      // Arrived — store exact hold position for continuous correction
+      brain.holdPosition = brain.moveToTarget;
+      brain.holdFacing = brain.moveToFacing;
       brain.moveToTarget = null;
       brain.moveToFacing = null;
       brain.agenda = 'guard_position';
       brain.agendaLocked = true;
+      npc.rot = brain.holdFacing ?? npc.rot;
       return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'MOVE_TO: arrived, holding position' };
     }
     // Fight at position if enemy in melee range, but keep moving after
@@ -271,6 +275,19 @@ const evaluateBehavior = (
 
   // ── 3. Guard / Hold position ──
   if (brain.agenda === 'guard_position') {
+    // Enforce hold facing
+    if (brain.holdFacing !== null) {
+      npc.rot = brain.holdFacing;
+    }
+
+    // Continuously correct toward hold position (like follow formation)
+    if (brain.holdPosition) {
+      const distToHold = dist3d(npc.pos, brain.holdPosition);
+      if (distToHold > 0.3) {
+        return { action: 'walk', moveTarget: brain.holdPosition, faceTarget: null, reason: `GUARD: correcting to hold position (${distToHold.toFixed(1)}m)` };
+      }
+    }
+
     // Fight at position, never chase
     if (nearestEnemy && distToEnemy < 5) {
       if (isShieldWall) {

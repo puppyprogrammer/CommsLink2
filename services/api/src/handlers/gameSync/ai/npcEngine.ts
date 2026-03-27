@@ -82,7 +82,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       formationType: null,
       formationAction: null,
       marchDirection: null,
-      moveToTarget: null, moveToFacing: null,
+      moveToTarget: null, moveToFacing: null, holdPosition: null, holdFacing: null,
       leaderId: null, // Set in second pass after all units registered
       rank: recruit.rank || 'soldier',
       squadIndex: 0,
