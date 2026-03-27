@@ -188,6 +188,7 @@ const armyRoutes: ServerRoute[] = [
           flank_left: { bw_flank_tendency: 80, bw_flank_direction: 20 },
           flank_right: { bw_flank_tendency: 80, bw_flank_direction: 80 },
           resume: {},
+          move_to: {},
           draw_weapons: {},
           sheathe_weapons: {},
           formation_line: {},
