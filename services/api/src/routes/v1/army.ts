@@ -280,10 +280,13 @@ const armyRoutes: ServerRoute[] = [
             // Client sent exact positions — assign one per unit
             for (let i = 0; i < sortedUnits.length; i++) {
               const pos = positions[Math.min(i, positions.length - 1)];
-              sortedUnits[i].brain!.moveToTarget = [pos.x, pos.y, pos.z];
-              sortedUnits[i].brain!.moveToFacing = facing ?? null;
-              sortedUnits[i].brain!.agendaLocked = true;
-              sortedUnits[i].brain!.formationPos = null;
+              const b = sortedUnits[i].brain!;
+              b.moveToTarget = [pos.x, pos.y, pos.z];
+              b.moveToFacing = facing ?? null;
+              b.agenda = 'move_to'; // Prevent follow/formation from interfering
+              b.agendaLocked = true;
+              b.formationPos = null;
+              b.formationType = null;
               affected++;
             }
             console.log(`[Army] move_to positions: ${affected} units`);
@@ -305,10 +308,13 @@ const armyRoutes: ServerRoute[] = [
               const colOffset = (col - (COLS - 1) / 2) * config.spacing;
               const px = x + rightX * colOffset - fwdX * row * config.rowDepth;
               const pz = z + rightZ * colOffset - fwdZ * row * config.rowDepth;
-              sortedUnits[i].brain!.moveToTarget = [px, y ?? 0, pz];
-              sortedUnits[i].brain!.moveToFacing = facing ?? cmdRot;
-              sortedUnits[i].brain!.agendaLocked = true;
-              sortedUnits[i].brain!.formationPos = null;
+              const b = sortedUnits[i].brain!;
+              b.moveToTarget = [px, y ?? 0, pz];
+              b.moveToFacing = facing ?? cmdRot;
+              b.agenda = 'move_to';
+              b.agendaLocked = true;
+              b.formationPos = null;
+              b.formationType = null;
               affected++;
             }
             console.log(`[Army] move_to point (${x.toFixed(0)}, ${z.toFixed(0)}): ${affected} units, ${COLS} cols`);

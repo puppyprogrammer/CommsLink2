@@ -476,8 +476,8 @@ setInterval(() => {
       }
     }
 
-    // In formation follow mode: face same direction as anchor (centurion faces commander, others face centurion)
-    if ((brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') && !decision.faceTarget) {
+    // In formation follow mode: face same direction as anchor — but NOT when holding a commanded facing
+    if ((brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') && !decision.faceTarget && !brain.moveToFacing) {
       if (brain.rank === 'centurion') {
         const commander = players.get(brain.commanderUserId);
         if (commander) npc.rot = commander.rot;
