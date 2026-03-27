@@ -63,7 +63,8 @@ type NPCBrain = {
   // Chain of command
   leaderId: string | null; // Who this unit follows (sergeant → decurion → centurion → commander)
   rank: string; // 'soldier' | 'sergeant' | 'decurion' | 'centurion'
-  squadIndex: number; // Position index within squad (0-based, for formation offset)
+  squadIndex: number; // Legacy per-leader index
+  armyBlockIndex: number; // Position in the unified army block (0 = front-left, fills L-R then next row)
 
   // March
   marchDirection: [number, number] | null;
@@ -173,6 +174,15 @@ const findNearestEnemy = (
   }
 
   return nearest;
+};
+
+/** Count active NPCs for a commander (for block width calculation). */
+const countArmyUnits = (commanderUserId: string, allBrains: Map<string, NPCBrain>): number => {
+  let count = 0;
+  for (const [, b] of allBrains) {
+    if (b.commanderUserId === commanderUserId) count++;
+  }
+  return count;
 };
 
 const dist3d = (a: [number, number, number], b: [number, number, number]): number => {
@@ -342,54 +352,58 @@ const evaluateBehavior = (
     }
   }
 
-  // ── 6. Follow leader in squad formation ──
-  // Soldiers position relative to their leader (sergeant/decurion/centurion/commander)
-  // using a compact formation: 3-front 2-back style rows behind and beside the leader
+  // ── 6. Follow commander in unified army block ──
+  // ALL units form one tight block behind the commander.
+  // Centurion = front-left (index 0), then decurions, sergeants, soldiers fill L→R, row by row.
+  // Block faces the same direction as the commander.
   if (brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') {
-    if (leaderPos) {
-      // Calculate formation offset based on squad index
-      // Row 0: positions 0,1,2 (front row, left-center-right)
-      // Row 1: positions 3,4 (back row, left-right)
-      // Row 2: positions 5,6,7 etc.
+    if (commanderPos) {
       const config = getFormationSpacing(brain.commanderUserId);
-      const SPACING = config.spacing;
-      const ROW_DEPTH = config.rowDepth;
-      const idx = brain.squadIndex;
-      const row = idx < 3 ? 0 : idx < 5 ? 1 : idx < 8 ? 2 : Math.floor((idx + 1) / 3);
-      const colsInRow = row === 0 ? 3 : row === 1 ? 2 : 3;
-      const colIdx = row === 0 ? idx : row === 1 ? (idx - 3) : (idx - 5) % 3;
-      const colOffset = (colIdx - (colsInRow - 1) / 2) * SPACING;
+      const SPACING = config.spacing;   // shoulder-to-shoulder distance
+      const ROW_DEPTH = config.rowDepth; // front-to-back row distance
 
-      // Get leader's facing direction to position behind them
-      const leader = players.get(brain.leaderId || brain.commanderUserId);
-      const leaderRot = leader ? leader.rot : 0;
-      const rad = leaderRot * Math.PI / 180;
+      // Determine how many columns wide the block should be
+      // Auto-size: sqrt of army gives a roughly square block
+      // But cap at reasonable widths per army size
+      const totalUnits = countArmyUnits(brain.commanderUserId, allBrains);
+      const COLS = totalUnits <= 3 ? totalUnits : totalUnits <= 8 ? Math.ceil(totalUnits / 2) : totalUnits <= 20 ? 5 : Math.ceil(Math.sqrt(totalUnits));
+
+      const idx = brain.armyBlockIndex;
+      const row = Math.floor(idx / COLS);
+      const col = idx % COLS;
+      const colOffset = (col - (COLS - 1) / 2) * SPACING;
+
+      // Commander's facing direction
+      const commander = players.get(brain.commanderUserId);
+      const cmdRot = commander ? commander.rot : 0;
+      const rad = cmdRot * Math.PI / 180;
       const fwdX = Math.sin(rad);
       const fwdZ = Math.cos(rad);
       const rightX = Math.cos(rad);
       const rightZ = -Math.sin(rad);
 
-      // Position: behind leader (row depth) + side offset (column)
+      // Position: behind commander (row 0 = 3m back, each row further back) + column offset
+      const behindDist = 3 + row * ROW_DEPTH;
       const targetPos: [number, number, number] = [
-        leaderPos[0] - fwdX * (ROW_DEPTH * (row + 1)) + rightX * colOffset,
-        leaderPos[1],
-        leaderPos[2] - fwdZ * (ROW_DEPTH * (row + 1)) + rightZ * colOffset,
+        commanderPos[0] - fwdX * behindDist + rightX * colOffset,
+        commanderPos[1],
+        commanderPos[2] - fwdZ * behindDist + rightZ * colOffset,
       ];
 
       const distToTarget = dist3d(npc.pos, targetPos);
-      const distToLeader = dist3d(npc.pos, leaderPos);
+      const distToCmd = dist3d(npc.pos, commanderPos);
 
-      // Sprint if very far (leader is running and we're falling behind)
-      if (distToLeader > 15) {
-        return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: sprinting to formation (${distToLeader.toFixed(1)}m from leader)` };
+      // Sprint if very far behind
+      if (distToCmd > 20) {
+        return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: sprinting to formation (${distToCmd.toFixed(1)}m from cmd)` };
       }
       if (distToTarget > 4) {
         return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: running to position (${distToTarget.toFixed(1)}m off)` };
       }
-      if (distToTarget > 1.5) {
+      if (distToTarget > 1.0) {
         return { action: 'walk', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: adjusting position (${distToTarget.toFixed(1)}m off)` };
       }
-      // In position — idle, face same direction as leader
+      // In position — idle
       return { action: 'idle', moveTarget: null, faceTarget: null, reason: `FOLLOW: in formation (${distToTarget.toFixed(1)}m off)` };
     }
   }

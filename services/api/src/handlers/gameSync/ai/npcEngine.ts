@@ -84,7 +84,8 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       marchDirection: null,
       leaderId: null, // Set in second pass after all units registered
       rank: recruit.rank || 'soldier',
-      squadIndex: 0, // Set in second pass with chain of command
+      squadIndex: 0,
+      armyBlockIndex: 0, // Set in rebuildChainOfCommand
       weaponDrawn: false,
     };
 
@@ -188,6 +189,25 @@ const rebuildChainOfCommand = async (commanderUserId: string): Promise<void> => 
     brain.squadIndex = idx;
     leaderSquadCount.set(key, idx + 1);
   }
+
+  // ── Assign armyBlockIndex: rank-priority ordering for unified block ──
+  // Centurion(s) first, then decurions, sergeants, soldiers
+  const RANK_ORDER: Record<string, number> = { centurion: 0, decurion: 1, sergeant: 2, soldier: 3 };
+  const sorted = recruits
+    .filter((r) => activeNPCs.has(r.id))
+    .sort((a, b) => {
+      const ra = RANK_ORDER[a.rank || 'soldier'] ?? 3;
+      const rb = RANK_ORDER[b.rank || 'soldier'] ?? 3;
+      if (ra !== rb) return ra - rb;
+      // Within same rank, sort by maniple then squad for consistent ordering
+      if ((a.maniple_id || 0) !== (b.maniple_id || 0)) return (a.maniple_id || 0) - (b.maniple_id || 0);
+      return (a.squad_id || '').localeCompare(b.squad_id || '');
+    });
+
+  for (let i = 0; i < sorted.length; i++) {
+    const brain = activeNPCs.get(sorted[i].id);
+    if (brain) brain.armyBlockIndex = i;
+  }
 };
 
 /** Register a single new recruit into the live NPC engine. Call after purchase. */
@@ -221,7 +241,7 @@ const registerSingleNPC = async (commanderUserId: string, recruitId: string): Pr
     grokIntervalMs: GROK_INTERVALS_LOCAL[recruit.npc_type || ''] || 20_000,
     situationLog: [], agendaLocked: false, formationPos: null, formationRot: null,
     formationType: null, formationAction: null, marchDirection: null, leaderId: null,
-    rank: recruit.rank || 'soldier', squadIndex: 0, weaponDrawn: false,
+    rank: recruit.rank || 'soldier', squadIndex: 0, armyBlockIndex: 0, weaponDrawn: false,
   };
 
   activeNPCs.set(recruit.id, brain);

@@ -155,6 +155,7 @@ const encounterRoutes: ServerRoute[] = [
             leaderId: enemyCommanderId, // All encounter units follow their commander
             rank: i === 0 ? 'centurion' : 'soldier',
             squadIndex: i,
+            armyBlockIndex: i,
             weaponDrawn: false,
           };
 

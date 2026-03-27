@@ -56,6 +56,7 @@ const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
   leaderId: null,
   rank: 'soldier',
   squadIndex: 0,
+  armyBlockIndex: 0,
   weaponDrawn: false,
   ...overrides,
 });
