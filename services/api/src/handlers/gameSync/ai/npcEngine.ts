@@ -591,6 +591,25 @@ setInterval(() => {
 }, 500);
 
 // ┌──────────────────────────────────────────┐
+// │ Position Broadcast (every 200ms)         │
+// │ Lightweight — just sends positions       │
+// │ between behavior ticks for smooth motion │
+// └──────────────────────────────────────────┘
+
+setInterval(() => {
+  if (activeNPCs.size === 0) return;
+  const positions: { id: string; pos: [number, number, number]; rot: number; action: string }[] = [];
+  for (const [id] of activeNPCs) {
+    const npc = npcStates.get(id);
+    if (!npc || npc.isDead) continue;
+    positions.push({ id, pos: npc.pos, rot: npc.rot, action: npc.action });
+  }
+  if (positions.length > 0) {
+    broadcastAll({ type: 'npc_positions', npcs: positions });
+  }
+}, 200);
+
+// ┌──────────────────────────────────────────┐
 // │ Grok Brain Tick (every 1s, staggered)    │
 // └──────────────────────────────────────────┘
 
