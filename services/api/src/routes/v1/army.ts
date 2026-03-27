@@ -4,7 +4,7 @@ import tracer from '../../../../../core/lib/tracer';
 
 import { dispatchArmyChat, generateUnitResponse } from '../../../../../core/actions/army/chatDispatcherAction';
 import Data from '../../../../../core/data';
-import { broadcastAll } from '../../handlers/gameSync/combat';
+import { broadcastAll, players } from '../../handlers/gameSync/combat';
 import { activeNPCs } from '../../handlers/gameSync/ai/npcEngine';
 import { calculateFormationPositions } from '../../handlers/gameSync/ai/formations';
 import { getFormationSpacing, setFormationSpacing } from '../../handlers/gameSync/ai/behaviorTree';
