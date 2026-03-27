@@ -83,6 +83,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       formationAction: null,
       marchDirection: null,
       leaderId: null, // Set in second pass after all units registered
+      weaponDrawn: false,
     };
 
     activeNPCs.set(recruit.id, brain);
@@ -206,6 +207,7 @@ const registerSingleNPC = async (commanderUserId: string, recruitId: string): Pr
     grokIntervalMs: GROK_INTERVALS_LOCAL[recruit.npc_type || ''] || 20_000,
     situationLog: [], agendaLocked: false, formationPos: null, formationRot: null,
     formationType: null, formationAction: null, marchDirection: null, leaderId: null,
+    weaponDrawn: false,
   };
 
   activeNPCs.set(recruit.id, brain);
@@ -314,17 +316,17 @@ setInterval(() => {
   auditTickCounter++;
   const shouldLog = auditTickCounter % 20 === 0; // Log every 10 seconds (20 * 500ms)
 
+  const LIGHT_ATTACK_COOLDOWN = 800;  // 0.8s between light swings
+  const HEAVY_ATTACK_COOLDOWN = 1500; // 1.5s between heavy swings
+
   for (const [id, brain] of activeNPCs) {
     const npc = npcStates.get(id);
     if (!npc || npc.isDead) continue;
 
-    // Attack cooldown — based on unit skill level (strength as proxy)
-    // Low skill (str 5-10): swing every 5-8s. High skill (str 20+): every 2-3s
-    const skillFactor = Math.max(5, npc.strength);
-    const attackCooldown = Math.max(2000, 8000 - skillFactor * 250); // 5→6.75s, 10→5.5s, 15→4.25s, 20→3s, 25→1.75s
-
-    if ((npc.action === 'attack_light' || npc.action === 'attack_heavy') &&
-        Date.now() - npc.actionStartTime < attackCooldown) continue;
+    // Attack cooldown — skip tick if still in attack animation
+    const now = Date.now();
+    if (npc.action === 'attack_light' && now - npc.actionStartTime < LIGHT_ATTACK_COOLDOWN) continue;
+    if (npc.action === 'attack_heavy' && now - npc.actionStartTime < HEAVY_ATTACK_COOLDOWN) continue;
 
     const decision = evaluateBehavior(brain, npc, players, activeNPCs);
 
@@ -393,23 +395,37 @@ setInterval(() => {
       npc.pos = [npc.pos[0] + sepX, npc.pos[1], npc.pos[2] + sepZ];
     }
 
-    // Execute combat actions
+    // ── Draw weapon when entering combat for the first time ──
+    const isCombatAction = decision.action === 'attack_light' || decision.action === 'attack_heavy'
+      || decision.action === 'block' || decision.action === 'dodge'
+      || decision.reason.includes('COMBAT');
+    if (isCombatAction && !brain.weaponDrawn) {
+      brain.weaponDrawn = true;
+      broadcastAll({ type: 'npc_combat_action', id, action: 'draw_weapon', target_id: decision.faceTarget });
+    }
+    // Sheathe weapon when no longer in combat
+    if (!isCombatAction && brain.weaponDrawn) {
+      brain.weaponDrawn = false;
+      broadcastAll({ type: 'npc_combat_action', id, action: 'sheathe_weapon', target_id: null });
+    }
+
+    // Execute combat actions — attack animation IS the attack
     if (decision.action === 'attack_light' || decision.action === 'attack_heavy') {
-      npc.action = decision.action;
-      npc.actionStartTime = Date.now();
       const staminaCost = decision.action === 'attack_heavy' ? 25 : 10;
       if (npc.stamina >= staminaCost) {
+        npc.action = decision.action;
+        npc.actionStartTime = Date.now();
         npc.stamina -= staminaCost;
-        const target = decision.faceTarget ? players.get(decision.faceTarget) : null;
-        const targetName = target?.username || 'none';
-        const targetDist = target ? Math.sqrt((npc.pos[0]-target.pos[0])**2 + (npc.pos[2]-target.pos[2])**2).toFixed(1) : '?';
-        console.log(`[NPC:${brain.name}] ATTACKING ${targetName} at ${targetDist}m (${decision.action}, range=${npc.weaponRange})`);
+
+        // Broadcast the swing animation — client plays it
         broadcastAll({ type: 'npc_combat_action', id, action: decision.action, target_id: decision.faceTarget });
 
-        // Actually run hit detection
+        // Resolve damage at animation hit point
         const { resolveAttack } = require('../combat');
         const attackType = decision.action === 'attack_heavy' ? 'heavy' : 'light';
         resolveAttack(npc, attackType as 'light' | 'heavy');
+      } else {
+        npc.action = 'idle'; // No stamina — can't swing
       }
     } else if (decision.action === 'dodge' && npc.stamina >= 20) {
       npc.stamina -= 20;

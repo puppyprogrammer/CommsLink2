@@ -65,6 +65,9 @@ type NPCBrain = {
 
   // March
   marchDirection: [number, number] | null;
+
+  // Combat visual state
+  weaponDrawn: boolean;
 };
 
 type BehaviorAction = 'idle' | 'walk' | 'run' | 'attack_light' | 'attack_heavy' | 'block' | 'dodge';
