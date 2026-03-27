@@ -8,7 +8,7 @@ import { WebSocket } from 'ws';
 import grokAdapter from '../../../../../../core/adapters/grok';
 import Data from '../../../../../../core/data';
 
-import { players, broadcast, broadcastAll, loadWeaponRange } from '../combat';
+import { players, broadcast, broadcastAll, loadWeaponRange, loadEquipment } from '../combat';
 import type { PlayerSyncState } from '../combat';
 import { evaluateBehavior } from './behaviorTree';
 import { buildPrompt, parseGrokResponse, applyGrokResponse } from './grokBrain';
@@ -92,6 +92,9 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       ? [commander.pos[0] + (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2 : -2), commander.pos[1], commander.pos[2] + (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2 : -2)]
       : [recruit.spawn_x, recruit.spawn_y, recruit.spawn_z];
 
+    // Load equipment BEFORE creating state
+    const gear = await loadEquipment(recruit.id);
+
     const npcState: PlayerSyncState = {
       userId: recruit.id, // Use character ID as the "user" key for NPCs
       characterId: recruit.id,
@@ -112,14 +115,10 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       spawnX: recruit.spawn_x,
       spawnY: recruit.spawn_y,
       spawnZ: recruit.spawn_z,
-      weaponRange: 1.0,
-      weaponName: 'Fists',
+      weaponRange: gear.range,
+      weaponName: gear.name,
+      equipped: gear.equipped,
     };
-
-    // Load weapon range BEFORE registering — must be synchronous with state creation
-    const weapon = await loadWeaponRange(recruit.id);
-    npcState.weaponRange = weapon.range;
-    npcState.weaponName = weapon.name;
 
     npcStates.set(recruit.id, npcState);
     // Also add to the main players map so combat resolution can find them
@@ -135,6 +134,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       hp: npcState.hp,
       maxHp: npcState.maxHp,
       isNpc: true,
+      equipped: gear.equipped,
     });
 
     console.log(`[NPC] Registered ${recruit.name} (${recruit.npc_type}, ${recruit.rank}) for commander ${commanderUserId}`);
@@ -216,7 +216,7 @@ const registerSingleNPC = async (commanderUserId: string, recruitId: string): Pr
     commander.pos[2] + (Math.random() - 0.5) * 6,
   ];
 
-  const weapon = await loadWeaponRange(recruit.id);
+  const gear = await loadEquipment(recruit.id);
   const npcState: PlayerSyncState = {
     userId: recruit.id, characterId: recruit.id, username: recruit.name,
     ws: null as unknown as WebSocket, pos: spawnPos, rot: 0, action: 'idle',
@@ -224,7 +224,7 @@ const registerSingleNPC = async (commanderUserId: string, recruitId: string): Pr
     stamina: recruit.max_stamina, maxStamina: recruit.max_stamina,
     strength: recruit.strength, defense: recruit.defense, lastDamageTime: 0,
     isDead: false, spawnX: commander.pos[0], spawnY: commander.pos[1], spawnZ: commander.pos[2],
-    weaponRange: weapon.range, weaponName: weapon.name,
+    weaponRange: gear.range, weaponName: gear.name, equipped: gear.equipped,
   };
 
   npcStates.set(recruit.id, npcState);
@@ -234,6 +234,7 @@ const registerSingleNPC = async (commanderUserId: string, recruitId: string): Pr
   broadcast(commanderUserId, {
     type: 'player_joined', id: recruit.id, username: recruit.name,
     pos: spawnPos, rot: 0, hp: npcState.hp, maxHp: npcState.maxHp, isNpc: true,
+    equipped: gear.equipped,
   });
 
   // Rebuild chain of command for the whole army
@@ -251,10 +252,11 @@ const refreshArmyState = async (commanderUserId: string): Promise<void> => {
     const npc = npcStates.get(recruit.id);
     if (!brain || !npc) continue;
 
-    // Refresh weapon range (may have changed with rank/equipment)
-    const weapon = await loadWeaponRange(recruit.id);
-    npc.weaponRange = weapon.range;
-    npc.weaponName = weapon.name;
+    // Refresh full equipment (weapons, shields, armor)
+    const gear = await loadEquipment(recruit.id);
+    npc.weaponRange = gear.range;
+    npc.weaponName = gear.name;
+    npc.equipped = gear.equipped;
 
     // Refresh stats from DB
     npc.strength = recruit.strength;
@@ -267,6 +269,18 @@ const refreshArmyState = async (commanderUserId: string): Promise<void> => {
 
   // Rebuild chain of command with updated ranks
   await rebuildChainOfCommand(commanderUserId);
+
+  // Broadcast equipment update to all clients
+  broadcastAll({
+    type: 'army_refreshed',
+    commanderId: commanderUserId,
+    units: recruits
+      .filter((r) => npcStates.has(r.id))
+      .map((r) => ({
+        id: r.id,
+        equipped: npcStates.get(r.id)!.equipped,
+      })),
+  });
 
   console.log(`[NPC] Refreshed army state for ${commanderUserId} (${recruits.length} recruits)`);
 };

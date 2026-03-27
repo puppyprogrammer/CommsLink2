@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'http';
 import jwtHelper from '../../../../../core/helpers/jwt';
 import Data from '../../../../../core/data';
 
-import { players, handleMessage, loadWeaponRange } from './combat';
+import { players, handleMessage, loadEquipment } from './combat';
 import type { PlayerSyncState } from './combat';
 import { registerPlayerNPCs, unregisterPlayerNPCs, activeNPCs } from './ai/npcEngine';
 import { initVegetationSystem, checkTrampling } from './vegetation';
@@ -67,8 +67,8 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
       const userId = decoded.id;
       const username = decoded.username;
 
-      // Load weapon range from equipped items — server-authoritative
-      const weapon = await loadWeaponRange(character.id);
+      // Load equipped items — server-authoritative
+      const gear = await loadEquipment(character.id);
 
       const state: PlayerSyncState = {
         userId,
@@ -90,8 +90,9 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
         spawnX: character.spawn_x,
         spawnY: character.spawn_y,
         spawnZ: character.spawn_z,
-        weaponRange: weapon.range,
-        weaponName: weapon.name,
+        weaponRange: gear.range,
+        weaponName: gear.name,
+        equipped: gear.equipped,
       };
 
       players.set(userId, state);
@@ -113,6 +114,7 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
             hp: p.hp,
             maxHp: p.maxHp,
             isNpc: activeNPCs.has(p.userId),
+            equipped: p.equipped || [],
           })),
       };
       ws.send(JSON.stringify(worldState));
@@ -126,6 +128,7 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
         rot: 0,
         hp: state.hp,
         maxHp: state.maxHp,
+        equipped: state.equipped,
       });
       for (const [id, p] of players) {
         if (id !== userId && p.ws?.readyState === WebSocket.OPEN) {

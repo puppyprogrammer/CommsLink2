@@ -6,6 +6,8 @@ import addXPAction from '../../../../../core/actions/character/addXPAction';
 // │ Game Sync — Types & State                │
 // └──────────────────────────────────────────┘
 
+type EquipSlotInfo = { slot: string; item_name: string; item_type: string };
+
 type PlayerSyncState = {
   userId: string;
   characterId: string;
@@ -28,6 +30,7 @@ type PlayerSyncState = {
   spawnZ: number;
   weaponRange: number;   // Attack reach in meters: fists=1, sword=2.5, halberd=3.5
   weaponName: string;    // For client rendering
+  equipped: EquipSlotInfo[];  // All equipped items for client rendering
 };
 
 const players = new Map<string, PlayerSyncState>();
@@ -80,18 +83,30 @@ const DAMAGE_COOLDOWN = 800;   // Slower pace — hits land every ~1s minimum
 const CRITICAL_MULTIPLIER = 2.0; // Flanking is devastating — the ONLY way to break a shield wall
 const XP_PER_KILL = 50;
 
-/** Look up weapon range from DB for a character. Call once at spawn, cache on PlayerSyncState. */
-const loadWeaponRange = async (characterId: string): Promise<{ range: number; name: string }> => {
+/** Look up weapon range + all equipped items from DB. Call once at spawn, cache on PlayerSyncState. */
+const loadEquipment = async (characterId: string): Promise<{ range: number; name: string; equipped: EquipSlotInfo[] }> => {
   try {
-    const equipped = await Data.inventoryItem.findEquipped(characterId);
-    const weapon = equipped.find((e) => e.equip_slot === 'main_hand');
+    const items = await Data.inventoryItem.findEquipped(characterId);
+    const equippedList: EquipSlotInfo[] = items
+      .filter((e) => e.equip_slot && e.item_def)
+      .map((e) => ({
+        slot: e.equip_slot!,
+        item_name: (e.item_def as { name: string }).name,
+        item_type: (e.item_def as { item_type: string }).item_type,
+      }));
+    const weapon = items.find((e) => e.equip_slot === 'main_hand');
     if (weapon && weapon.item_def) {
       const name = (weapon.item_def as { name: string }).name;
-      return { range: WEAPON_RANGES[name] || DEFAULT_ATTACK_RANGE, name };
+      return { range: WEAPON_RANGES[name] || DEFAULT_ATTACK_RANGE, name, equipped: equippedList };
     }
+    return { range: FIST_RANGE, name: 'Fists', equipped: equippedList };
   } catch { /* ignore */ }
-  return { range: FIST_RANGE, name: 'Fists' };
+  return { range: FIST_RANGE, name: 'Fists', equipped: [] };
 };
+
+// Backwards-compatible alias
+const loadWeaponRange = async (characterId: string): Promise<{ range: number; name: string }> =>
+  loadEquipment(characterId);
 
 // ┌──────────────────────────────────────────┐
 // │ Combat Resolution                        │
@@ -327,5 +342,5 @@ const handleMessage = (userId: string, msg: { type: string; [key: string]: unkno
   }
 };
 
-export type { PlayerSyncState };
-export { players, broadcast, broadcastAll, handleMessage, resolveAttack, loadWeaponRange, WEAPON_RANGES, FIST_RANGE };
+export type { PlayerSyncState, EquipSlotInfo };
+export { players, broadcast, broadcastAll, handleMessage, resolveAttack, loadWeaponRange, loadEquipment, WEAPON_RANGES, FIST_RANGE };
