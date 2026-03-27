@@ -173,18 +173,20 @@ const armyRoutes: ServerRoute[] = [
           y2: Joi.number().optional(),
           z2: Joi.number().optional(),
           positions: Joi.array().items(Joi.object({ x: Joi.number().required(), y: Joi.number().required(), z: Joi.number().required() })).optional(),
+          facing: Joi.number().optional(), // Rotation in degrees for the formation to face on arrival
         }),
       },
     },
     handler: async (request: Request) =>
       tracer.trace('CONTROLLER.ARMY.COMMAND', async () => {
         const credentials = request.auth.credentials as unknown as AuthCredentials;
-        const { command, target, x, y, z, x1, y1, z1, x2, y2, z2, positions } = request.payload as {
+        const { command, target, x, y, z, x1, y1, z1, x2, y2, z2, positions, facing } = request.payload as {
           command: string; target?: string;
           x?: number; y?: number; z?: number;
           x1?: number; y1?: number; z1?: number;
           x2?: number; y2?: number; z2?: number;
           positions?: { x: number; y: number; z: number }[];
+          facing?: number;
         };
 
         // Resume = unlock agenda, let AI decide
@@ -279,6 +281,7 @@ const armyRoutes: ServerRoute[] = [
             for (let i = 0; i < sortedUnits.length; i++) {
               const pos = positions[Math.min(i, positions.length - 1)];
               sortedUnits[i].brain!.moveToTarget = [pos.x, pos.y, pos.z];
+              sortedUnits[i].brain!.moveToFacing = facing ?? null;
               sortedUnits[i].brain!.agendaLocked = true;
               sortedUnits[i].brain!.formationPos = null;
               affected++;
@@ -303,6 +306,7 @@ const armyRoutes: ServerRoute[] = [
               const px = x + rightX * colOffset - fwdX * row * config.rowDepth;
               const pz = z + rightZ * colOffset - fwdZ * row * config.rowDepth;
               sortedUnits[i].brain!.moveToTarget = [px, y ?? 0, pz];
+              sortedUnits[i].brain!.moveToFacing = facing ?? cmdRot;
               sortedUnits[i].brain!.agendaLocked = true;
               sortedUnits[i].brain!.formationPos = null;
               affected++;

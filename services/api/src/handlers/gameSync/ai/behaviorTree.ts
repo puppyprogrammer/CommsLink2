@@ -71,6 +71,7 @@ type NPCBrain = {
 
   // Move-to command (direct order to a world position)
   moveToTarget: [number, number, number] | null;
+  moveToFacing: number | null; // Rotation in degrees to face on arrival
 
   // Combat visual state
   weaponDrawn: boolean;
@@ -250,8 +251,12 @@ const evaluateBehavior = (
   if (brain.moveToTarget) {
     const distToTarget = dist3d(npc.pos, brain.moveToTarget);
     if (distToTarget < 2) {
-      // Arrived — switch to guard position
+      // Arrived — switch to guard position, face the commanded direction
+      if (brain.moveToFacing !== null) {
+        npc.rot = brain.moveToFacing;
+      }
       brain.moveToTarget = null;
+      brain.moveToFacing = null;
       brain.agenda = 'guard_position';
       brain.agendaLocked = true;
       return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'MOVE_TO: arrived, holding position' };

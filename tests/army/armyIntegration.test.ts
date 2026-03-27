@@ -23,7 +23,7 @@ const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
   fatigue: 0, hunger: 0, procreationDrive: 20,
   aggression: 50, defense: 50, counterAttack: 50, flankTendency: 30, flankDirection: 50,
   retreatThreshold: 25, pursuit: 50, groupCohesion: 50, commanderProtection: 50, selfPreservation: 50,
-  agenda: 'follow_commander', targetId: null, lastGrokCall: 0, grokIntervalMs: 30000, situationLog: [], agendaLocked: false, formationPos: null, formationRot: null, formationType: null, formationAction: null, marchDirection: null, moveToTarget: null, leaderId: null, rank: 'soldier', squadIndex: 0, armyBlockIndex: 0, weaponDrawn: false,
+  agenda: 'follow_commander', targetId: null, lastGrokCall: 0, grokIntervalMs: 30000, situationLog: [], agendaLocked: false, formationPos: null, formationRot: null, formationType: null, formationAction: null, marchDirection: null, moveToTarget: null, moveToFacing: null, leaderId: null, rank: 'soldier', squadIndex: 0, armyBlockIndex: 0, weaponDrawn: false,
   ...overrides,
 });
 
