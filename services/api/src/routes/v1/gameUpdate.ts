@@ -1,3 +1,4 @@
+import Joi from 'joi';
 import Boom from '@hapi/boom';
 import jwt from 'jsonwebtoken';
 import { createHash } from 'crypto';
@@ -122,6 +123,53 @@ const gameUpdateRoutes: ServerRoute[] = [
 
       console.log(`[GameUpdate] Build uploaded: v${version}, ${(rawBody.length / 1024 / 1024).toFixed(1)}MB, sha256=${sha256.substring(0, 16)}...`);
 
+      return metadata;
+    },
+  },
+
+  // ── Update version metadata only (no zip upload needed) ──
+  {
+    method: 'POST',
+    path: '/api/v1/game/version',
+    options: {
+      auth: false,
+      validate: {
+        payload: Joi.object({
+          version: Joi.string().required(),
+          changelog: Joi.string().default(''),
+        }),
+      },
+    },
+    handler: async (request: Request, h: ResponseToolkit) => {
+      // Simple auth: require admin JWT OR localhost-only
+      const rawHeader = request.headers.authorization;
+      const authHeader = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const secret = process.env.JWT_SECRET;
+        if (secret) {
+          try {
+            const decoded = jwt.verify(token, secret) as { id: string };
+            const user = await Data.user.findById(decoded.id);
+            if (!user?.is_admin) return h.response({ error: 'Admin required' }).code(403);
+          } catch {
+            return h.response({ error: 'Invalid token' }).code(401);
+          }
+        }
+      }
+
+      const { version, changelog } = request.payload as { version: string; changelog: string };
+
+      const metadata = {
+        version,
+        changelog,
+        sha256: '',
+        size: 0,
+        updatedAt: new Date().toISOString(),
+      };
+      writeFileSync(join(RELEASES_DIR, 'version.json'), JSON.stringify(metadata, null, 2));
+
+      console.log(`[GameUpdate] Version updated to ${version}`);
       return metadata;
     },
   },
