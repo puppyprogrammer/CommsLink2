@@ -365,7 +365,7 @@ const evaluateBehavior = (
       // Determine how many columns wide the block should be
       // Auto-size: sqrt of army gives a roughly square block
       // But cap at reasonable widths per army size
-      const totalUnits = countArmyUnits(brain.commanderUserId, allBrains);
+      const totalUnits = allBrains ? countArmyUnits(brain.commanderUserId, allBrains) : 5;
       const COLS = totalUnits <= 3 ? totalUnits : totalUnits <= 8 ? Math.ceil(totalUnits / 2) : totalUnits <= 20 ? 5 : Math.ceil(Math.sqrt(totalUnits));
 
       const idx = brain.armyBlockIndex;
