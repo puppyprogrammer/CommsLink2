@@ -102,6 +102,12 @@ const buyItemAction = async (
 
     // ── Recruit purchase ──
     if (itemDef.item_type === 'recruit') {
+      // Roman century cap: 80 soldiers + 1 centurion
+      const currentArmy = await Data.playerCharacter.getArmyStructure(userId);
+      if (currentArmy.length >= 80) {
+        throw Boom.conflict('Army is at maximum strength (80 units). A century cannot grow beyond this.');
+      }
+
       const recruitName = generateRecruitName();
       const npcType = itemDef.name.toLowerCase().replace(/ /g, '_');
       const npcClass = getRecruitClass(itemDef.name);
