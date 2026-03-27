@@ -125,6 +125,7 @@ const encounterRoutes: ServerRoute[] = [
             spawnZ: positions[i].pos[2],
             weaponRange: 2.5, // Encounter NPCs have swords
             weaponName: 'Iron Broadsword',
+            equipped: [{ slot: 'main_hand', item_name: 'Iron Broadsword', item_type: 'weapon' }],
           };
 
           const brain: NPCBrain = {
@@ -265,7 +266,7 @@ const encounterRoutes: ServerRoute[] = [
           hp: 100, maxHp: 100, stamina: 100, maxStamina: 100,
           strength: 10, defense: 10, lastDamageTime: 0, isDead: false,
           spawnX: botPos[0], spawnY: botPos[1], spawnZ: botPos[2],
-          weaponRange: 1.0, weaponName: 'Fists',
+          weaponRange: 1.0, weaponName: 'Fists', equipped: [],
         };
 
         players.set(botId, botState);
