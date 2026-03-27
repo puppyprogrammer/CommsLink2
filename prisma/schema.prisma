@@ -702,6 +702,26 @@ model world_vegetation {
 }
 
 // ┌──────────────────────────────────────────┐
+// │ Game World — NPC Placements              │
+// └──────────────────────────────────────────┘
+
+model world_npc {
+  id              Int      @id @default(autoincrement())
+  x               Float
+  y               Float    @default(0)
+  z               Float
+  npc_name        String
+  title           String
+  shop_name       String
+  prefab_name     String
+  interact_range  Float    @default(3.5)
+  placed_by       String?
+  placed_at       DateTime @default(now())
+
+  @@index([x, z])
+}
+
+// ┌──────────────────────────────────────────┐
 // │ Game World — Objects (Buildings, Props)   │
 // └──────────────────────────────────────────┘
 

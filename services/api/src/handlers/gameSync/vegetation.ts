@@ -17,13 +17,22 @@ const getGameHour = (): number => {
 /** Broadcast nearby — send to all connected players within radius. */
 const broadcastNearby = (x: number, z: number, radius: number, msg: object): void => {
   const json = JSON.stringify(msg);
-  for (const [, p] of players) {
+  let sent = 0;
+  let checked = 0;
+  for (const [id, p] of players) {
     if (!p.ws?.readyState || p.ws.readyState !== WebSocket.OPEN) continue;
+    checked++;
     const dx = p.pos[0] - x;
     const dz = p.pos[2] - z;
-    if (Math.sqrt(dx * dx + dz * dz) <= radius) {
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist <= radius) {
       p.ws.send(json);
+      sent++;
     }
+  }
+  // Log vegetation broadcasts periodically
+  if ((msg as { type?: string }).type?.startsWith('vegetation_') && Math.random() < 0.1) {
+    console.log(`[Vegetation] Broadcast ${(msg as { type: string }).type} at (${x.toFixed(0)},${z.toFixed(0)}) — ${sent}/${checked} players in range (${radius}m)`);
   }
 };
 
@@ -154,6 +163,13 @@ const vegetationTick = async (): Promise<void> => {
       type: 'vegetation_spawned',
       id: newBush.id, x: newX, z: newZ, vegType: 'bush', growth_stage: 0, health: 100,
     });
+  }
+
+  // Log tick stats
+  const totalVeg = await prisma.world_vegetation.count();
+  const connectedPlayers = Array.from(players.values()).filter(p => p.ws?.readyState === WebSocket.OPEN).length;
+  if (grownVeg.length > 0 || matureGrass.length > 0) {
+    console.log(`[Vegetation] Tick: grew ${grownVeg.length}, grass spread attempts: ${matureGrass.length}, total: ${totalVeg}, players online: ${connectedPlayers}`);
   }
 };
 

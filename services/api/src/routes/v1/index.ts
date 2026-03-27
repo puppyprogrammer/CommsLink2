@@ -22,6 +22,7 @@ import { armyRoutes } from './army';
 import { encounterRoutes } from './encounter';
 import { worldRoutes } from './world';
 import { worldObjectRoutes } from './worldObjects';
+import { worldNpcRoutes } from './worldNpcs';
 
 /**
  * Register all v1 API routes.
@@ -52,6 +53,7 @@ const registerRoutes = (server: Server): void => {
     ...encounterRoutes,
     ...worldRoutes,
     ...worldObjectRoutes,
+    ...worldNpcRoutes,
   ]);
 };
 
