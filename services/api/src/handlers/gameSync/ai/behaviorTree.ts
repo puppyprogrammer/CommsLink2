@@ -91,7 +91,7 @@ const getLeaderPos = (brain: NPCBrain, players: Map<string, PlayerSyncState>): [
   return getCommanderPos(brain, players);
 };
 
-/** Find nearest enemy. Excludes: self, commander, and any NPC with the same commander. */
+/** Find nearest enemy. Only targets enemy NPCs (different commander). Real players are never auto-targeted. */
 const findNearestEnemy = (
   npcPos: [number, number, number],
   npcUserId: string,
@@ -103,9 +103,14 @@ const findNearestEnemy = (
 
   for (const [id, p] of players) {
     if (id === npcUserId || id === commanderUserId || p.isDead) continue;
+
     if (allBrains) {
       const otherBrain = allBrains.get(id);
+      // Skip allies (same commander)
       if (otherBrain && otherBrain.commanderUserId === commanderUserId) continue;
+      // Skip real players (no brain = real player, not an NPC)
+      // NPCs only auto-target other NPCs with different commanders
+      if (!otherBrain) continue;
     }
     const dx = npcPos[0] - p.pos[0];
     const dz = npcPos[2] - p.pos[2];

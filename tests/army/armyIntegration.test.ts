@@ -56,6 +56,7 @@ describe('Fear and Bravery', () => {
     const commander = makePlayer('cmd-1', [20, 0, 0]);
     const npc = makePlayer('npc-1', [0, 0, 0]);
     const enemy = makePlayer('enemy', [2, 0, 0]); // right next to them!
+      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
     const brain = makeBrain({ fear: 100, bravery: 50, agenda: 'seek_combat', aggression: 100 });
 
     players.set('cmd-1', commander);
@@ -92,6 +93,7 @@ describe('Fear and Bravery', () => {
     const commander = makePlayer('cmd-1', [20, 0, 0]);
     const npc = makePlayer('npc-1', [0, 0, 0], { hp: 15, maxHp: 100 });
     const enemy = makePlayer('enemy', [2, 0, 0]);
+      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
     const brain = makeBrain({
       fear: 0, bravery: 95, agenda: 'seek_combat', aggression: 90,
       retreatThreshold: 10, selfPreservation: 10, // won't retreat until nearly dead
@@ -114,6 +116,7 @@ describe('Fear and Bravery', () => {
     const commander = makePlayer('cmd-1', [20, 0, 0]);
     const npc = makePlayer('npc-1', [0, 0, 0], { hp: 1, maxHp: 100 }); // 1 HP!
     const enemy = makePlayer('enemy', [2, 0, 0]);
+      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
     const brain = makeBrain({
       fear: 0, agenda: 'seek_combat', aggression: 80,
       retreatThreshold: 50, selfPreservation: 0, // will die fighting
@@ -141,6 +144,7 @@ describe('Aggression vs Defense balance', () => {
     const commander = makePlayer('cmd-1', [20, 0, 0]);
     const npc = makePlayer('npc-1', [0, 0, 0]);
     const enemy = makePlayer('enemy', [2, 0, 0]);
+      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
     const brain = makeBrain({ agenda: 'seek_combat', aggression: 95, defense: 10 });
 
     players.set('cmd-1', commander);
@@ -160,6 +164,7 @@ describe('Aggression vs Defense balance', () => {
     const commander = makePlayer('cmd-1', [20, 0, 0]);
     const npc = makePlayer('npc-1', [0, 0, 0]);
     const enemy = makePlayer('enemy', [2, 0, 0]);
+      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
     const brain = makeBrain({ agenda: 'seek_combat', aggression: 10, defense: 95 });
 
     players.set('cmd-1', commander);
@@ -238,6 +243,7 @@ describe('Squad behavior', () => {
 
     // Enemy walks into range
     const enemy = makePlayer('enemy-1', [3, 0, 0]); // 3m — inside 5m guard range
+      brains.set('enemy-1', makeBrain({ characterId: 'enemy-1', commanderUserId: 'enemy-cmd' }));
     players.set('enemy-1', enemy);
 
     const results = runMultiple(brain, soldier, players, brains, 20);
@@ -342,6 +348,7 @@ describe('Edge cases', () => {
     const commander = makePlayer('cmd-1', [20, 0, 0]);
     const npc = makePlayer('npc-1', [0, 0, 0], { stamina: 0 });
     const enemy = makePlayer('enemy', [2, 0, 0]);
+      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
     const brain = makeBrain({ agenda: 'seek_combat', aggression: 100 });
 
     players.set('cmd-1', commander);

@@ -184,6 +184,7 @@ describe('Formation Behavior Tree', () => {
     const commander = makePlayer('cmd-1', [50, 0, 50]);
     const npc = makePlayer('npc-1', [20, 0, 20]);
     const enemy = makePlayer('enemy', [22, 0, 20]); // 2m away
+      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
     const brain = makeBrain({
       agenda: 'formation',
       formationPos: [20, 0, 20],
@@ -216,6 +217,7 @@ describe('Formation Behavior Tree', () => {
     const commander = makePlayer('cmd-1', [50, 0, 50]);
     const npc = makePlayer('npc-1', [20, 0, 20]);
     const enemy = makePlayer('enemy', [30, 0, 20]); // 10m away — outside melee
+      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
     const brain = makeBrain({
       agenda: 'formation',
       formationPos: [20, 0, 20],
