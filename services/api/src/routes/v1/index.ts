@@ -21,6 +21,7 @@ import { shopRoutes } from './shop';
 import { armyRoutes } from './army';
 import { encounterRoutes } from './encounter';
 import { worldRoutes } from './world';
+import { worldObjectRoutes } from './worldObjects';
 
 /**
  * Register all v1 API routes.
@@ -50,6 +51,7 @@ const registerRoutes = (server: Server): void => {
     ...armyRoutes,
     ...encounterRoutes,
     ...worldRoutes,
+    ...worldObjectRoutes,
   ]);
 };
 

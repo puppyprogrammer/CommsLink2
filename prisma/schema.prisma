@@ -700,3 +700,24 @@ model world_vegetation {
 
   @@index([x, z])
 }
+
+// ┌──────────────────────────────────────────┐
+// │ Game World — Objects (Buildings, Props)   │
+// └──────────────────────────────────────────┘
+
+model world_object {
+  id           Int      @id @default(autoincrement())
+  x            Float
+  y            Float    @default(0)
+  z            Float
+  rot_y        Float    @default(0)
+  scale        Float    @default(1)
+  prefab_name  String
+  category     String   @default("building")
+  placed_by    String?
+  placed_at    DateTime @default(now())
+  is_static    Boolean  @default(true)
+  health       Int?
+
+  @@index([x, z])
+}

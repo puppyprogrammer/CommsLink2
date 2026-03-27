@@ -27,22 +27,23 @@ const broadcastNearby = (x: number, z: number, radius: number, msg: object): voi
   }
 };
 
-// ── Growth Tick (every 60s) ──
+// ── Growth Tick (every 10s — FAST MODE for testing) ──
 
 const vegetationTick = async (): Promise<void> => {
-  const gameHour = getGameHour();
-  if (gameHour < 6 || gameHour >= 18) return; // Only grow during daytime
+  // Daytime check disabled for testing — grows 24/7
+  // const gameHour = getGameHour();
+  // if (gameHour < 6 || gameHour >= 18) return;
 
   const now = new Date();
 
-  // Grow vegetation that hasn't grown recently and isn't fully grown
+  // Grow vegetation that hasn't grown in last 10s and isn't fully grown
   const grownVeg = await prisma.world_vegetation.findMany({
     where: {
       growth_stage: { lt: 4 },
       health: { gt: 0 },
-      last_growth: { lt: new Date(now.getTime() - 60000) },
+      last_growth: { lt: new Date(now.getTime() - 10000) }, // 10s cooldown instead of 60s
     },
-    take: 500,
+    take: 2000, // Bigger batch
   });
 
   for (const veg of grownVeg) {
@@ -58,20 +59,22 @@ const vegetationTick = async (): Promise<void> => {
     });
   }
 
-  // Spread: mature grass has 10% chance to spawn adjacent
+  // Spread: mature grass has 40% chance to spawn adjacent (FAST MODE)
   const matureGrass = await prisma.world_vegetation.findMany({
-    where: { growth_stage: 4, type: 'grass', health: { gte: 80 } },
-    take: 200,
+    where: { growth_stage: 4, type: 'grass', health: { gte: 50 } },
+    take: 1000,
   });
 
   for (const g of matureGrass) {
-    if (Math.random() > 0.10) continue;
-    const newX = g.x + (Math.random() - 0.5) * 4;
-    const newZ = g.z + (Math.random() - 0.5) * 4;
+    if (Math.random() > 0.40) continue; // 40% chance — grass spreads like wildfire
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 2 + Math.random() * 8; // 2-10m from parent
+    const newX = g.x + Math.cos(angle) * dist;
+    const newZ = g.z + Math.sin(angle) * dist;
 
     // Don't spawn too close to existing
     const nearby = await prisma.world_vegetation.count({
-      where: { x: { gte: newX - 1, lte: newX + 1 }, z: { gte: newZ - 1, lte: newZ + 1 } },
+      where: { x: { gte: newX - 1.5, lte: newX + 1.5 }, z: { gte: newZ - 1.5, lte: newZ + 1.5 } },
     });
     if (nearby > 0) continue;
 
@@ -88,12 +91,12 @@ const vegetationTick = async (): Promise<void> => {
   // Trees drop seeds — mature trees have 3% chance to spawn a sapling nearby
   // Seeds fall further than grass (5-10m) and need more space (3m minimum gap)
   const matureTrees = await prisma.world_vegetation.findMany({
-    where: { growth_stage: 4, type: { startsWith: 'tree_' }, health: { gte: 60 } },
-    take: 100,
+    where: { growth_stage: 4, type: { startsWith: 'tree_' }, health: { gte: 50 } },
+    take: 500,
   });
 
   for (const tree of matureTrees) {
-    if (Math.random() > 0.03) continue; // 3% chance per tick
+    if (Math.random() > 0.15) continue; // 15% chance per tick (FAST MODE)
     const angle = Math.random() * Math.PI * 2;
     const dist = 5 + Math.random() * 5; // 5-10m from parent
     const newX = tree.x + Math.cos(angle) * dist;
@@ -127,17 +130,19 @@ const vegetationTick = async (): Promise<void> => {
 
   // Bushes also spread — 5% chance, 2-4m distance
   const matureBushes = await prisma.world_vegetation.findMany({
-    where: { growth_stage: 4, type: 'bush', health: { gte: 70 } },
-    take: 100,
+    where: { growth_stage: 4, type: 'bush', health: { gte: 50 } },
+    take: 500,
   });
 
   for (const bush of matureBushes) {
-    if (Math.random() > 0.05) continue;
-    const newX = bush.x + (Math.random() - 0.5) * 4;
-    const newZ = bush.z + (Math.random() - 0.5) * 4;
+    if (Math.random() > 0.25) continue; // 25% chance (FAST MODE)
+    const bAngle = Math.random() * Math.PI * 2;
+    const bDist = 2 + Math.random() * 6; // 2-8m from parent
+    const newX = bush.x + Math.cos(bAngle) * bDist;
+    const newZ = bush.z + Math.sin(bAngle) * bDist;
 
     const nearby = await prisma.world_vegetation.count({
-      where: { x: { gte: newX - 1.5, lte: newX + 1.5 }, z: { gte: newZ - 1.5, lte: newZ + 1.5 } },
+      where: { x: { gte: newX - 2, lte: newX + 2 }, z: { gte: newZ - 2, lte: newZ + 2 } },
     });
     if (nearby > 0) continue;
 
@@ -181,17 +186,17 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
 // ── Init ──
 
 const initVegetationSystem = (): void => {
-  // Growth tick every 60s
+  // Growth tick every 10s (FAST MODE for testing — normally 60s)
   setInterval(() => {
     vegetationTick().catch((err) => console.error('[Vegetation] Tick error:', err));
-  }, 60000);
+  }, 10000);
 
   // World time broadcast every 10s
   setInterval(() => {
     broadcastAll({ type: 'world_time', hour: getGameHour() });
   }, 10000);
 
-  console.log('[Vegetation] System initialized (growth tick: 60s, world time: 10s)');
+  console.log('[Vegetation] System initialized FAST MODE (growth tick: 10s, spread: 40% grass / 15% tree / 25% bush)');
 };
 
 export { initVegetationSystem, getGameHour, broadcastNearby, checkTrampling };
