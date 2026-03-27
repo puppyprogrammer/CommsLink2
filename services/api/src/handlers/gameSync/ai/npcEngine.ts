@@ -476,10 +476,21 @@ setInterval(() => {
       }
     }
 
-    // In formation follow mode: always face same direction as commander
+    // In formation follow mode: face same direction as anchor (centurion faces commander, others face centurion)
     if ((brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') && !decision.faceTarget) {
-      const commander = players.get(brain.commanderUserId);
-      if (commander) npc.rot = commander.rot;
+      if (brain.rank === 'centurion') {
+        const commander = players.get(brain.commanderUserId);
+        if (commander) npc.rot = commander.rot;
+      } else {
+        // Find centurion and match their rotation
+        for (const [cId, cBrain] of activeNPCs) {
+          if (cBrain.commanderUserId === brain.commanderUserId && cBrain.rank === 'centurion') {
+            const centurionNpc = npcStates.get(cId);
+            if (centurionNpc) npc.rot = centurionNpc.rot;
+            break;
+          }
+        }
+      }
     }
 
     // ── Unit separation: soft push when overlapping ──

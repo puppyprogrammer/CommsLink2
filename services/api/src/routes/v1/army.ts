@@ -264,59 +264,50 @@ const armyRoutes: ServerRoute[] = [
           return { success: true, affected: units.length, formation: formationType };
         }
 
-        // Handle move_to — direct order to world positions
+        // Handle move_to — move the lead officer to the target, everyone else follows in formation
         if (command === 'move_to') {
-          let affected = 0;
+          // Find the highest-ranking officer in the targeted group
+          const RANK_PRIORITY: Record<string, number> = { centurion: 0, decurion: 1, sergeant: 2, soldier: 3 };
+          let officer: typeof units[0] | null = null;
+          for (const unit of units) {
+            const brain = activeNPCs.get(unit.id);
+            if (!brain) continue;
+            if (!officer || (RANK_PRIORITY[brain.rank] ?? 3) < (RANK_PRIORITY[activeNPCs.get(officer.id)?.rank || 'soldier'] ?? 3)) {
+              officer = unit;
+            }
+          }
+          if (!officer) throw Boom.notFound('No active units found');
 
-          // Sort units by armyBlockIndex so positions map correctly
-          const sortedUnits = units
-            .map((u) => ({ unit: u, brain: activeNPCs.get(u.id) }))
-            .filter((u) => !!u.brain)
-            .sort((a, b) => (a.brain!.armyBlockIndex) - (b.brain!.armyBlockIndex));
-
+          // Determine target position — prefer first position in array, then x/z
+          let targetPos: [number, number, number];
           if (positions && positions.length > 0) {
-            // Exact positions from client — one per unit, ordered by block index
-            for (let i = 0; i < sortedUnits.length; i++) {
-              const pos = positions[Math.min(i, positions.length - 1)];
-              sortedUnits[i].brain!.moveToTarget = [pos.x, pos.y, pos.z];
-              sortedUnits[i].brain!.agendaLocked = true;
-              sortedUnits[i].brain!.formationPos = null;
-              affected++;
-            }
-            console.log(`[Army] move_to positions: ${affected} units, ${positions.length} slots`);
-          } else if (x1 !== undefined && z1 !== undefined && x2 !== undefined && z2 !== undefined) {
-            // Line endpoints: server distributes units along the line
-            const lineLen = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2);
-            const dirX = lineLen > 0.1 ? (x2 - x1) / lineLen : 1;
-            const dirZ = lineLen > 0.1 ? (z2 - z1) / lineLen : 0;
-            const ROW_DEPTH = 1.5;
-            const COLS = Math.max(1, Math.ceil(lineLen / 1.5));
-
-            for (let i = 0; i < sortedUnits.length; i++) {
-              const col = i % COLS;
-              const row = Math.floor(i / COLS);
-              const t = COLS <= 1 ? 0.5 : col / (COLS - 1);
-              const px = x1 + (x2 - x1) * t - dirZ * row * ROW_DEPTH;
-              const pz = z1 + (z2 - z1) * t + dirX * row * ROW_DEPTH;
-              sortedUnits[i].brain!.moveToTarget = [px, y1 ?? 0, pz];
-              sortedUnits[i].brain!.agendaLocked = true;
-              sortedUnits[i].brain!.formationPos = null;
-              affected++;
-            }
-            console.log(`[Army] move_to line: ${affected} units, ${COLS} cols`);
+            targetPos = [positions[0].x, positions[0].y, positions[0].z];
           } else if (x !== undefined && z !== undefined) {
-            // Single point: all units march to same spot
-            for (const { brain } of sortedUnits) {
-              brain!.moveToTarget = [x, y ?? 0, z];
-              brain!.agendaLocked = true;
-              brain!.formationPos = null;
-              affected++;
-            }
-            console.log(`[Army] move_to point (${x.toFixed(0)}, ${z.toFixed(0)}): ${affected} units`);
+            targetPos = [x, y ?? 0, z];
           } else {
-            throw Boom.badRequest('move_to requires positions[], x1/z1/x2/z2, or x/z');
+            throw Boom.badRequest('move_to requires positions[] or x/z');
           }
 
+          const officerBrain = activeNPCs.get(officer.id)!;
+
+          // Move officer to the target point
+          officerBrain.moveToTarget = targetPos;
+          officerBrain.agendaLocked = true;
+
+          // Everyone else: follow their chain of command (they'll auto-form around the officer)
+          let affected = 1;
+          for (const unit of units) {
+            if (unit.id === officer.id) continue;
+            const brain = activeNPCs.get(unit.id);
+            if (!brain) continue;
+            brain.moveToTarget = null; // Clear any previous move_to
+            brain.agenda = 'follow_commander';
+            brain.agendaLocked = false; // Let formation system handle them
+            brain.formationPos = null;
+            affected++;
+          }
+
+          console.log(`[Army] move_to: officer ${officerBrain.name} (${officerBrain.rank}) → (${targetPos[0].toFixed(0)}, ${targetPos[2].toFixed(0)}), ${affected} units following`);
           return { success: true, affected, command };
         }
 

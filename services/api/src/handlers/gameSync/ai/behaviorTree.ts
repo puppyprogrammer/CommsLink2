@@ -395,18 +395,33 @@ const evaluateBehavior = (
     }
   }
 
-  // ── 6. Follow commander in unified army block ──
-  // ALL units form one tight block behind the commander.
-  // Centurion = front-left (index 0), then decurions, sergeants, soldiers fill L→R, row by row.
-  // Block faces the same direction as the commander.
+  // ── 6. Follow in unified army block ──
+  // Units form a block anchored on the centurion (or highest officer).
+  // When the player moves, the centurion follows the player, everyone else follows the centurion.
+  // This means move_to on the centurion moves the whole army.
   if (brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') {
-    if (commanderPos) {
-      const config = getFormationSpacing(brain.commanderUserId);
-      const SPACING = config.spacing;   // shoulder-to-shoulder distance
-      const ROW_DEPTH = config.rowDepth; // front-to-back row distance
+    // Find the anchor point: centurion position if we're not the centurion, otherwise commander
+    let anchorPos = commanderPos;
+    let anchorRot = 0;
+    if (brain.rank !== 'centurion' && allBrains) {
+      // Find the centurion of our army
+      for (const [cId, cBrain] of allBrains) {
+        if (cBrain.commanderUserId === brain.commanderUserId && cBrain.rank === 'centurion') {
+          const centurionState = players.get(cId);
+          if (centurionState && !centurionState.isDead) {
+            anchorPos = centurionState.pos;
+            anchorRot = centurionState.rot;
+          }
+          break;
+        }
+      }
+    }
 
-      // Roman maniple formation: always 2 rows deep, as wide as needed
-      // Front row fills first (L→R), back row gets the remainder
+    if (anchorPos) {
+      const config = getFormationSpacing(brain.commanderUserId);
+      const SPACING = config.spacing;
+      const ROW_DEPTH = config.rowDepth;
+
       const totalUnits = allBrains ? countArmyUnits(brain.commanderUserId, allBrains) : 5;
       const COLS = Math.ceil(totalUnits / 2);
 
@@ -415,25 +430,29 @@ const evaluateBehavior = (
       const col = idx % COLS;
       const colOffset = (col - (COLS - 1) / 2) * SPACING;
 
-      // Commander's facing direction
+      // Anchor's facing direction (centurion or commander)
       const commander = players.get(brain.commanderUserId);
-      const cmdRot = commander ? commander.rot : 0;
+      const cmdRot = brain.rank === 'centurion' ? (commander ? commander.rot : 0) : anchorRot;
       const rad = cmdRot * Math.PI / 180;
       const fwdX = Math.sin(rad);
       const fwdZ = Math.cos(rad);
       const rightX = Math.cos(rad);
       const rightZ = -Math.sin(rad);
 
-      // Position: behind commander (row 0 = 3m back, each row further back) + column offset
-      const behindDist = 3 + row * ROW_DEPTH;
+      // Centurion (index 0): forms 3m behind the player
+      // Everyone else: forms relative to the anchor (centurion) — index 0 is the centurion's spot
+      // so non-centurion units use index-1 offset from the centurion position
+      const isCenturion = brain.rank === 'centurion';
+      const behindDist = isCenturion ? 3 : (row * ROW_DEPTH);
+      const anchor = isCenturion ? commanderPos : anchorPos;
       const targetPos: [number, number, number] = [
-        commanderPos[0] - fwdX * behindDist + rightX * colOffset,
-        commanderPos[1],
-        commanderPos[2] - fwdZ * behindDist + rightZ * colOffset,
+        anchor[0] - fwdX * behindDist + rightX * colOffset,
+        anchor[1],
+        anchor[2] - fwdZ * behindDist + rightZ * colOffset,
       ];
 
       const distToTarget = dist3d(npc.pos, targetPos);
-      const distToCmd = dist3d(npc.pos, commanderPos);
+      const distToCmd = dist3d(npc.pos, anchor);
 
       // Sprint if very far behind
       if (distToCmd > 20) {
