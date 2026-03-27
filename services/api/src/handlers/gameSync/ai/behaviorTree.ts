@@ -69,6 +69,9 @@ type NPCBrain = {
   // March
   marchDirection: [number, number] | null;
 
+  // Move-to command (direct order to a world position)
+  moveToTarget: [number, number, number] | null;
+
   // Combat visual state
   weaponDrawn: boolean;
 };
@@ -242,6 +245,24 @@ const evaluateBehavior = (
   // Formation = geometry (shape), NOT behavior. It modifies how combat/movement works.
   const isShieldWall = brain.formationType === 'shield_wall';
   const hasFormation = !!brain.formationType; // Any formation = don't break ranks
+
+  // ── 2.5 Move-to — direct order to a world position ──
+  if (brain.moveToTarget) {
+    const distToTarget = dist3d(npc.pos, brain.moveToTarget);
+    if (distToTarget < 2) {
+      // Arrived — switch to guard position
+      brain.moveToTarget = null;
+      brain.agenda = 'guard_position';
+      brain.agendaLocked = true;
+      return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'MOVE_TO: arrived, holding position' };
+    }
+    // Fight at position if enemy in melee range, but keep moving after
+    if (nearestEnemy && distToEnemy < 2.5 && npc.stamina >= 10) {
+      return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'MOVE_TO: engaging enemy on the way' };
+    }
+    const moveAction = distToTarget > 8 ? 'run' as const : 'walk' as const;
+    return { action: moveAction, moveTarget: brain.moveToTarget, faceTarget: null, reason: `MOVE_TO: marching to target (${distToTarget.toFixed(1)}m)` };
+  }
 
   // ── 3. Guard / Hold position ──
   if (brain.agenda === 'guard_position') {

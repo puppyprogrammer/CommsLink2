@@ -82,6 +82,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       formationType: null,
       formationAction: null,
       marchDirection: null,
+      moveToTarget: null,
       leaderId: null, // Set in second pass after all units registered
       rank: recruit.rank || 'soldier',
       squadIndex: 0,
@@ -259,7 +260,7 @@ const registerSingleNPC = async (commanderUserId: string, recruitId: string): Pr
     targetId: recruit.ai_target_id || null, lastGrokCall: 0,
     grokIntervalMs: GROK_INTERVALS_LOCAL[recruit.npc_type || ''] || 20_000,
     situationLog: [], agendaLocked: false, formationPos: null, formationRot: null,
-    formationType: null, formationAction: null, marchDirection: null, leaderId: null,
+    formationType: null, formationAction: null, marchDirection: null, moveToTarget: null, leaderId: null,
     rank: recruit.rank || 'soldier', squadIndex: 0, armyBlockIndex: 0, weaponDrawn: false,
   };
 

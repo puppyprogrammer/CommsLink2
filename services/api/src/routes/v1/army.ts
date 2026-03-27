@@ -161,15 +161,18 @@ const armyRoutes: ServerRoute[] = [
       auth: 'jwt',
       validate: {
         payload: Joi.object({
-          command: Joi.string().valid('advance', 'retreat', 'hold', 'attack', 'defend', 'form_up', 'flank_left', 'flank_right', 'resume', 'draw_weapons', 'sheathe_weapons', 'formation_line', 'formation_column', 'formation_shield_wall', 'formation_wedge', 'formation_circle', 'formation_square', 'formation_loose').required(),
+          command: Joi.string().valid('advance', 'retreat', 'hold', 'attack', 'defend', 'form_up', 'flank_left', 'flank_right', 'resume', 'draw_weapons', 'sheathe_weapons', 'move_to', 'formation_line', 'formation_column', 'formation_shield_wall', 'formation_wedge', 'formation_circle', 'formation_square', 'formation_loose').required(),
           target: Joi.string().optional(), // "all", "maniple_1", "squad_2a", or unit UUID
+          x: Joi.number().optional(),
+          y: Joi.number().optional(),
+          z: Joi.number().optional(),
         }),
       },
     },
     handler: async (request: Request) =>
       tracer.trace('CONTROLLER.ARMY.COMMAND', async () => {
         const credentials = request.auth.credentials as unknown as AuthCredentials;
-        const { command, target } = request.payload as { command: string; target?: string };
+        const { command, target, x, y, z } = request.payload as { command: string; target?: string; x?: number; y?: number; z?: number };
 
         // Resume = unlock agenda, let AI decide
         const isResume = command === 'resume';
@@ -245,6 +248,23 @@ const armyRoutes: ServerRoute[] = [
 
           console.log(`[Army] Formation ${formationType}: ${units.length} units assigned at [${center.map(n => n.toFixed(1)).join(',')}]`);
           return { success: true, affected: units.length, formation: formationType };
+        }
+
+        // Handle move_to — direct order to a world position
+        if (command === 'move_to') {
+          if (x === undefined || z === undefined) throw Boom.badRequest('move_to requires x and z coordinates');
+          let affected = 0;
+          for (const unit of units) {
+            const brain = activeNPCs.get(unit.id);
+            if (brain) {
+              brain.moveToTarget = [x, y ?? 0, z];
+              brain.agendaLocked = true;
+              brain.formationPos = null;
+              affected++;
+            }
+          }
+          console.log(`[Army] move_to (${x.toFixed(0)}, ${z.toFixed(0)}): ${affected} units`);
+          return { success: true, affected, command, x, z };
         }
 
         // Handle draw/sheathe weapons — purely visual, broadcast to all clients
