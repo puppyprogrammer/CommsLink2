@@ -6,6 +6,7 @@ import spawnAIArmyAction from '../../../../../core/actions/army/spawnAIArmyActio
 import { players, broadcastAll } from '../../handlers/gameSync/combat';
 import { activeNPCs, npcStates, registerPlayerNPCs } from '../../handlers/gameSync/ai/npcEngine';
 import { calculateFormationPositions } from '../../handlers/gameSync/ai/formations';
+import { setRelationCache } from '../../handlers/gameSync/ai/behaviorTree';
 import type { PlayerSyncState } from '../../handlers/gameSync/combat';
 import type { NPCBrain } from '../../handlers/gameSync/ai/behaviorTree';
 import { WebSocket } from 'ws';
@@ -160,7 +161,7 @@ const encounterRoutes: ServerRoute[] = [
           activeNPCs.set(id, brain);
           enemyIds.push(id);
 
-          // Broadcast to all clients
+          // Broadcast to all clients (include equipment + enemy flag)
           broadcastAll({
             type: 'player_joined',
             id,
@@ -169,6 +170,9 @@ const encounterRoutes: ServerRoute[] = [
             rot: npcState.rot,
             hp: npcState.hp,
             maxHp: npcState.maxHp,
+            isNpc: true,
+            equipped: npcState.equipped,
+            relation: 'enemy',
           });
         }
 
@@ -357,11 +361,30 @@ const encounterRoutes: ServerRoute[] = [
         // Spawn the persistent army
         const result = await spawnAIArmyAction(tier, spawnPos, spawnFacing);
 
-        // Register their NPCs in the game engine (full Grok brains)
+        // Auto-set enemy relation (both directions) so NPCs fight immediately
+        setRelationCache(credentials.id, result.commander_user_id, 'enemy');
+        setRelationCache(result.commander_user_id, credentials.id, 'enemy');
+        await Data.playerRelation.setRelation(credentials.id, result.commander_user_id, 'enemy');
+        await Data.playerRelation.setRelation(result.commander_user_id, credentials.id, 'enemy');
+
+        // Broadcast relation to clients for red name colors
+        broadcastAll({
+          type: 'relation_changed',
+          userId: credentials.id,
+          targetId: result.commander_user_id,
+          relation: 'enemy',
+        });
+
+        // Register their NPCs in the game engine (full Grok brains + equipment)
         await registerPlayerNPCs(result.commander_user_id);
 
-        // Create battle record
-        const army = await Data.playerCharacter.getArmyStructure(result.commander_user_id);
+        // Draw weapons on all spawned NPCs
+        for (const [id, brain] of activeNPCs) {
+          if (brain.commanderUserId === result.commander_user_id) {
+            brain.weaponDrawn = true;
+            broadcastAll({ type: 'npc_combat_action', id, action: 'draw_weapon', target_id: null });
+          }
+        }
 
         console.log(`[Encounter] Persistent AI army spawned: "${result.centurion_name}" (${tier}, ${result.army_size} units) with Grok brains`);
 

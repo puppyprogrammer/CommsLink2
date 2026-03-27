@@ -109,7 +109,29 @@ const spawnAIArmyAction = async (
         spawn_x: spawnPos[0],
         spawn_y: spawnPos[1],
         spawn_z: spawnPos[2],
+        ai_agenda: 'seek_combat',
       });
+
+      // Equip weapons based on type
+      const weaponNames: Record<string, string> = {
+        militia_swordsman: 'Iron Broadsword',
+        man_at_arms: 'Steel Rapier',
+        veteran_knight: 'War Halberd',
+      };
+      const shieldTypes = ['militia_swordsman', 'man_at_arms'];
+
+      const weaponDef = await Data.itemDefinition.findByName(weaponNames[npcType] || 'Iron Broadsword');
+      if (weaponDef) {
+        const wpn = await Data.inventoryItem.addItem(recruit.id, weaponDef.id, 1, 0);
+        await Data.inventoryItem.equipItem(wpn.id, 'main_hand').catch(() => {});
+      }
+      if (shieldTypes.includes(npcType)) {
+        const shieldDef = await Data.itemDefinition.findByName('Wooden Shield');
+        if (shieldDef) {
+          const shld = await Data.inventoryItem.addItem(recruit.id, shieldDef.id, 1, 1);
+          await Data.inventoryItem.equipItem(shld.id, 'off_hand').catch(() => {});
+        }
+      }
 
       // Auto-assign to army structure
       await Data.playerCharacter.autoAssignRecruit(user.id, recruit.id);
@@ -120,7 +142,7 @@ const spawnAIArmyAction = async (
     if (centurion) {
       await Data.playerCharacter.update(centurion.id, {
         ai_instructions: doctrine,
-        ai_agenda: 'guard_position',
+        ai_agenda: 'seek_combat',
       });
     }
 
