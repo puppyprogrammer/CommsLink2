@@ -379,11 +379,10 @@ const evaluateBehavior = (
       const SPACING = config.spacing;   // shoulder-to-shoulder distance
       const ROW_DEPTH = config.rowDepth; // front-to-back row distance
 
-      // Determine how many columns wide the block should be
-      // Auto-size: sqrt of army gives a roughly square block
-      // But cap at reasonable widths per army size
+      // Roman maniple formation: always 2 rows deep, as wide as needed
+      // Front row fills first (L→R), back row gets the remainder
       const totalUnits = allBrains ? countArmyUnits(brain.commanderUserId, allBrains) : 5;
-      const COLS = totalUnits <= 3 ? totalUnits : totalUnits <= 8 ? Math.ceil(totalUnits / 2) : totalUnits <= 20 ? 5 : Math.ceil(Math.sqrt(totalUnits));
+      const COLS = Math.ceil(totalUnits / 2);
 
       const idx = brain.armyBlockIndex;
       const row = Math.floor(idx / COLS);
