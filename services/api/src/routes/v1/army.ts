@@ -115,9 +115,9 @@ const armyRoutes: ServerRoute[] = [
           };
           // Handle spacing commands
           const spacingPresets: Record<string, { spacing: number; rowDepth: number }> = {
-            spacing_tight: { spacing: 1.0, rowDepth: 1.5 },
-            spacing_normal: { spacing: 1.8, rowDepth: 2.2 },
-            spacing_loose: { spacing: 4.0, rowDepth: 5.0 },
+            spacing_tight: { spacing: 0.6, rowDepth: 1.0 },
+            spacing_normal: { spacing: 1.0, rowDepth: 1.5 },
+            spacing_loose: { spacing: 3.0, rowDepth: 4.0 },
           };
           for (const cmd of dispatch.commands_issued) {
             const preset = spacingPresets[cmd];

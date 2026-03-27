@@ -101,7 +101,7 @@ const getLeaderPos = (brain: NPCBrain, players: Map<string, PlayerSyncState>): [
 const formationSpacingConfig = new Map<string, { spacing: number; rowDepth: number }>();
 
 const getFormationSpacing = (commanderUserId: string): { spacing: number; rowDepth: number } =>
-  formationSpacingConfig.get(commanderUserId) || { spacing: 1.8, rowDepth: 2.2 };
+  formationSpacingConfig.get(commanderUserId) || { spacing: 1.0, rowDepth: 1.5 };
 
 const setFormationSpacing = (commanderUserId: string, spacing: number, rowDepth: number): void => {
   formationSpacingConfig.set(commanderUserId, { spacing, rowDepth });
