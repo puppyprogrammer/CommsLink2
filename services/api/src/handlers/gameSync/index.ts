@@ -32,6 +32,15 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
   // Initialize vegetation & world time system
   initVegetationSystem();
 
+  // Ping all connected clients every 30s to keep connections alive
+  setInterval(() => {
+    for (const [, p] of players) {
+      if (p.ws?.readyState === WebSocket.OPEN) {
+        p.ws.ping();
+      }
+    }
+  }, 30000);
+
   wss.on('connection', async (ws: WebSocket, request: IncomingMessage) => {
     try {
       const url = new URL(request.url || '', `http://${request.headers.host}`);

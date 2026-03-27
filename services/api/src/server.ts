@@ -66,6 +66,8 @@ const createServer = async (): Promise<Hapi.Server> => {
         : '*',
       methods: ['GET', 'POST'],
     },
+    pingTimeout: 60000,    // Wait 60s for pong before disconnecting
+    pingInterval: 25000,   // Send ping every 25s
   });
 
   await registerSocketHandlers(io);
