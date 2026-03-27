@@ -444,7 +444,7 @@ const evaluateBehavior = (
       const isCenturion = brain.rank === 'centurion';
       const hasCenturionAnchor = anchorPos !== commanderPos; // true if we found a centurion
       const behindDist = isCenturion ? 3 : hasCenturionAnchor ? (row * ROW_DEPTH) : (3 + row * ROW_DEPTH);
-      const anchor = isCenturion ? commanderPos : anchorPos;
+      const anchor: [number, number, number] = (isCenturion ? commanderPos : anchorPos) as [number, number, number];
       const targetPos: [number, number, number] = [
         anchor[0] - fwdX * behindDist + rightX * colOffset,
         anchor[1],
