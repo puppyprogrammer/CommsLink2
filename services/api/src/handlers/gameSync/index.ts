@@ -8,6 +8,7 @@ import { players, handleMessage, loadEquipment } from './combat';
 import type { PlayerSyncState } from './combat';
 import { registerPlayerNPCs, unregisterPlayerNPCs, activeNPCs } from './ai/npcEngine';
 import { initVegetationSystem, checkTrampling } from './vegetation';
+import { setRelationCache, getRelation } from './ai/behaviorTree';
 
 // ┌──────────────────────────────────────────┐
 // │ Stamina Regeneration (5/sec)             │
@@ -31,6 +32,20 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
 
   // Initialize vegetation & world time system
   initVegetationSystem();
+
+  // Load player relations into in-memory cache
+  (async () => {
+    try {
+      const prisma = (await import('../../../../../core/adapters/prisma')).default;
+      const allRelations = await prisma.player_relation.findMany();
+      for (const r of allRelations) {
+        setRelationCache(r.user_id, r.target_id, r.relation);
+      }
+      console.log(`[Relations] Loaded ${allRelations.length} relations into cache`);
+    } catch (err) {
+      console.error('[Relations] Failed to load cache:', err);
+    }
+  })();
 
   // Track missed pongs — terminate after 3 consecutive misses (30s with no response)
   const missedPongs = new Map<WebSocket, number>();
@@ -105,17 +120,24 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
         type: 'world_state',
         players: Array.from(players.values())
           .filter((p) => p.userId !== userId)
-          .map((p) => ({
-            id: p.userId,
-            username: p.username,
-            pos: p.pos,
-            rot: p.rot,
-            action: p.action,
-            hp: p.hp,
-            maxHp: p.maxHp,
-            isNpc: activeNPCs.has(p.userId),
-            equipped: p.equipped || [],
-          })),
+          .map((p) => {
+            // For NPCs, the relation is based on their commander, not the NPC itself
+            const npcBrain = activeNPCs.get(p.userId);
+            const effectiveId = npcBrain ? npcBrain.commanderUserId : p.userId;
+            const relation = effectiveId.startsWith('encounter-') ? 'enemy' : getRelation(userId, effectiveId);
+            return {
+              id: p.userId,
+              username: p.username,
+              pos: p.pos,
+              rot: p.rot,
+              action: p.action,
+              hp: p.hp,
+              maxHp: p.maxHp,
+              isNpc: !!npcBrain,
+              equipped: p.equipped || [],
+              relation,
+            };
+          }),
       };
       ws.send(JSON.stringify(worldState));
 

@@ -94,9 +94,32 @@ const getLeaderPos = (brain: NPCBrain, players: Map<string, PlayerSyncState>): [
   return getCommanderPos(brain, players);
 };
 
-/** Find nearest enemy. Targets enemy NPCs (different commander) and real players of enemy armies.
- *  Player-owned NPCs never target their own commander or other real players.
- *  Encounter NPCs (fake commander) target everyone including real players. */
+// ── In-memory relation cache (updated by API route on change) ──
+// Key: "userId:targetId" → relation
+const relationCache = new Map<string, string>();
+
+const getRelation = (userId: string, targetId: string): string =>
+  relationCache.get(`${userId}:${targetId}`) || 'neutral';
+
+const setRelationCache = (userId: string, targetId: string, relation: string): void => {
+  if (relation === 'neutral') {
+    relationCache.delete(`${userId}:${targetId}`);
+  } else {
+    relationCache.set(`${userId}:${targetId}`, relation);
+  }
+};
+
+const isEnemy = (commanderA: string, commanderB: string): boolean =>
+  getRelation(commanderA, commanderB) === 'enemy' || getRelation(commanderB, commanderA) === 'enemy';
+
+const isAlly = (commanderA: string, commanderB: string): boolean =>
+  getRelation(commanderA, commanderB) === 'ally' || getRelation(commanderB, commanderA) === 'ally';
+
+/** Find nearest enemy. Uses relation system + encounter logic.
+ *  - Same commander → always ally (skip)
+ *  - Encounter NPCs → enemy to everyone
+ *  - Player-owned NPCs → attack targets their commander marked as enemy
+ *  - Neutral/ally real players → never targeted */
 const findNearestEnemy = (
   npcPos: [number, number, number],
   npcUserId: string,
@@ -106,7 +129,6 @@ const findNearestEnemy = (
 ): { userId: string; distance: number; state: PlayerSyncState } | null => {
   let nearest: { userId: string; distance: number; state: PlayerSyncState } | null = null;
 
-  // Encounter NPCs have fake commander IDs (e.g. "encounter-xxx") — they're not real players
   const isEncounterNPC = commanderUserId.startsWith('encounter-');
 
   for (const [id, p] of players) {
@@ -114,12 +136,22 @@ const findNearestEnemy = (
 
     if (allBrains) {
       const otherBrain = allBrains.get(id);
-      // Skip allies (same commander)
+
+      // Same commander → ally, skip
       if (otherBrain && otherBrain.commanderUserId === commanderUserId) continue;
-      // Player-owned NPCs: don't attack real players (no brain = real player)
-      // Encounter NPCs: attack everyone including real players
-      if (!otherBrain && !isEncounterNPC) continue;
+
+      // Determine the other entity's commander (for NPCs it's their commander, for real players it's themselves)
+      const otherCommander = otherBrain ? otherBrain.commanderUserId : id;
+
+      if (isEncounterNPC) {
+        // Encounter NPCs attack everyone except other encounter NPCs from the same group
+        if (otherCommander.startsWith('encounter-')) continue;
+      } else {
+        // Player-owned NPCs: only attack if relation is enemy (either direction)
+        if (!isEnemy(commanderUserId, otherCommander)) continue;
+      }
     }
+
     const dx = npcPos[0] - p.pos[0];
     const dz = npcPos[2] - p.pos[2];
     const dist = Math.sqrt(dx * dx + dz * dz);
@@ -316,4 +348,4 @@ const evaluateBehavior = (
 };
 
 export type { NPCBrain, BehaviorDecision, BehaviorAction };
-export { evaluateBehavior, getCommanderPos, findNearestEnemy };
+export { evaluateBehavior, getCommanderPos, findNearestEnemy, relationCache, setRelationCache, getRelation, isEnemy, isAlly };

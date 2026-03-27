@@ -27,7 +27,8 @@ import levelDefinition from './levelDefinition';
 import shop from './shop';
 import shopStock from './shopStock';
 import shopTransaction from './shopTransaction';
+import playerRelation from './playerRelation';
 
-const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile, gladiator, gladiatorMemory, fight, fightEvent, playerCharacter, itemDefinition, inventoryItem, levelDefinition, shop, shopStock, shopTransaction };
+const Data = { user, room, message, version, llmAgent, creditTransaction, creditUsageLog, memorySummary, machine, machinePermission, claudeLog, roomMember, roomInvite, paymentTransaction, panelLog, agentTemplate, auditLog, ffxivProfile, gladiator, gladiatorMemory, fight, fightEvent, playerCharacter, itemDefinition, inventoryItem, levelDefinition, shop, shopStock, shopTransaction, playerRelation };
 
 export default Data;

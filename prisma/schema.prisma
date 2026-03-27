@@ -741,3 +741,16 @@ model world_object {
 
   @@index([x, z])
 }
+
+model player_relation {
+  id         Int      @id @default(autoincrement())
+  user_id    String   // The player setting the relation
+  target_id  String   // The player being classified
+  relation   String   @default("neutral") // "enemy" | "neutral" | "ally"
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([user_id, target_id])
+  @@index([user_id])
+  @@index([target_id])
+}

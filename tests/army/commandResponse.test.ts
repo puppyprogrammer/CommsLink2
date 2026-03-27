@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { evaluateBehavior } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
+import { evaluateBehavior, setRelationCache } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
 import type { NPCBrain, BehaviorDecision } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
 import type { PlayerSyncState } from '../../services/api/src/handlers/gameSync/combat';
 import { WebSocket } from 'ws';
@@ -25,8 +25,13 @@ const makePlayer = (id: string, pos: [number, number, number] = [0, 0, 0]): Play
   isDead: false,
   spawnX: 0,
   spawnY: 0,
-  spawnZ: 0, weaponRange: 2.5, weaponName: 'Iron Broadsword',
+  spawnZ: 0, weaponRange: 2.5, weaponName: 'Iron Broadsword', equipped: [],
 });
+
+const setEnemies = (cmdA: string, cmdB: string) => {
+  setRelationCache(cmdA, cmdB, 'enemy');
+  setRelationCache(cmdB, cmdA, 'enemy');
+};
 
 const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
   characterId: 'npc-1',
@@ -49,6 +54,7 @@ const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
   formationAction: null,
   marchDirection: null,
   leaderId: null,
+  weaponDrawn: false,
   ...overrides,
 });
 
@@ -62,6 +68,7 @@ const setupWorld = () => {
 const addEnemy = (id: string, pos: [number, number, number], players: Map<string, PlayerSyncState>, brains: Map<string, NPCBrain>) => {
   players.set(id, makePlayer(id, pos));
   brains.set(id, makeBrain({ characterId: id, commanderUserId: 'enemy-commander' }));
+  setEnemies('commander-1', 'enemy-commander');
 };
 
 // ── Tests ──
@@ -128,6 +135,7 @@ describe('Army Command Response', () => {
       const npc = makePlayer('npc-1', [0, 0, 0]);
       const enemy = makePlayer('enemy-1', [8, 0, 0]); // 8m away — beyond guard range
       brains.set('enemy-1', makeBrain({ characterId: 'enemy-1', commanderUserId: 'enemy-cmd' }));
+      setEnemies('commander-1', 'enemy-cmd');
       const brain = makeBrain({ agenda: 'guard_position' });
 
       players.set('commander-1', commander);
@@ -234,6 +242,7 @@ describe('Army Command Response', () => {
       const npc = makePlayer('npc-1', [0, 0, 0]);
       const enemy = makePlayer('enemy-1', [6, 0, 0]); // 6m — approach range
       brains.set('enemy-1', makeBrain({ characterId: 'enemy-1', commanderUserId: 'enemy-cmd' }));
+      setEnemies('commander-1', 'enemy-cmd');
       const brain = makeBrain({ agenda: 'seek_combat', aggression: 80 });
 
       players.set('commander-1', commander);
@@ -254,6 +263,7 @@ describe('Army Command Response', () => {
       const npc = makePlayer('npc-1', [0, 0, 0]);
       const enemy = makePlayer('enemy-1', [7, 0, 0]); // 7m — within close range
       brains.set('enemy-1', makeBrain({ characterId: 'enemy-1', commanderUserId: 'enemy-cmd' }));
+      setEnemies('commander-1', 'enemy-cmd');
       const brain = makeBrain({ agenda: 'follow_commander', aggression: 80 });
 
       players.set('commander-1', commander);
@@ -274,6 +284,7 @@ describe('Army Command Response', () => {
       const npc = makePlayer('npc-1', [0, 0, 0]);
       const enemy = makePlayer('enemy-1', [12, 0, 0]); // 12m — beyond close range
       brains.set('enemy-1', makeBrain({ characterId: 'enemy-1', commanderUserId: 'enemy-cmd' }));
+      setEnemies('commander-1', 'enemy-cmd');
       const brain = makeBrain({ agenda: 'follow_commander', aggression: 80 });
 
       players.set('commander-1', commander);
@@ -321,6 +332,7 @@ describe('Army Command Response', () => {
 
       const brain1 = makeBrain({ characterId: 'npc-1', agenda: 'seek_combat', aggression: 100 });
       const brain_enemy = makeBrain({ characterId: 'enemy-npc', commanderUserId: 'other-commander' });
+      setEnemies('commander-1', 'other-commander');
 
       players.set('commander-1', commander);
       players.set('npc-1', npc1);
@@ -369,6 +381,7 @@ describe('Army Command Response', () => {
       const npc = makePlayer('npc-1', [0, 0, 0]); // 10m from commander
       const enemy = makePlayer('enemy-1', [12, 0, 0]); // 2m from commander
       brains.set('enemy-1', makeBrain({ characterId: 'enemy-1', commanderUserId: 'enemy-cmd' }));
+      setEnemies('commander-1', 'enemy-cmd');
 
       const brain = makeBrain({ agenda: 'follow_commander', commanderProtection: 80 });
 

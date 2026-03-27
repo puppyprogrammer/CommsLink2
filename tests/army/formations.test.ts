@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { calculateFormationPositions } from '../../services/api/src/handlers/gameSync/ai/formations';
-import { evaluateBehavior } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
+import { evaluateBehavior, setRelationCache } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
 import type { NPCBrain } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
 import type { PlayerSyncState } from '../../services/api/src/handlers/gameSync/combat';
 import { WebSocket } from 'ws';
@@ -11,7 +11,7 @@ const makePlayer = (id: string, pos: [number, number, number] = [0, 0, 0]): Play
   pos, rot: 0, action: 'idle', actionStartTime: 0,
   hp: 100, maxHp: 100, stamina: 100, maxStamina: 100,
   strength: 10, defense: 10, lastDamageTime: 0, isDead: false,
-  spawnX: 0, spawnY: 0, spawnZ: 0, weaponRange: 2.5, weaponName: 'Iron Broadsword',
+  spawnX: 0, spawnY: 0, spawnZ: 0, weaponRange: 2.5, weaponName: 'Iron Broadsword', equipped: [],
 });
 
 const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
@@ -22,9 +22,14 @@ const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
   aggression: 50, defense: 50, counterAttack: 50, flankTendency: 30, flankDirection: 50,
   retreatThreshold: 25, pursuit: 50, groupCohesion: 50, commanderProtection: 50, selfPreservation: 50,
   agenda: 'follow_commander', targetId: null, lastGrokCall: 0, grokIntervalMs: 30000, situationLog: [],
-  agendaLocked: false, formationPos: null, formationRot: null, formationType: null, formationAction: null, marchDirection: null, leaderId: null,
+  agendaLocked: false, formationPos: null, formationRot: null, formationType: null, formationAction: null, marchDirection: null, leaderId: null, weaponDrawn: false,
   ...overrides,
 });
+
+const setEnemies = (cmdA: string, cmdB: string) => {
+  setRelationCache(cmdA, cmdB, 'enemy');
+  setRelationCache(cmdB, cmdA, 'enemy');
+};
 
 describe('Formation Calculator', () => {
 
@@ -185,6 +190,7 @@ describe('Formation Behavior Tree', () => {
     const npc = makePlayer('npc-1', [20, 0, 20]);
     const enemy = makePlayer('enemy', [22, 0, 20]); // 2m away
       brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({
       agenda: 'formation',
       formationPos: [20, 0, 20],
@@ -218,6 +224,7 @@ describe('Formation Behavior Tree', () => {
     const npc = makePlayer('npc-1', [20, 0, 20]);
     const enemy = makePlayer('enemy', [30, 0, 20]); // 10m away — outside melee
       brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({
       agenda: 'formation',
       formationPos: [20, 0, 20],

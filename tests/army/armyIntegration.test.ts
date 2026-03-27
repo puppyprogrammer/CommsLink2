@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateBehavior } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
+import { evaluateBehavior, setRelationCache } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
 import type { NPCBrain } from '../../services/api/src/handlers/gameSync/ai/behaviorTree';
 import type { PlayerSyncState } from '../../services/api/src/handlers/gameSync/combat';
 import { WebSocket } from 'ws';
@@ -12,7 +12,7 @@ const makePlayer = (id: string, pos: [number, number, number] = [0, 0, 0], overr
   pos, rot: 0, action: 'idle', actionStartTime: 0,
   hp: 100, maxHp: 100, stamina: 100, maxStamina: 100,
   strength: 10, defense: 10, lastDamageTime: 0, isDead: false,
-  spawnX: 0, spawnY: 0, spawnZ: 0, weaponRange: 2.5, weaponName: 'Iron Broadsword',
+  spawnX: 0, spawnY: 0, spawnZ: 0, weaponRange: 2.5, weaponName: 'Iron Broadsword', equipped: [],
   ...overrides,
 });
 
@@ -23,9 +23,15 @@ const makeBrain = (overrides: Partial<NPCBrain> = {}): NPCBrain => ({
   fatigue: 0, hunger: 0, procreationDrive: 20,
   aggression: 50, defense: 50, counterAttack: 50, flankTendency: 30, flankDirection: 50,
   retreatThreshold: 25, pursuit: 50, groupCohesion: 50, commanderProtection: 50, selfPreservation: 50,
-  agenda: 'follow_commander', targetId: null, lastGrokCall: 0, grokIntervalMs: 30000, situationLog: [], agendaLocked: false, formationPos: null, formationRot: null, formationType: null, formationAction: null, marchDirection: null, leaderId: null,
+  agenda: 'follow_commander', targetId: null, lastGrokCall: 0, grokIntervalMs: 30000, situationLog: [], agendaLocked: false, formationPos: null, formationRot: null, formationType: null, formationAction: null, marchDirection: null, leaderId: null, weaponDrawn: false,
   ...overrides,
 });
+
+/** Set two commanders as enemies (bidirectional). */
+const setEnemies = (cmdA: string, cmdB: string) => {
+  setRelationCache(cmdA, cmdB, 'enemy');
+  setRelationCache(cmdB, cmdA, 'enemy');
+};
 
 // Run behavior multiple times to account for randomness
 const runMultiple = (brain: NPCBrain, npc: PlayerSyncState, players: Map<string, PlayerSyncState>, brains: Map<string, NPCBrain>, count = 30) => {
@@ -57,6 +63,7 @@ describe('Fear and Bravery', () => {
     const npc = makePlayer('npc-1', [0, 0, 0]);
     const enemy = makePlayer('enemy', [2, 0, 0]); // right next to them!
       brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({ fear: 100, bravery: 50, agenda: 'seek_combat', aggression: 100 });
 
     players.set('cmd-1', commander);
@@ -94,6 +101,7 @@ describe('Fear and Bravery', () => {
     const npc = makePlayer('npc-1', [0, 0, 0], { hp: 15, maxHp: 100 });
     const enemy = makePlayer('enemy', [2, 0, 0]);
       brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({
       fear: 0, bravery: 95, agenda: 'seek_combat', aggression: 90,
       retreatThreshold: 10, selfPreservation: 10, // won't retreat until nearly dead
@@ -117,6 +125,7 @@ describe('Fear and Bravery', () => {
     const npc = makePlayer('npc-1', [0, 0, 0], { hp: 1, maxHp: 100 }); // 1 HP!
     const enemy = makePlayer('enemy', [2, 0, 0]);
       brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({
       fear: 0, agenda: 'seek_combat', aggression: 80,
       retreatThreshold: 50, selfPreservation: 0, // will die fighting
@@ -145,6 +154,7 @@ describe('Aggression vs Defense balance', () => {
     const npc = makePlayer('npc-1', [0, 0, 0]);
     const enemy = makePlayer('enemy', [2, 0, 0]);
       brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({ agenda: 'seek_combat', aggression: 95, defense: 10 });
 
     players.set('cmd-1', commander);
@@ -165,6 +175,7 @@ describe('Aggression vs Defense balance', () => {
     const npc = makePlayer('npc-1', [0, 0, 0]);
     const enemy = makePlayer('enemy', [2, 0, 0]);
       brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({ agenda: 'seek_combat', aggression: 10, defense: 95 });
 
     players.set('cmd-1', commander);
@@ -244,6 +255,7 @@ describe('Squad behavior', () => {
     // Enemy walks into range
     const enemy = makePlayer('enemy-1', [3, 0, 0]); // 3m — inside 5m guard range
       brains.set('enemy-1', makeBrain({ characterId: 'enemy-1', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     players.set('enemy-1', enemy);
 
     const results = runMultiple(brain, soldier, players, brains, 20);
@@ -349,6 +361,7 @@ describe('Edge cases', () => {
     const npc = makePlayer('npc-1', [0, 0, 0], { stamina: 0 });
     const enemy = makePlayer('enemy', [2, 0, 0]);
       brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+      setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({ agenda: 'seek_combat', aggression: 100 });
 
     players.set('cmd-1', commander);
