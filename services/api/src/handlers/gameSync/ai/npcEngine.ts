@@ -175,6 +175,102 @@ const rebuildChainOfCommand = async (commanderUserId: string): Promise<void> => 
   }
 };
 
+/** Register a single new recruit into the live NPC engine. Call after purchase. */
+const registerSingleNPC = async (commanderUserId: string, recruitId: string): Promise<void> => {
+  if (activeNPCs.has(recruitId)) return; // Already registered
+
+  const recruit = await Data.playerCharacter.findById(recruitId);
+  if (!recruit || !recruit.is_alive) return;
+
+  const commander = players.get(commanderUserId);
+  if (!commander) return; // Commander not online — NPC will register on next connect
+
+  const GROK_INTERVALS_LOCAL: Record<string, number> = {
+    peasant_levy: 30_000, militia_swordsman: 20_000, man_at_arms: 15_000,
+    veteran_knight: 10_000, elite_champion: 5_000, crossbowman: 20_000, shield_bearer: 15_000,
+  };
+
+  const brain: NPCBrain = {
+    characterId: recruit.id, commanderUserId, name: recruit.name,
+    humor: recruit.trait_humor, obedience: recruit.trait_obedience, bravery: recruit.trait_bravery,
+    curiosity: recruit.trait_curiosity, greed: recruit.trait_greed, aggressionNature: recruit.trait_aggression,
+    verbosity: recruit.trait_verbosity, mood: recruit.mood, fear: recruit.fear, loyalty: recruit.loyalty,
+    familiarity: recruit.familiarity, attraction: recruit.attraction, warmth: recruit.warmth, respect: recruit.respect,
+    fatigue: recruit.fatigue, hunger: recruit.hunger, procreationDrive: recruit.procreation_drive,
+    aggression: recruit.bw_aggression, defense: recruit.bw_defense, counterAttack: recruit.bw_counter_attack,
+    flankTendency: recruit.bw_flank_tendency, flankDirection: recruit.bw_flank_direction,
+    retreatThreshold: recruit.bw_retreat_threshold, pursuit: recruit.bw_pursuit,
+    groupCohesion: recruit.bw_group_cohesion, commanderProtection: recruit.bw_commander_protection,
+    selfPreservation: recruit.bw_self_preservation, agenda: recruit.ai_agenda || 'follow_commander',
+    targetId: recruit.ai_target_id || null, lastGrokCall: 0,
+    grokIntervalMs: GROK_INTERVALS_LOCAL[recruit.npc_type || ''] || 20_000,
+    situationLog: [], agendaLocked: false, formationPos: null, formationRot: null,
+    formationType: null, formationAction: null, marchDirection: null, leaderId: null,
+  };
+
+  activeNPCs.set(recruit.id, brain);
+
+  const spawnPos: [number, number, number] = [
+    commander.pos[0] + (Math.random() - 0.5) * 6,
+    commander.pos[1],
+    commander.pos[2] + (Math.random() - 0.5) * 6,
+  ];
+
+  const weapon = await loadWeaponRange(recruit.id);
+  const npcState: PlayerSyncState = {
+    userId: recruit.id, characterId: recruit.id, username: recruit.name,
+    ws: null as unknown as WebSocket, pos: spawnPos, rot: 0, action: 'idle',
+    actionStartTime: Date.now(), hp: recruit.max_health, maxHp: recruit.max_health,
+    stamina: recruit.max_stamina, maxStamina: recruit.max_stamina,
+    strength: recruit.strength, defense: recruit.defense, lastDamageTime: 0,
+    isDead: false, spawnX: commander.pos[0], spawnY: commander.pos[1], spawnZ: commander.pos[2],
+    weaponRange: weapon.range, weaponName: weapon.name,
+  };
+
+  npcStates.set(recruit.id, npcState);
+  players.set(recruit.id, npcState);
+
+  // Broadcast to other players (not the commander — client handles its own army spawn)
+  broadcast(commanderUserId, {
+    type: 'player_joined', id: recruit.id, username: recruit.name,
+    pos: spawnPos, rot: 0, hp: npcState.hp, maxHp: npcState.maxHp, isNpc: true,
+  });
+
+  // Rebuild chain of command for the whole army
+  await rebuildChainOfCommand(commanderUserId);
+
+  console.log(`[NPC] Live-registered ${recruit.name} (${recruit.npc_type}) for ${commanderUserId}`);
+};
+
+/** Refresh all active NPCs for a commander from DB — picks up rank changes, equipment, promotions. */
+const refreshArmyState = async (commanderUserId: string): Promise<void> => {
+  const recruits = await Data.playerCharacter.findRecruitsByCommander(commanderUserId);
+
+  for (const recruit of recruits) {
+    const brain = activeNPCs.get(recruit.id);
+    const npc = npcStates.get(recruit.id);
+    if (!brain || !npc) continue;
+
+    // Refresh weapon range (may have changed with rank/equipment)
+    const weapon = await loadWeaponRange(recruit.id);
+    npc.weaponRange = weapon.range;
+    npc.weaponName = weapon.name;
+
+    // Refresh stats from DB
+    npc.strength = recruit.strength;
+    npc.defense = recruit.defense;
+    npc.maxHp = recruit.max_health;
+    npc.maxStamina = recruit.max_stamina;
+    npc.username = recruit.name;
+    brain.name = recruit.name;
+  }
+
+  // Rebuild chain of command with updated ranks
+  await rebuildChainOfCommand(commanderUserId);
+
+  console.log(`[NPC] Refreshed army state for ${commanderUserId} (${recruits.length} recruits)`);
+};
+
 /** Unregister all NPCs for a disconnecting player. */
 const unregisterPlayerNPCs = (commanderUserId: string): void => {
   const toRemove: string[] = [];
@@ -450,4 +546,4 @@ setInterval(() => {
   }
 }, 30_000);
 
-export { registerPlayerNPCs, unregisterPlayerNPCs, rebuildChainOfCommand, activeNPCs, npcStates, armySpeechLog };
+export { registerPlayerNPCs, unregisterPlayerNPCs, registerSingleNPC, refreshArmyState, rebuildChainOfCommand, activeNPCs, npcStates, armySpeechLog };

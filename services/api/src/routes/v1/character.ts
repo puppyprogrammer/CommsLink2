@@ -7,6 +7,8 @@ import getCharacterAction from '../../../../../core/actions/character/getCharact
 import addXPAction from '../../../../../core/actions/character/addXPAction';
 import Data from '../../../../../core/data';
 import grokAdapter from '../../../../../core/adapters/grok';
+import { refreshArmyState, activeNPCs, npcStates } from '../../handlers/gameSync/ai/npcEngine';
+import { players, broadcastAll } from '../../handlers/gameSync/combat';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -147,10 +149,19 @@ const characterRoutes: ServerRoute[] = [
         if (!recruit.is_npc || recruit.commander_id !== credentials.id) {
           throw Boom.forbidden('Not your recruit');
         }
+        // Remove from live NPC engine
+        activeNPCs.delete(id);
+        npcStates.delete(id);
+        players.delete(id);
+        broadcastAll({ type: 'player_left', id });
+
         await Data.playerCharacter.deleteRecruit(id);
 
         // Fill any leadership gaps left by the dismissed unit
         await Data.playerCharacter.fillLeadershipGaps(credentials.id);
+
+        // Refresh remaining army (promotions may have happened)
+        refreshArmyState(credentials.id).catch(console.error);
 
         return { dismissed: true };
       }),
@@ -303,7 +314,6 @@ EMOTION: (one of: neutral, happy, angry, fearful, sarcastic, flirty, sad, determ
         if (!user) throw Boom.notFound('User not found');
 
         // Revive in game-sync
-        const { players, broadcastAll } = await import('../../handlers/gameSync/combat');
         for (const [id, p] of players) {
           if (p.username === username && p.isDead) {
             p.isDead = false;

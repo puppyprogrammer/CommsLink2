@@ -4,6 +4,7 @@ import tracer from '../../../../../core/lib/tracer';
 
 import buyItemAction from '../../../../../core/actions/shop/buyItemAction';
 import Data from '../../../../../core/data';
+import { registerSingleNPC, refreshArmyState } from '../../handlers/gameSync/ai/npcEngine';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -66,7 +67,16 @@ const shopRoutes: ServerRoute[] = [
         const credentials = request.auth.credentials as unknown as AuthCredentials;
         const { name } = request.params;
         const { item_def_id, quantity } = request.payload as { item_def_id: string; quantity: number };
-        return buyItemAction(name, item_def_id, quantity, credentials.id);
+        const result = await buyItemAction(name, item_def_id, quantity, credentials.id);
+
+        // Live-register new recruit in the NPC engine + refresh army (handles promotions)
+        if (result.type === 'recruit' && result.recruit) {
+          registerSingleNPC(credentials.id, result.recruit.id)
+            .then(() => refreshArmyState(credentials.id))
+            .catch(console.error);
+        }
+
+        return result;
       }),
   },
 
