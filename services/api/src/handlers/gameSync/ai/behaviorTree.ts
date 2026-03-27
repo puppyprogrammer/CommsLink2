@@ -416,7 +416,7 @@ const evaluateBehavior = (
       if (distToTarget > 3) {
         return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: running to position (${distToTarget.toFixed(1)}m off)` };
       }
-      if (distToTarget > 0.5) {
+      if (distToTarget > 0.3) {
         return { action: 'walk', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: adjusting position (${distToTarget.toFixed(1)}m off)` };
       }
       // In position — idle
