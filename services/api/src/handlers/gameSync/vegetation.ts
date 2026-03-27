@@ -97,15 +97,17 @@ const vegetationTick = async (): Promise<void> => {
     });
   }
 
-  // Trees drop seeds — mature trees have 3% chance to spawn a sapling nearby
+  // Trees drop seeds — mature trees have 5% chance to spawn a sapling nearby
   // Seeds fall further than grass (5-10m) and need more space (3m minimum gap)
-  const matureTrees = await prisma.world_vegetation.findMany({
-    where: { growth_stage: 4, type: { startsWith: 'tree_' }, health: { gte: 50 } },
-    take: 100,
-  });
+  // Random ordering ensures rare species (pine) get a fair chance alongside common ones (oak)
+  const matureTrees = await prisma.$queryRaw<{ id: number; x: number; z: number; type: string }[]>`
+    SELECT id, x, z, type FROM world_vegetation
+    WHERE growth_stage = 4 AND type LIKE 'tree_%' AND health >= 50
+    ORDER BY RAND() LIMIT 100
+  `;
 
   for (const tree of matureTrees) {
-    if (Math.random() > 0.03) continue; // 3% chance per tick
+    if (Math.random() > 0.05) continue; // 5% chance per tick
     const angle = Math.random() * Math.PI * 2;
     const dist = 5 + Math.random() * 5; // 5-10m from parent
     const newX = tree.x + Math.cos(angle) * dist;
