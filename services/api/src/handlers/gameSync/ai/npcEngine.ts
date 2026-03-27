@@ -384,8 +384,6 @@ setInterval(() => {
       const dz = decision.moveTarget[2] - npc.pos[2];
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > 0.5) {
-        // Speed must match or exceed player run speed so NPCs keep up
-        // Sprint (3.5) when far from leader, run (2.8) normal, walk (1.5)
         const isSprinting = decision.reason.includes('sprinting');
         const speed = isSprinting ? 3.5 : decision.action === 'run' ? 2.8 : 1.5;
         npc.pos = [
@@ -397,6 +395,12 @@ setInterval(() => {
           npc.rot = Math.atan2(dx, dz) * 180 / Math.PI;
         }
       }
+    }
+
+    // In formation follow mode: always face same direction as commander
+    if ((brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') && !decision.faceTarget) {
+      const commander = players.get(brain.commanderUserId);
+      if (commander) npc.rot = commander.rot;
     }
 
     // ── Unit separation: push apart if too close to allies ──
