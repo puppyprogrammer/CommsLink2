@@ -7,6 +7,7 @@ import Data from '../../../../../core/data';
 import { broadcastAll } from '../../handlers/gameSync/combat';
 import { activeNPCs } from '../../handlers/gameSync/ai/npcEngine';
 import { calculateFormationPositions } from '../../handlers/gameSync/ai/formations';
+import { getFormationSpacing, setFormationSpacing } from '../../handlers/gameSync/ai/behaviorTree';
 
 import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -489,6 +490,38 @@ const armyRoutes: ServerRoute[] = [
         console.log(`[Army] Formation ${payload.type}: ${units.length} units assigned`);
 
         return { formation: payload.type, assignments };
+      }),
+  },
+  // ── Get/Set formation spacing ──
+  {
+    method: 'GET',
+    path: '/api/v1/army/spacing',
+    options: { auth: 'jwt' },
+    handler: async (request: Request) =>
+      tracer.trace('CONTROLLER.ARMY.SPACING.GET', async () => {
+        const credentials = request.auth.credentials as unknown as AuthCredentials;
+        return getFormationSpacing(credentials.id);
+      }),
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/army/spacing',
+    options: {
+      auth: 'jwt',
+      validate: {
+        payload: Joi.object({
+          spacing: Joi.number().min(0.5).max(10).required(),
+          rowDepth: Joi.number().min(0.5).max(10).required(),
+        }),
+      },
+    },
+    handler: async (request: Request) =>
+      tracer.trace('CONTROLLER.ARMY.SPACING.SET', async () => {
+        const credentials = request.auth.credentials as unknown as AuthCredentials;
+        const { spacing, rowDepth } = request.payload as { spacing: number; rowDepth: number };
+        setFormationSpacing(credentials.id, spacing, rowDepth);
+        console.log(`[Army] ${credentials.username} set spacing=${spacing}m, rowDepth=${rowDepth}m`);
+        return { spacing, rowDepth };
       }),
   },
 ];

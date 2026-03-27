@@ -96,6 +96,16 @@ const getLeaderPos = (brain: NPCBrain, players: Map<string, PlayerSyncState>): [
   return getCommanderPos(brain, players);
 };
 
+// ── Formation spacing config (per commander, adjustable via API) ──
+const formationSpacingConfig = new Map<string, { spacing: number; rowDepth: number }>();
+
+const getFormationSpacing = (commanderUserId: string): { spacing: number; rowDepth: number } =>
+  formationSpacingConfig.get(commanderUserId) || { spacing: 1.8, rowDepth: 2.2 };
+
+const setFormationSpacing = (commanderUserId: string, spacing: number, rowDepth: number): void => {
+  formationSpacingConfig.set(commanderUserId, { spacing, rowDepth });
+};
+
 // ── In-memory relation cache (updated by API route on change) ──
 // Key: "userId:targetId" → relation
 const relationCache = new Map<string, string>();
@@ -341,8 +351,9 @@ const evaluateBehavior = (
       // Row 0: positions 0,1,2 (front row, left-center-right)
       // Row 1: positions 3,4 (back row, left-right)
       // Row 2: positions 5,6,7 etc.
-      const SPACING = 1.8; // meters between units
-      const ROW_DEPTH = 2.2; // meters between rows
+      const config = getFormationSpacing(brain.commanderUserId);
+      const SPACING = config.spacing;
+      const ROW_DEPTH = config.rowDepth;
       const idx = brain.squadIndex;
       const row = idx < 3 ? 0 : idx < 5 ? 1 : idx < 8 ? 2 : Math.floor((idx + 1) / 3);
       const colsInRow = row === 0 ? 3 : row === 1 ? 2 : 3;
@@ -388,4 +399,4 @@ const evaluateBehavior = (
 };
 
 export type { NPCBrain, BehaviorDecision, BehaviorAction };
-export { evaluateBehavior, getCommanderPos, findNearestEnemy, relationCache, setRelationCache, getRelation, isEnemy, isAlly };
+export { evaluateBehavior, getCommanderPos, findNearestEnemy, relationCache, setRelationCache, getRelation, isEnemy, isAlly, getFormationSpacing, setFormationSpacing };
