@@ -702,6 +702,33 @@ model world_vegetation {
 }
 
 // ┌──────────────────────────────────────────┐
+// │ Game World — Critters (Wildlife)         │
+// └──────────────────────────────────────────┘
+
+model world_critter {
+  id         Int      @id @default(autoincrement())
+  species    String   // "chicken" | "deer"
+  x          Float
+  y          Float    @default(0)
+  z          Float
+  rot        Float    @default(0)
+  health     Int      @default(100)
+  max_health Int      @default(100)
+  hunger     Int      @default(0)  // 0=full, 100=starving, >100=dead
+  age        Int      @default(0)  // Ticks alive
+  is_alive   Boolean  @default(true)
+  gender     String   @default("female") // "male" | "female"
+  parent_id  Int?     // Lineage tracking
+  born_at    DateTime @default(now())
+  last_ate   DateTime @default(now())
+  last_bred  DateTime @default(now())
+
+  @@index([x, z])
+  @@index([species])
+  @@index([is_alive])
+}
+
+// ┌──────────────────────────────────────────┐
 // │ Game World — NPC Placements              │
 // └──────────────────────────────────────────┘
 

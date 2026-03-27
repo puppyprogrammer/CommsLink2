@@ -24,6 +24,7 @@ import { worldRoutes } from './world';
 import { worldObjectRoutes } from './worldObjects';
 import { worldNpcRoutes } from './worldNpcs';
 import { playerRelationRoutes } from './playerRelation';
+import { critterRoutes } from './critter';
 
 /**
  * Register all v1 API routes.
@@ -56,6 +57,7 @@ const registerRoutes = (server: Server): void => {
     ...worldObjectRoutes,
     ...worldNpcRoutes,
     ...playerRelationRoutes,
+    ...critterRoutes,
   ]);
 };
 

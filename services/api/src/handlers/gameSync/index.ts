@@ -8,6 +8,7 @@ import { players, handleMessage, loadEquipment } from './combat';
 import type { PlayerSyncState } from './combat';
 import { registerPlayerNPCs, unregisterPlayerNPCs, activeNPCs } from './ai/npcEngine';
 import { initVegetationSystem, checkTrampling } from './vegetation';
+import { initCritterSystem } from './critters';
 import { setRelationCache, getRelation } from './ai/behaviorTree';
 
 // ┌──────────────────────────────────────────┐
@@ -32,6 +33,9 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
 
   // Initialize vegetation & world time system
   initVegetationSystem();
+
+  // Initialize critter/wildlife system
+  initCritterSystem().catch((err) => console.error('[Critters] Init error:', err));
 
   // Load player relations into in-memory cache
   (async () => {
