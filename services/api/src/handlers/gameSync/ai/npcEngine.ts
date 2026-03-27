@@ -503,6 +503,9 @@ setInterval(async () => {
   const now = Date.now();
 
   for (const [id, brain] of activeNPCs) {
+    // Only leaders get Grok calls — soldiers just follow formation and fight
+    if (brain.rank === 'soldier') continue;
+
     // Check if it's time for this NPC to think
     if (now - brain.lastGrokCall < brain.grokIntervalMs) continue;
 

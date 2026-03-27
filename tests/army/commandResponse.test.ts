@@ -258,8 +258,7 @@ describe('Army Command Response', () => {
       const decision = evaluateBehavior(brain, npc, players, brains);
 
       expect(decision.action).toBe('run');
-      expect(decision.reason).toContain('COMBAT');
-      expect(decision.reason).toMatch(/closing|chasing|approaching/);
+      expect(decision.reason).toMatch(/SEEK|COMBAT/);
     });
 
     it('NPC with follow_commander agenda DOES engage enemy within 8m', () => {

@@ -118,16 +118,15 @@ describe('Formation Calculator', () => {
 
 describe('Formation Behavior Tree', () => {
 
-  it('NPC with formation agenda moves to formation position', () => {
+  it('NPC in line formation follows commander to block position', () => {
     const players = new Map<string, PlayerSyncState>();
     const brains = new Map<string, NPCBrain>();
     const commander = makePlayer('cmd-1', [50, 0, 50]);
-    const npc = makePlayer('npc-1', [0, 0, 0]);
+    const npc = makePlayer('npc-1', [0, 0, 0]); // Far from commander
     const brain = makeBrain({
-      agenda: 'formation',
-      formationPos: [20, 0, 20],
-      formationRot: 90,
-      agendaLocked: true,
+      agenda: 'follow_commander',
+      formationType: 'line',
+      armyBlockIndex: 0,
     });
 
     players.set('cmd-1', commander);
@@ -136,20 +135,20 @@ describe('Formation Behavior Tree', () => {
 
     const decision = evaluateBehavior(brain, npc, players, brains);
     expect(decision.action).toBe('run');
-    expect(decision.reason).toContain('FORMATION');
-    expect(decision.moveTarget).toEqual([20, 0, 20]);
+    expect(decision.reason).toContain('FOLLOW');
   });
 
-  it('NPC in formation position idles', () => {
+  it('NPC in formation idles when at block position', () => {
     const players = new Map<string, PlayerSyncState>();
     const brains = new Map<string, NPCBrain>();
+    // Commander at [50,0,50] facing north (rot=0). 1 unit in army, COLS=1.
+    // Index 0: row=0, col=0, position = [50, 0, 50-3] = [50, 0, 47]
     const commander = makePlayer('cmd-1', [50, 0, 50]);
-    const npc = makePlayer('npc-1', [20, 0, 20]); // Already at position
+    const npc = makePlayer('npc-1', [50, 0, 47]); // At formation position
     const brain = makeBrain({
-      agenda: 'formation',
-      formationPos: [20, 0, 20],
-      formationRot: 90,
-      agendaLocked: true,
+      agenda: 'follow_commander',
+      formationType: 'line',
+      armyBlockIndex: 0,
     });
 
     players.set('cmd-1', commander);
@@ -158,20 +157,17 @@ describe('Formation Behavior Tree', () => {
 
     const decision = evaluateBehavior(brain, npc, players, brains);
     expect(decision.action).toBe('idle');
-    expect(decision.reason).toContain('FORMATION: in position');
+    expect(decision.reason).toContain('FOLLOW');
   });
 
-  it('Shield wall formation: units block when in position', () => {
+  it('Shield wall + guard: units block with shields up', () => {
     const players = new Map<string, PlayerSyncState>();
     const brains = new Map<string, NPCBrain>();
     const commander = makePlayer('cmd-1', [50, 0, 50]);
-    const npc = makePlayer('npc-1', [20, 0, 20]);
+    const npc = makePlayer('npc-1', [50, 0, 48]); // Near guard position
     const brain = makeBrain({
-      agenda: 'formation',
-      formationPos: [20, 0, 20],
-      formationRot: 90,
-      formationAction: 'block',
-      agendaLocked: true,
+      agenda: 'guard_position',
+      formationType: 'shield_wall',
     });
 
     players.set('cmd-1', commander);
@@ -180,22 +176,20 @@ describe('Formation Behavior Tree', () => {
 
     const decision = evaluateBehavior(brain, npc, players, brains);
     expect(decision.action).toBe('block');
-    expect(decision.reason).toContain('shield wall');
+    expect(decision.reason).toContain('SHIELD');
   });
 
-  it('Formation NPC fights back if enemy in melee range', () => {
+  it('Formation NPC fights back if enemy in melee range but stays in position', () => {
     const players = new Map<string, PlayerSyncState>();
     const brains = new Map<string, NPCBrain>();
     const commander = makePlayer('cmd-1', [50, 0, 50]);
     const npc = makePlayer('npc-1', [20, 0, 20]);
     const enemy = makePlayer('enemy', [22, 0, 20]); // 2m away
-      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
-      setEnemies('cmd-1', 'enemy-cmd');
+    brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+    setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({
-      agenda: 'formation',
-      formationPos: [20, 0, 20],
-      formationRot: 90,
-      agendaLocked: true,
+      agenda: 'seek_combat',
+      formationType: 'line',
       aggression: 80,
     });
 
@@ -210,7 +204,7 @@ describe('Formation Behavior Tree', () => {
       const decision = evaluateBehavior(brain, npc, players, brains);
       if (decision.action === 'attack_light' || decision.action === 'block') {
         fought = true;
-        expect(decision.reason).toContain('FORMATION');
+        expect(decision.moveTarget).toBeNull(); // Stays in position
         break;
       }
     }
@@ -220,17 +214,17 @@ describe('Formation Behavior Tree', () => {
   it('Formation NPC does NOT chase enemy that retreats', () => {
     const players = new Map<string, PlayerSyncState>();
     const brains = new Map<string, NPCBrain>();
+    // Commander at [50,0,50]. NPC at block position [50,0,47]. Enemy 10m away.
     const commander = makePlayer('cmd-1', [50, 0, 50]);
-    const npc = makePlayer('npc-1', [20, 0, 20]);
-    const enemy = makePlayer('enemy', [30, 0, 20]); // 10m away — outside melee
-      brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
-      setEnemies('cmd-1', 'enemy-cmd');
+    const npc = makePlayer('npc-1', [50, 0, 47]);
+    const enemy = makePlayer('enemy', [60, 0, 47]); // 10m away — outside melee
+    brains.set('enemy', makeBrain({ characterId: 'enemy', commanderUserId: 'enemy-cmd' }));
+    setEnemies('cmd-1', 'enemy-cmd');
     const brain = makeBrain({
-      agenda: 'formation',
-      formationPos: [20, 0, 20],
-      formationRot: 90,
-      agendaLocked: true,
+      agenda: 'follow_commander',
+      formationType: 'line',
       aggression: 100,
+      armyBlockIndex: 0,
     });
 
     players.set('cmd-1', commander);
@@ -239,7 +233,8 @@ describe('Formation Behavior Tree', () => {
     brains.set('npc-1', brain);
 
     const decision = evaluateBehavior(brain, npc, players, brains);
+    // Should stay in formation, not chase — formation prevents breaking ranks
     expect(decision.action).toBe('idle');
-    expect(decision.reason).toContain('FORMATION: in position');
+    expect(decision.reason).toContain('FOLLOW');
   });
 });

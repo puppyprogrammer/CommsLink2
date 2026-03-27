@@ -233,92 +233,106 @@ const evaluateBehavior = (
     }
   }
 
-  // ── 3. Guard position — BEFORE combat approach ──
+  // ── Formation type modifiers ──
+  // Formation = geometry (shape), NOT behavior. It modifies how combat/movement works.
+  const isShieldWall = brain.formationType === 'shield_wall';
+  const hasFormation = !!brain.formationType; // Any formation = don't break ranks
+
+  // ── 3. Guard / Hold position ──
   if (brain.agenda === 'guard_position') {
-    // Only react to enemies within melee range (5m), don't chase
+    // Fight at position, never chase
     if (nearestEnemy && distToEnemy < 5) {
+      if (isShieldWall) {
+        if (distToEnemy < 2.5 && npc.stamina >= 10 && Math.random() < 0.2) {
+          return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'GUARD+SHIELD: quick counter' };
+        }
+        return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'GUARD+SHIELD: wall holding' };
+      }
       if (distToEnemy < 2.5 && npc.stamina >= 10 && Math.random() * 100 < brain.aggression) {
         return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'GUARD: melee counter-attack' };
       }
       return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'GUARD: blocking nearby enemy' };
     }
+    if (isShieldWall) return { action: 'block', moveTarget: null, faceTarget: null, reason: 'GUARD+SHIELD: wall idle' };
     return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'GUARD: holding position' };
   }
 
-  // ── 3.5 Formation — move to assigned position ──
-  if (brain.agenda === 'formation' && brain.formationPos) {
-    const distToFormation = dist3d(npc.pos, brain.formationPos);
-
-    // If enemy in melee range, react but don't leave position
-    if (nearestEnemy && distToEnemy < 3) {
-      if (distToEnemy < 2.5 && npc.stamina >= 10 && Math.random() * 100 < brain.aggression) {
-        return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'FORMATION: melee counter-attack' };
-      }
-      return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'FORMATION: blocking enemy at position' };
-    }
-
-    // Move to formation position
-    if (distToFormation > 8) {
-      return { action: 'run', moveTarget: brain.formationPos, faceTarget: null, reason: `FORMATION: running to position (${distToFormation.toFixed(1)}m)` };
-    }
-    if (distToFormation > 2) {
-      return { action: 'walk', moveTarget: brain.formationPos, faceTarget: null, reason: `FORMATION: walking to position (${distToFormation.toFixed(1)}m)` };
-    }
-
-    // In position — hold and face formation direction
-    if (brain.formationAction === 'block') {
-      return { action: 'block', moveTarget: null, faceTarget: null, reason: 'FORMATION: shield wall — blocking' };
-    }
-    return { action: 'idle', moveTarget: null, faceTarget: null, reason: 'FORMATION: in position' };
-  }
-
-  // ── 3.6 March — walk forward in a direction until ordered to stop ──
+  // ── 3.5 March — move forward maintaining formation ──
   if (brain.agenda === 'march' && brain.marchDirection) {
-    // If enemy in melee range, fight but keep marching after
+    // In shield wall: shields up while marching, only counter-attack
     if (nearestEnemy && distToEnemy < 2.5 && npc.stamina >= 10) {
-      if (Math.random() * 100 < brain.aggression) {
+      if (isShieldWall && Math.random() < 0.2) {
+        return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'MARCH+SHIELD: quick counter' };
+      }
+      if (!isShieldWall && Math.random() * 100 < brain.aggression) {
         return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'MARCH: engaging enemy on the move' };
       }
     }
 
-    // March forward — set target 20m ahead in march direction
     const marchTarget: [number, number, number] = [
       npc.pos[0] + brain.marchDirection[0] * 20,
       npc.pos[1],
       npc.pos[2] + brain.marchDirection[1] * 20,
     ];
-    return { action: 'walk', moveTarget: marchTarget, faceTarget: null, reason: 'MARCH: advancing forward' };
+    return { action: 'walk', moveTarget: marchTarget, faceTarget: nearestEnemy?.userId ?? null, reason: isShieldWall ? 'MARCH+SHIELD: advancing with shields' : 'MARCH: advancing forward' };
   }
 
   // ── 4. Commander protection ──
-  if (brain.commanderProtection > 60 && commanderPos && nearestEnemy) {
+  if (brain.commanderProtection > 60 && commanderPos && nearestEnemy && !hasFormation) {
     const enemyToCommander = dist3d(nearestEnemy.state.pos, commanderPos);
     if (enemyToCommander < 5 && distToCommander > 3) {
       return { action: 'run', moveTarget: commanderPos, faceTarget: nearestEnemy.userId, reason: 'PROTECT: enemy near commander' };
     }
   }
 
-  // ── 4.5. Seek combat — chase enemies from far away ──
-  if (nearestEnemy && distToEnemy >= 15 && distToEnemy < 50 && brain.agenda === 'seek_combat') {
-    return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `SEEK: running toward enemy (${distToEnemy.toFixed(1)}m)` };
+  // ── 4.5. Seek combat — chase enemies ──
+  if (nearestEnemy && brain.agenda === 'seek_combat') {
+    // In formation: don't break ranks to chase far enemies, fight at position
+    if (hasFormation) {
+      if (distToEnemy < 3) {
+        if (isShieldWall) {
+          if (distToEnemy < 2.5 && npc.stamina >= 10 && Math.random() < 0.25) {
+            return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'SEEK+SHIELD: counter' };
+          }
+          return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'SEEK+SHIELD: wall holding' };
+        }
+        if (distToEnemy < 2.5 && npc.stamina >= 10 && Math.random() * 100 < brain.aggression) {
+          return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'SEEK+FORMATION: melee attack' };
+        }
+        return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'SEEK+FORMATION: blocking' };
+      }
+      // Don't chase — fall through to follow/formation positioning
+    } else {
+      // No formation: chase if outside melee range (melee handled in section 5)
+      if (distToEnemy >= 3 && distToEnemy < 50) {
+        return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `SEEK: running toward enemy (${distToEnemy.toFixed(1)}m)` };
+      }
+    }
   }
 
-  // ── 5. Combat — any unit engages enemies within 15m ──
+  // ── 5. Combat — engage enemies within range (respects formation) ──
   if (nearestEnemy && distToEnemy < 15 && brain.agenda !== 'rest' && brain.agenda !== 'socialize') {
     const inAttackRange = distToEnemy < (npc.weaponRange || 1.0);
     const inCloseRange = distToEnemy < 8;
 
-    // Counter-attack after being hit or blocking
-    if (npc.action === 'hit' || npc.action === 'block') {
-      if (Math.random() * 100 < brain.counterAttack && inAttackRange && npc.stamina >= 10) {
-        return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: counter-attack after hit/block' };
-      }
-    }
-
-    // In melee range — fight
+    // In melee range — fight at position
     if (inAttackRange) {
-      const roll = Math.random() * 100;
+      // Shield wall: mostly block, occasional counter
+      if (isShieldWall) {
+        if (npc.stamina >= 10 && Math.random() < 0.2) {
+          return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT+SHIELD: counter-strike' };
+        }
+        return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT+SHIELD: wall holding' };
+      }
 
+      // Counter-attack after being hit or blocking
+      if (npc.action === 'hit' || npc.action === 'block') {
+        if (Math.random() * 100 < brain.counterAttack && npc.stamina >= 10) {
+          return { action: 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: counter-attack after hit/block' };
+        }
+      }
+
+      const roll = Math.random() * 100;
       if (nearestEnemy.state.action.startsWith('attack') && npc.stamina >= 20 && roll < 20) {
         return { action: 'dodge', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: dodge incoming attack' };
       }
@@ -328,6 +342,10 @@ const evaluateBehavior = (
       if (roll < brain.aggression && npc.stamina >= 10) {
         const heavy = npc.stamina >= 25 && Math.random() < 0.3;
         return { action: heavy ? 'attack_heavy' : 'attack_light', moveTarget: null, faceTarget: nearestEnemy.userId, reason: `COMBAT: attack (agg=${brain.aggression}, roll=${roll.toFixed(0)})` };
+      }
+      // In formation: hold position and block, don't flank
+      if (hasFormation) {
+        return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT+FORMATION: holding position' };
       }
       if (brain.flankTendency > 30) {
         const dir = brain.flankDirection > 50 ? 1 : -1;
@@ -340,14 +358,13 @@ const evaluateBehavior = (
       return { action: 'block', moveTarget: null, faceTarget: nearestEnemy.userId, reason: 'COMBAT: default block in range' };
     }
 
-    // Close to enemy (< 8m) — CLOSE THE GAP to melee range
-    // ALL units do this, not just seek_combat — if an enemy is within 8m you fight
-    if (inCloseRange) {
+    // Close to enemy — close the gap ONLY if not in formation
+    if (inCloseRange && !hasFormation) {
       return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `COMBAT: closing to melee (${distToEnemy.toFixed(1)}m)` };
     }
 
-    // Far enemy (8-15m) — only chase if aggressive agenda
-    if (brain.aggression > 30 && (brain.agenda === 'seek_combat' || brain.agenda === 'protect_commander')) {
+    // Far enemy — only chase if aggressive AND no formation
+    if (!hasFormation && brain.aggression > 30 && (brain.agenda === 'seek_combat' || brain.agenda === 'protect_commander')) {
       return { action: 'run', moveTarget: nearestEnemy.state.pos as [number, number, number], faceTarget: nearestEnemy.userId, reason: `COMBAT: chasing enemy (${distToEnemy.toFixed(1)}m)` };
     }
   }
