@@ -442,8 +442,8 @@ setInterval(() => {
 
     // ── Unit separation: soft push when overlapping ──
     // Gentle when in formation (don't disrupt grid), stronger when free-moving
-    const OVERLAP_DIST = 0.6; // Only push when practically on top of each other
-    const pushScale = brain.formationType ? 0.05 : 0.3; // Gentle in formation, firm when loose
+    const OVERLAP_DIST = 0.8; // Push when close enough to block each other
+    const pushScale = 0.4; // Strong enough to actually move — they'll snap back to formation after
     let sepX = 0;
     let sepZ = 0;
     for (const [otherId] of activeNPCs) {
