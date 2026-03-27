@@ -2,6 +2,7 @@ import Joi from 'joi';
 import Boom from '@hapi/boom';
 import tracer from '../../../../../core/lib/tracer';
 import prisma from '../../../../../core/adapters/prisma';
+import { broadcastAll } from '../../handlers/gameSync/combat';
 
 import type { ServerRoute, Request } from '@hapi/hapi';
 import type { AuthCredentials } from '../../../../../core/lib/hapi/auth';
@@ -57,6 +58,20 @@ const worldNpcRoutes: ServerRoute[] = [
 
         const npc = await prisma.world_npc.create({
           data: { ...payload, placed_by: credentials.id },
+        });
+
+        // Broadcast to all connected game-sync clients
+        broadcastAll({
+          type: 'world_npc_placed',
+          id: npc.id,
+          x: npc.x,
+          y: npc.y,
+          z: npc.z,
+          npc_name: npc.npc_name,
+          title: npc.title,
+          shop_name: npc.shop_name,
+          prefab_name: npc.prefab_name,
+          interact_range: npc.interact_range,
         });
 
         console.log(`[WorldNPC] ${credentials.username} placed ${npc.npc_name} at (${npc.x.toFixed(0)}, ${npc.z.toFixed(0)})`);

@@ -6,7 +6,7 @@ import Data from '../../../../../core/data';
 
 import { players, handleMessage, loadWeaponRange } from './combat';
 import type { PlayerSyncState } from './combat';
-import { registerPlayerNPCs, unregisterPlayerNPCs } from './ai/npcEngine';
+import { registerPlayerNPCs, unregisterPlayerNPCs, activeNPCs } from './ai/npcEngine';
 import { initVegetationSystem, checkTrampling } from './vegetation';
 
 // ┌──────────────────────────────────────────┐
@@ -32,14 +32,23 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
   // Initialize vegetation & world time system
   initVegetationSystem();
 
-  // Ping all connected clients every 30s to keep connections alive
+  // Track pong responses — terminate connections that miss 2 consecutive pings
+  const pongReceived = new Set<WebSocket>();
+
+  // Ping every 10s — fast keepalive for high-latency international connections
   setInterval(() => {
-    for (const [, p] of players) {
-      if (p.ws?.readyState === WebSocket.OPEN) {
-        p.ws.ping();
+    for (const [id, p] of players) {
+      if (!p.ws || p.ws.readyState !== WebSocket.OPEN) continue;
+      // If we pinged last round and never got a pong, connection is dead
+      if (!pongReceived.has(p.ws)) {
+        console.log(`[GameSync] ${p.username} missed pong — terminating`);
+        p.ws.terminate();
+        continue;
       }
+      pongReceived.delete(p.ws);
+      p.ws.ping();
     }
-  }, 30000);
+  }, 10000);
 
   wss.on('connection', async (ws: WebSocket, request: IncomingMessage) => {
     try {
@@ -85,6 +94,8 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
       };
 
       players.set(userId, state);
+      pongReceived.add(ws); // Mark as alive on connect
+      ws.on('pong', () => pongReceived.add(ws));
       console.log(`[GameSync] ${username} connected (${players.size} online)`);
 
       // Send world state (all current players + NPCs)
@@ -100,6 +111,7 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
             action: p.action,
             hp: p.hp,
             maxHp: p.maxHp,
+            isNpc: activeNPCs.has(p.userId),
           })),
       };
       ws.send(JSON.stringify(worldState));
@@ -142,6 +154,7 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
 
       // Handle disconnect
       ws.on('close', () => {
+        pongReceived.delete(ws);
         const player = players.get(userId);
         if (player) {
           Data.playerCharacter.updateSpawn(

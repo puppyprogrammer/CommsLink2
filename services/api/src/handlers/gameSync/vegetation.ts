@@ -36,23 +36,23 @@ const broadcastNearby = (x: number, z: number, radius: number, msg: object): voi
   }
 };
 
-// ── Growth Tick (every 10s — FAST MODE for testing) ──
+// ── Growth Tick (every 30s) ──
 
 const vegetationTick = async (): Promise<void> => {
-  // Daytime check disabled for testing — grows 24/7
-  // const gameHour = getGameHour();
-  // if (gameHour < 6 || gameHour >= 18) return;
+  // Only grow during daytime (6am-6pm game time)
+  const gameHour = getGameHour();
+  if (gameHour < 6 || gameHour >= 18) return;
 
   const now = new Date();
 
-  // Grow vegetation that hasn't grown in last 10s and isn't fully grown
+  // Grow vegetation that hasn't grown in last 60s and isn't fully grown
   const grownVeg = await prisma.world_vegetation.findMany({
     where: {
       growth_stage: { lt: 4 },
       health: { gt: 0 },
-      last_growth: { lt: new Date(now.getTime() - 10000) }, // 10s cooldown instead of 60s
+      last_growth: { lt: new Date(now.getTime() - 60000) }, // 60s cooldown
     },
-    take: 2000, // Bigger batch
+    take: 500,
   });
 
   for (const veg of grownVeg) {
@@ -68,14 +68,14 @@ const vegetationTick = async (): Promise<void> => {
     });
   }
 
-  // Spread: mature grass has 40% chance to spawn adjacent (FAST MODE)
+  // Spread: mature grass has 10% chance to spawn adjacent
   const matureGrass = await prisma.world_vegetation.findMany({
     where: { growth_stage: 4, type: 'grass', health: { gte: 50 } },
-    take: 1000,
+    take: 200,
   });
 
   for (const g of matureGrass) {
-    if (Math.random() > 0.40) continue; // 40% chance — grass spreads like wildfire
+    if (Math.random() > 0.10) continue; // 10% chance per tick
     const angle = Math.random() * Math.PI * 2;
     const dist = 2 + Math.random() * 8; // 2-10m from parent
     const newX = g.x + Math.cos(angle) * dist;
@@ -101,11 +101,11 @@ const vegetationTick = async (): Promise<void> => {
   // Seeds fall further than grass (5-10m) and need more space (3m minimum gap)
   const matureTrees = await prisma.world_vegetation.findMany({
     where: { growth_stage: 4, type: { startsWith: 'tree_' }, health: { gte: 50 } },
-    take: 500,
+    take: 100,
   });
 
   for (const tree of matureTrees) {
-    if (Math.random() > 0.15) continue; // 15% chance per tick (FAST MODE)
+    if (Math.random() > 0.03) continue; // 3% chance per tick
     const angle = Math.random() * Math.PI * 2;
     const dist = 5 + Math.random() * 5; // 5-10m from parent
     const newX = tree.x + Math.cos(angle) * dist;
@@ -140,13 +140,13 @@ const vegetationTick = async (): Promise<void> => {
   // Bushes also spread — 5% chance, 2-4m distance
   const matureBushes = await prisma.world_vegetation.findMany({
     where: { growth_stage: 4, type: 'bush', health: { gte: 50 } },
-    take: 500,
+    take: 100,
   });
 
   for (const bush of matureBushes) {
-    if (Math.random() > 0.25) continue; // 25% chance (FAST MODE)
+    if (Math.random() > 0.05) continue; // 5% chance per tick
     const bAngle = Math.random() * Math.PI * 2;
-    const bDist = 2 + Math.random() * 6; // 2-8m from parent
+    const bDist = 2 + Math.random() * 4; // 2-6m from parent
     const newX = bush.x + Math.cos(bAngle) * bDist;
     const newZ = bush.z + Math.sin(bAngle) * bDist;
 
@@ -202,17 +202,17 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
 // ── Init ──
 
 const initVegetationSystem = (): void => {
-  // Growth tick every 10s (FAST MODE for testing — normally 60s)
+  // Growth tick every 30s (reduced from 5s — was causing connection drops from DB load)
   setInterval(() => {
     vegetationTick().catch((err) => console.error('[Vegetation] Tick error:', err));
-  }, 10000);
+  }, 30000);
 
   // World time broadcast every 10s
   setInterval(() => {
     broadcastAll({ type: 'world_time', hour: getGameHour() });
   }, 10000);
 
-  console.log('[Vegetation] System initialized FAST MODE (growth tick: 10s, spread: 40% grass / 15% tree / 25% bush)');
+  console.log('[Vegetation] System initialized (growth tick: 30s, spread: 10% grass / 3% tree / 5% bush, daytime only)');
 };
 
 export { initVegetationSystem, getGameHour, broadcastNearby, checkTrampling };

@@ -125,6 +125,18 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
     // Also add to the main players map so combat resolution can find them
     players.set(recruit.id, npcState);
 
+    // Broadcast NPC spawn to all connected players so late-joiners see them
+    broadcastAll({
+      type: 'player_joined',
+      id: recruit.id,
+      username: recruit.name,
+      pos: spawnPos,
+      rot: 0,
+      hp: npcState.hp,
+      maxHp: npcState.maxHp,
+      isNpc: true,
+    });
+
     console.log(`[NPC] Registered ${recruit.name} (${recruit.npc_type}, ${recruit.rank}) for commander ${commanderUserId}`);
   }
 

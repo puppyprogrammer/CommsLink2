@@ -9,7 +9,8 @@ import Data from '../../../core/data';
 
 import { registerRoutes } from './routes/v1';
 import { registerSocketHandlers } from './handlers/chat';
-import { registerGameWorldHandler } from './handlers/gameWorld';
+// GameWorld disabled — GameSync is the single authoritative game system
+// import { registerGameWorldHandler } from './handlers/gameWorld';
 import { WebSocketServer } from 'ws';
 import { registerGameSyncHandler } from './handlers/gameSync';
 
@@ -66,17 +67,14 @@ const createServer = async (): Promise<Hapi.Server> => {
         : '*',
       methods: ['GET', 'POST'],
     },
-    pingTimeout: 60000,    // Wait 60s for pong before disconnecting
-    pingInterval: 25000,   // Send ping every 25s
+    pingTimeout: 20000,    // Wait 20s for pong before disconnecting (fast drop detection)
+    pingInterval: 10000,   // Send ping every 10s (frequent keepalive for high-latency clients)
   });
 
   await registerSocketHandlers(io);
 
-  // ┌──────────────────────────────────────────┐
-  // │ Game World (Socket.IO /game namespace)   │
-  // └──────────────────────────────────────────┘
-  const gameNs = io.of('/game');
-  registerGameWorldHandler(gameNs);
+  // GameWorld (/game namespace) disabled — was duplicating player state with GameSync,
+  // causing ghost clones. GameSync handles all game logic (NPCs, combat, formations, vegetation).
 
   // ┌──────────────────────────────────────────┐
   // │ Game Sync (Raw WebSocket on /game-sync)  │
