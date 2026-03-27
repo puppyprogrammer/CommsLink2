@@ -136,6 +136,7 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       maxHp: npcState.maxHp,
       isNpc: true,
       equipped: gear.equipped,
+      commanderId: commanderUserId,
     });
 
     console.log(`[NPC] Registered ${recruit.name} (${recruit.npc_type}, ${recruit.rank}) for commander ${commanderUserId}`);
@@ -237,6 +238,7 @@ const registerSingleNPC = async (commanderUserId: string, recruitId: string): Pr
     type: 'player_joined', id: recruit.id, username: recruit.name,
     pos: spawnPos, rot: 0, hp: npcState.hp, maxHp: npcState.maxHp, isNpc: true,
     equipped: gear.equipped,
+    commanderId: commanderUserId,
   });
 
   // Rebuild chain of command for the whole army

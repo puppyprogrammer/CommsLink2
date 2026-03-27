@@ -136,6 +136,7 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
               isNpc: !!npcBrain,
               equipped: p.equipped || [],
               relation,
+              commanderId: npcBrain?.commanderUserId || null,
             };
           }),
       };
