@@ -8,7 +8,7 @@ import { WebSocket } from 'ws';
 import grokAdapter from '../../../../../../core/adapters/grok';
 import Data from '../../../../../../core/data';
 
-import { players, broadcastAll, loadWeaponRange } from '../combat';
+import { players, broadcast, broadcastAll, loadWeaponRange } from '../combat';
 import type { PlayerSyncState } from '../combat';
 import { evaluateBehavior } from './behaviorTree';
 import { buildPrompt, parseGrokResponse, applyGrokResponse } from './grokBrain';
@@ -125,8 +125,8 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
     // Also add to the main players map so combat resolution can find them
     players.set(recruit.id, npcState);
 
-    // Broadcast NPC spawn to all connected players so late-joiners see them
-    broadcastAll({
+    // Broadcast NPC spawn to other players (exclude commander — they manage their own army)
+    broadcast(commanderUserId, {
       type: 'player_joined',
       id: recruit.id,
       username: recruit.name,
