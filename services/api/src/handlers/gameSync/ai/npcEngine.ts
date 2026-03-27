@@ -190,22 +190,41 @@ const rebuildChainOfCommand = async (commanderUserId: string): Promise<void> => 
     leaderSquadCount.set(key, idx + 1);
   }
 
-  // ── Assign armyBlockIndex: rank-priority ordering for unified block ──
-  // Centurion(s) first, then decurions, sergeants, soldiers
-  const RANK_ORDER: Record<string, number> = { centurion: 0, decurion: 1, sergeant: 2, soldier: 3 };
-  const sorted = recruits
-    .filter((r) => activeNPCs.has(r.id))
-    .sort((a, b) => {
-      const ra = RANK_ORDER[a.rank || 'soldier'] ?? 3;
-      const rb = RANK_ORDER[b.rank || 'soldier'] ?? 3;
-      if (ra !== rb) return ra - rb;
-      // Within same rank, sort by maniple then squad for consistent ordering
-      if ((a.maniple_id || 0) !== (b.maniple_id || 0)) return (a.maniple_id || 0) - (b.maniple_id || 0);
-      return (a.squad_id || '').localeCompare(b.squad_id || '');
-    });
+  // ── Assign armyBlockIndex: squad-grouped ordering for unified block ──
+  // Centurion first, then each maniple as a group (decurion → squad A [sergeant + soldiers] → squad B)
+  // This keeps each squad together as a tight cluster in the formation.
+  const active = recruits.filter((r) => activeNPCs.has(r.id));
+  const ordered: typeof active = [];
 
-  for (let i = 0; i < sorted.length; i++) {
-    const brain = activeNPCs.get(sorted[i].id);
+  // 1. Centurion first
+  const cent = active.find((r) => r.rank === 'centurion');
+  if (cent) ordered.push(cent);
+
+  // 2. Group by maniple, then by squad within each maniple
+  const manipleIds = [...new Set(active.map((r) => r.maniple_id || 0))].sort();
+  for (const mId of manipleIds) {
+    const maniple = active.filter((r) => (r.maniple_id || 0) === mId && r.rank !== 'centurion');
+    // Decurion first
+    const dec = maniple.find((r) => r.rank === 'decurion');
+    if (dec) ordered.push(dec);
+    // Then each squad: sergeant + soldiers
+    const squadIds = [...new Set(maniple.map((r) => r.squad_id || ''))].sort();
+    for (const sId of squadIds) {
+      const squad = maniple.filter((r) => (r.squad_id || '') === sId && r.rank !== 'decurion');
+      const sgt = squad.find((r) => r.rank === 'sergeant');
+      if (sgt) ordered.push(sgt);
+      const soldiers = squad.filter((r) => r.rank === 'soldier');
+      ordered.push(...soldiers);
+    }
+  }
+
+  // Any stragglers not caught above
+  for (const r of active) {
+    if (!ordered.includes(r)) ordered.push(r);
+  }
+
+  for (let i = 0; i < ordered.length; i++) {
+    const brain = activeNPCs.get(ordered[i].id);
     if (brain) brain.armyBlockIndex = i;
   }
 };
