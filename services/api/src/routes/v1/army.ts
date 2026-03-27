@@ -166,13 +166,24 @@ const armyRoutes: ServerRoute[] = [
           x: Joi.number().optional(),
           y: Joi.number().optional(),
           z: Joi.number().optional(),
+          x1: Joi.number().optional(),
+          y1: Joi.number().optional(),
+          z1: Joi.number().optional(),
+          x2: Joi.number().optional(),
+          y2: Joi.number().optional(),
+          z2: Joi.number().optional(),
         }),
       },
     },
     handler: async (request: Request) =>
       tracer.trace('CONTROLLER.ARMY.COMMAND', async () => {
         const credentials = request.auth.credentials as unknown as AuthCredentials;
-        const { command, target, x, y, z } = request.payload as { command: string; target?: string; x?: number; y?: number; z?: number };
+        const { command, target, x, y, z, x1, y1, z1, x2, y2, z2 } = request.payload as {
+          command: string; target?: string;
+          x?: number; y?: number; z?: number;
+          x1?: number; y1?: number; z1?: number;
+          x2?: number; y2?: number; z2?: number;
+        };
 
         // Resume = unlock agenda, let AI decide
         const isResume = command === 'resume';
@@ -251,21 +262,51 @@ const armyRoutes: ServerRoute[] = [
           return { success: true, affected: units.length, formation: formationType };
         }
 
-        // Handle move_to — direct order to a world position
+        // Handle move_to — direct order to a world position or formation line
         if (command === 'move_to') {
-          if (x === undefined || z === undefined) throw Boom.badRequest('move_to requires x and z coordinates');
           let affected = 0;
-          for (const unit of units) {
-            const brain = activeNPCs.get(unit.id);
-            if (brain) {
-              brain.moveToTarget = [x, y ?? 0, z];
+
+          if (x1 !== undefined && z1 !== undefined && x2 !== undefined && z2 !== undefined) {
+            // Line placement: distribute units along the line (x1,z1) → (x2,z2)
+            const lineLen = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2);
+            const dirX = lineLen > 0.1 ? (x2 - x1) / lineLen : 1;
+            const dirZ = lineLen > 0.1 ? (z2 - z1) / lineLen : 0;
+            const ROW_DEPTH = 1.5;
+            const COLS = Math.max(1, Math.ceil(lineLen / 1.5)); // ~1.5m spacing
+            const spacing = units.length <= COLS ? lineLen / Math.max(1, units.length - 1) : lineLen / Math.max(1, COLS - 1);
+
+            for (let i = 0; i < units.length; i++) {
+              const brain = activeNPCs.get(units[i].id);
+              if (!brain) continue;
+              const col = i % COLS;
+              const row = Math.floor(i / COLS);
+              // Position along the line + row offset perpendicular behind
+              const t = COLS <= 1 ? 0.5 : col / (COLS - 1);
+              const px = x1 + (x2 - x1) * t - dirZ * row * ROW_DEPTH;
+              const pz = z1 + (z2 - z1) * t + dirX * row * ROW_DEPTH;
+              brain.moveToTarget = [px, y1 ?? 0, pz];
               brain.agendaLocked = true;
               brain.formationPos = null;
               affected++;
             }
+            console.log(`[Army] move_to line (${x1.toFixed(0)},${z1.toFixed(0)})→(${x2.toFixed(0)},${z2.toFixed(0)}): ${affected} units, ${COLS} cols`);
+          } else if (x !== undefined && z !== undefined) {
+            // Single point: all units march to same spot
+            for (const unit of units) {
+              const brain = activeNPCs.get(unit.id);
+              if (brain) {
+                brain.moveToTarget = [x, y ?? 0, z];
+                brain.agendaLocked = true;
+                brain.formationPos = null;
+                affected++;
+              }
+            }
+            console.log(`[Army] move_to point (${x.toFixed(0)}, ${z.toFixed(0)}): ${affected} units`);
+          } else {
+            throw Boom.badRequest('move_to requires x,z or x1,z1,x2,z2');
           }
-          console.log(`[Army] move_to (${x.toFixed(0)}, ${z.toFixed(0)}): ${affected} units`);
-          return { success: true, affected, command, x, z };
+
+          return { success: true, affected, command };
         }
 
         // Handle draw/sheathe weapons — purely visual, broadcast to all clients
