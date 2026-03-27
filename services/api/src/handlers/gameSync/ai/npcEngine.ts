@@ -83,6 +83,8 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       formationAction: null,
       marchDirection: null,
       leaderId: null, // Set in second pass after all units registered
+      rank: recruit.rank || 'soldier',
+      squadIndex: 0, // Set in second pass with chain of command
       weaponDrawn: false,
     };
 
@@ -147,14 +149,19 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
   await rebuildChainOfCommand(commanderUserId);
 };
 
-/** Rebuild leaderId for all active NPCs of a commander. Call after promotions/deaths/recruits. */
+/** Rebuild leaderId and squadIndex for all active NPCs of a commander. Call after promotions/deaths/recruits. */
 const rebuildChainOfCommand = async (commanderUserId: string): Promise<void> => {
   const recruits = await Data.playerCharacter.findRecruitsByCommander(commanderUserId);
   const centurion = recruits.find((r) => r.rank === 'centurion');
 
+  // Track squad indexes per leader for formation positioning
+  const leaderSquadCount = new Map<string, number>();
+
   for (const recruit of recruits) {
     const brain = activeNPCs.get(recruit.id);
     if (!brain) continue;
+
+    brain.rank = recruit.rank || 'soldier';
 
     if (recruit.rank === 'soldier') {
       const sergeant = recruits.find((r) =>
@@ -174,6 +181,12 @@ const rebuildChainOfCommand = async (commanderUserId: string): Promise<void> => 
     } else if (recruit.rank === 'centurion') {
       brain.leaderId = commanderUserId;
     }
+
+    // Assign sequential index within the group following the same leader
+    const key = brain.leaderId || commanderUserId;
+    const idx = leaderSquadCount.get(key) || 0;
+    brain.squadIndex = idx;
+    leaderSquadCount.set(key, idx + 1);
   }
 };
 
@@ -208,7 +221,7 @@ const registerSingleNPC = async (commanderUserId: string, recruitId: string): Pr
     grokIntervalMs: GROK_INTERVALS_LOCAL[recruit.npc_type || ''] || 20_000,
     situationLog: [], agendaLocked: false, formationPos: null, formationRot: null,
     formationType: null, formationAction: null, marchDirection: null, leaderId: null,
-    weaponDrawn: false,
+    rank: recruit.rank || 'soldier', squadIndex: 0, weaponDrawn: false,
   };
 
   activeNPCs.set(recruit.id, brain);
@@ -351,7 +364,10 @@ setInterval(() => {
       const dz = decision.moveTarget[2] - npc.pos[2];
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > 0.5) {
-        const speed = decision.action === 'run' ? 2.5 : 1.25;
+        // Speed must match or exceed player run speed so NPCs keep up
+        // Sprint (3.5) when far from leader, run (2.8) normal, walk (1.5)
+        const isSprinting = decision.reason.includes('sprinting');
+        const speed = isSprinting ? 3.5 : decision.action === 'run' ? 2.8 : 1.5;
         npc.pos = [
           npc.pos[0] + (dx / dist) * speed,
           decision.moveTarget[1],

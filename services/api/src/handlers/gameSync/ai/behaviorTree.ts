@@ -62,6 +62,8 @@ type NPCBrain = {
 
   // Chain of command
   leaderId: string | null; // Who this unit follows (sergeant → decurion → centurion → commander)
+  rank: string; // 'soldier' | 'sergeant' | 'decurion' | 'centurion'
+  squadIndex: number; // Position index within squad (0-based, for formation offset)
 
   // March
   marchDirection: [number, number] | null;
@@ -330,16 +332,54 @@ const evaluateBehavior = (
     }
   }
 
-  // ── 6. Follow leader (chain of command) ──
+  // ── 6. Follow leader in squad formation ──
+  // Soldiers position relative to their leader (sergeant/decurion/centurion/commander)
+  // using a compact formation: 3-front 2-back style rows behind and beside the leader
   if (brain.agenda === 'follow_commander' || brain.agenda === 'protect_commander') {
     if (leaderPos) {
+      // Calculate formation offset based on squad index
+      // Row 0: positions 0,1,2 (front row, left-center-right)
+      // Row 1: positions 3,4 (back row, left-right)
+      // Row 2: positions 5,6,7 etc.
+      const SPACING = 1.8; // meters between units
+      const ROW_DEPTH = 2.2; // meters between rows
+      const idx = brain.squadIndex;
+      const row = idx < 3 ? 0 : idx < 5 ? 1 : idx < 8 ? 2 : Math.floor((idx + 1) / 3);
+      const colsInRow = row === 0 ? 3 : row === 1 ? 2 : 3;
+      const colIdx = row === 0 ? idx : row === 1 ? (idx - 3) : (idx - 5) % 3;
+      const colOffset = (colIdx - (colsInRow - 1) / 2) * SPACING;
+
+      // Get leader's facing direction to position behind them
+      const leader = players.get(brain.leaderId || brain.commanderUserId);
+      const leaderRot = leader ? leader.rot : 0;
+      const rad = leaderRot * Math.PI / 180;
+      const fwdX = Math.sin(rad);
+      const fwdZ = Math.cos(rad);
+      const rightX = Math.cos(rad);
+      const rightZ = -Math.sin(rad);
+
+      // Position: behind leader (row depth) + side offset (column)
+      const targetPos: [number, number, number] = [
+        leaderPos[0] - fwdX * (ROW_DEPTH * (row + 1)) + rightX * colOffset,
+        leaderPos[1],
+        leaderPos[2] - fwdZ * (ROW_DEPTH * (row + 1)) + rightZ * colOffset,
+      ];
+
+      const distToTarget = dist3d(npc.pos, targetPos);
       const distToLeader = dist3d(npc.pos, leaderPos);
-      if (distToLeader > 12) {
-        return { action: 'run', moveTarget: leaderPos, faceTarget: null, reason: `FOLLOW: running to leader (${distToLeader.toFixed(1)}m)` };
+
+      // Sprint if very far (leader is running and we're falling behind)
+      if (distToLeader > 15) {
+        return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: sprinting to formation (${distToLeader.toFixed(1)}m from leader)` };
       }
-      if (distToLeader > 5) {
-        return { action: 'walk', moveTarget: leaderPos, faceTarget: null, reason: `FOLLOW: walking to leader (${distToLeader.toFixed(1)}m)` };
+      if (distToTarget > 4) {
+        return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: running to position (${distToTarget.toFixed(1)}m off)` };
       }
+      if (distToTarget > 1.5) {
+        return { action: 'walk', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: adjusting position (${distToTarget.toFixed(1)}m off)` };
+      }
+      // In position — idle, face same direction as leader
+      return { action: 'idle', moveTarget: null, faceTarget: null, reason: `FOLLOW: in formation (${distToTarget.toFixed(1)}m off)` };
     }
   }
 
