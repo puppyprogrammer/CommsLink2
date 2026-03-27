@@ -285,6 +285,40 @@ EMOTION: (one of: neutral, happy, angry, fearful, sarcastic, flirty, sad, determ
         return { success: true, affected: targets.length };
       }),
   },
+  // ── Revive a player (admin only) ──
+  {
+    method: 'POST',
+    path: '/api/v1/characters/revive/{username}',
+    options: {
+      auth: 'jwt',
+      validate: { params: Joi.object({ username: Joi.string().required() }) },
+    },
+    handler: async (request: Request) =>
+      tracer.trace('CONTROLLER.CHARACTER.REVIVE', async () => {
+        const credentials = request.auth.credentials as unknown as AuthCredentials;
+        if (!credentials.is_admin) throw Boom.forbidden('Admin access required');
+
+        const { username } = request.params;
+        const user = await Data.user.findByUsername(username);
+        if (!user) throw Boom.notFound('User not found');
+
+        // Revive in game-sync
+        const { players, broadcastAll } = await import('../../handlers/gameSync/combat');
+        for (const [id, p] of players) {
+          if (p.username === username && p.isDead) {
+            p.isDead = false;
+            p.hp = p.maxHp;
+            p.stamina = p.maxStamina;
+            p.action = 'idle';
+            broadcastAll({ type: 'player_respawned', id, pos: p.pos, hp: p.hp });
+            console.log(`[Revive] ${username} revived by admin ${credentials.username}`);
+            return { revived: true, username, hp: p.hp };
+          }
+        }
+
+        return { revived: false, reason: 'Player not found or not dead' };
+      }),
+  },
 ];
 
 export { characterRoutes };

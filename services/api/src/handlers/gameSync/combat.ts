@@ -250,16 +250,8 @@ const resolveAttack = (attacker: PlayerSyncState, attackType: 'light' | 'heavy')
           console.log(`[Combat] NPC ${victimBrain.name} permanently killed — removed from army`);
         }, 5000);
       } else {
-        // Real player — respawn after 5 seconds
-        setTimeout(() => {
-          if (!players.has(id)) return;
-          victim.isDead = false;
-          victim.hp = victim.maxHp;
-          victim.stamina = victim.maxStamina;
-          victim.action = 'idle';
-          victim.pos = [victim.spawnX, victim.spawnY, victim.spawnZ];
-          broadcastAll({ type: 'player_respawned', id, pos: victim.pos, hp: victim.hp });
-        }, 5000);
+        // Real player — stays dead until manually revived (no auto-respawn)
+        console.log(`[Combat] Player ${victim.username} killed by ${attacker.username} — awaiting revive`);
       }
     }
   }
