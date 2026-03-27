@@ -410,18 +410,60 @@ setInterval(() => {
     }
 
     if (decision.moveTarget) {
-      const dx = decision.moveTarget[0] - npc.pos[0];
-      const dz = decision.moveTarget[2] - npc.pos[2];
+      let dx = decision.moveTarget[0] - npc.pos[0];
+      let dz = decision.moveTarget[2] - npc.pos[2];
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > 0.3) {
+        // Check for blockers ahead — steer around them
+        const dirX = dx / dist;
+        const dirZ = dz / dist;
+        let steerX = 0;
+        let steerZ = 0;
+        for (const [otherId] of activeNPCs) {
+          if (otherId === id) continue;
+          const other = npcStates.get(otherId);
+          if (!other || other.isDead) continue;
+          const toDx = other.pos[0] - npc.pos[0];
+          const toDz = other.pos[2] - npc.pos[2];
+          const toDist = Math.sqrt(toDx * toDx + toDz * toDz);
+          if (toDist > 2.0 || toDist < 0.01) continue;
+          // Is this unit ahead of us? (dot product with move direction)
+          const dot = (toDx / toDist) * dirX + (toDz / toDist) * dirZ;
+          if (dot > 0.3) {
+            // Steer perpendicular — always go right of the blocker
+            const perpX = -dirZ;
+            const perpZ = dirX;
+            const steerStrength = (2.0 - toDist) / 2.0;
+            steerX += perpX * steerStrength;
+            steerZ += perpZ * steerStrength;
+          }
+        }
+        // Also check commander as blocker
+        const cmd = players.get(brain.commanderUserId);
+        if (cmd) {
+          const toDx = cmd.pos[0] - npc.pos[0];
+          const toDz = cmd.pos[2] - npc.pos[2];
+          const toDist = Math.sqrt(toDx * toDx + toDz * toDz);
+          if (toDist < 2.0 && toDist > 0.01) {
+            const dot = (toDx / toDist) * dirX + (toDz / toDist) * dirZ;
+            if (dot > 0.3) {
+              steerX += -dirZ * (2.0 - toDist) / 2.0;
+              steerZ += dirX * (2.0 - toDist) / 2.0;
+            }
+          }
+        }
+        // Blend steer into move direction
+        const finalDx = dirX + steerX * 0.8;
+        const finalDz = dirZ + steerZ * 0.8;
+        const fLen = Math.sqrt(finalDx * finalDx + finalDz * finalDz) || 1;
+
         const isSprinting = decision.reason.includes('sprinting');
         const maxSpeed = isSprinting ? 3.5 : decision.action === 'run' ? 2.8 : 1.5;
-        // Clamp to remaining distance so we don't overshoot
         const speed = Math.min(maxSpeed, dist);
         npc.pos = [
-          npc.pos[0] + (dx / dist) * speed,
+          npc.pos[0] + (finalDx / fLen) * speed,
           decision.moveTarget[1],
-          npc.pos[2] + (dz / dist) * speed,
+          npc.pos[2] + (finalDz / fLen) * speed,
         ];
         if (!decision.faceTarget) {
           npc.rot = Math.atan2(dx, dz) * 180 / Math.PI;
