@@ -402,9 +402,11 @@ setInterval(() => {
       const dx = decision.moveTarget[0] - npc.pos[0];
       const dz = decision.moveTarget[2] - npc.pos[2];
       const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist > 0.5) {
+      if (dist > 0.3) {
         const isSprinting = decision.reason.includes('sprinting');
-        const speed = isSprinting ? 3.5 : decision.action === 'run' ? 2.8 : 1.5;
+        const maxSpeed = isSprinting ? 3.5 : decision.action === 'run' ? 2.8 : 1.5;
+        // Clamp to remaining distance so we don't overshoot
+        const speed = Math.min(maxSpeed, dist);
         npc.pos = [
           npc.pos[0] + (dx / dist) * speed,
           decision.moveTarget[1],
