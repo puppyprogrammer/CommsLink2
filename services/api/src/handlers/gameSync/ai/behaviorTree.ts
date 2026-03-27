@@ -176,8 +176,13 @@ const findNearestEnemy = (
   return nearest;
 };
 
-/** Count active NPCs for a commander (for block width calculation). */
+/** Cached army unit counts — set by npcEngine before each tick to avoid O(n²). */
+let armyCountCache: Map<string, number> | null = null;
+const setArmyCountCache = (cache: Map<string, number>): void => { armyCountCache = cache; };
+
+/** Count active NPCs for a commander (uses cache if available). */
 const countArmyUnits = (commanderUserId: string, allBrains: Map<string, NPCBrain>): number => {
+  if (armyCountCache) return armyCountCache.get(commanderUserId) || 1;
   let count = 0;
   for (const [, b] of allBrains) {
     if (b.commanderUserId === commanderUserId) count++;
@@ -429,4 +434,4 @@ const evaluateBehavior = (
 };
 
 export type { NPCBrain, BehaviorDecision, BehaviorAction };
-export { evaluateBehavior, getCommanderPos, findNearestEnemy, relationCache, setRelationCache, getRelation, isEnemy, isAlly, getFormationSpacing, setFormationSpacing };
+export { evaluateBehavior, getCommanderPos, findNearestEnemy, relationCache, setRelationCache, getRelation, isEnemy, isAlly, getFormationSpacing, setFormationSpacing, setArmyCountCache };

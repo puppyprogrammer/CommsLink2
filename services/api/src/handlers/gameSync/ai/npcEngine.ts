@@ -10,7 +10,7 @@ import Data from '../../../../../../core/data';
 
 import { players, broadcast, broadcastAll, loadWeaponRange, loadEquipment } from '../combat';
 import type { PlayerSyncState } from '../combat';
-import { evaluateBehavior } from './behaviorTree';
+import { evaluateBehavior, setArmyCountCache } from './behaviorTree';
 import { buildPrompt, parseGrokResponse, applyGrokResponse } from './grokBrain';
 import type { NPCBrain } from './behaviorTree';
 
@@ -373,6 +373,16 @@ setInterval(() => {
   const LIGHT_ATTACK_COOLDOWN = 800;  // 0.8s between light swings
   const HEAVY_ATTACK_COOLDOWN = 1500; // 1.5s between heavy swings
 
+  // Pre-compute army unit counts (avoids O(n²) in behavior tree)
+  const armyUnitCounts = new Map<string, number>();
+  for (const [, b] of activeNPCs) {
+    armyUnitCounts.set(b.commanderUserId, (armyUnitCounts.get(b.commanderUserId) || 0) + 1);
+  }
+  setArmyCountCache(armyUnitCounts);
+
+  // Collect all NPC updates for batched broadcast
+  const npcUpdates: { id: string; pos: [number, number, number]; rot: number; action: string; hp: number; maxHp: number; stamina: number; mood: number; fear: number; status: string }[] = [];
+
   for (const [id, brain] of activeNPCs) {
     const npc = npcStates.get(id);
     if (!npc || npc.isDead) continue;
@@ -415,8 +425,8 @@ setInterval(() => {
         if (!decision.faceTarget) {
           npc.rot = Math.atan2(dx, dz) * 180 / Math.PI;
         }
-        // NPCs trample vegetation when moving (throttled — 10% chance per tick to reduce DB load)
-        if (Math.random() < 0.1) {
+        // NPCs trample vegetation when moving (throttled — 2% chance per tick to reduce DB load)
+        if (Math.random() < 0.02) {
           const { checkTrampling } = require('../vegetation');
           checkTrampling(npc.pos[0], npc.pos[2]).catch(() => {});
         }
@@ -511,21 +521,21 @@ setInterval(() => {
     const isFleeing = decision.reason.includes('FLEE');
     const status = isFleeing ? 'fleeing' : isRetreating ? 'retreating' : brain.agenda === 'guard_position' ? 'holding' : brain.agenda === 'formation' ? 'formation' : brain.agenda === 'seek_combat' ? 'attacking' : brain.agenda === 'march' ? 'marching' : 'following';
 
-    // Broadcast NPC position/state to all clients
-    broadcastAll({
-      type: 'npc_update',
-      id,
-      pos: npc.pos,
-      rot: npc.rot,
-      action: npc.action,
-      hp: npc.hp,
-      maxHp: npc.maxHp,
-      stamina: npc.stamina,
-      mood: brain.mood,
-      fear: brain.fear,
-      status,
+    // Collect for batched broadcast
+    npcUpdates.push({
+      id, pos: npc.pos, rot: npc.rot, action: npc.action,
+      hp: npc.hp, maxHp: npc.maxHp, stamina: npc.stamina,
+      mood: brain.mood, fear: brain.fear, status,
     });
   }
+
+  // Single batched broadcast — 1 message instead of 80
+  if (npcUpdates.length > 0) {
+    broadcastAll({ type: 'npc_update_batch', npcs: npcUpdates });
+  }
+
+  // Clear the cache after tick
+  setArmyCountCache(new Map());
 }, 500);
 
 // ┌──────────────────────────────────────────┐
