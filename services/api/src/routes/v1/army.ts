@@ -113,6 +113,20 @@ const armyRoutes: ServerRoute[] = [
             'flank left': { flankTendency: 80, flankDirection: 20 },
             'flank right': { flankTendency: 80, flankDirection: 80 },
           };
+          // Handle spacing commands
+          const spacingPresets: Record<string, { spacing: number; rowDepth: number }> = {
+            spacing_tight: { spacing: 1.0, rowDepth: 1.5 },
+            spacing_normal: { spacing: 1.8, rowDepth: 2.2 },
+            spacing_loose: { spacing: 4.0, rowDepth: 5.0 },
+          };
+          for (const cmd of dispatch.commands_issued) {
+            const preset = spacingPresets[cmd];
+            if (preset) {
+              setFormationSpacing(credentials.id, preset.spacing, preset.rowDepth);
+              console.log(`[Army] Chat spacing command: ${cmd} → spacing=${preset.spacing}, rowDepth=${preset.rowDepth}`);
+            }
+          }
+
           for (const cmd of dispatch.commands_issued) {
             const updates = commandMap[cmd.toLowerCase()];
             if (updates) {

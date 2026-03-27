@@ -57,6 +57,9 @@ const dispatchArmyChat = async (userId: string, message: string): Promise<Dispat
       [/\b(circle up|circle formation|surround)\b/i, 'formation_circle'],
       [/\b(square formation|box formation)\b/i, 'formation_square'],
       [/\b(spread out|scatter|loose formation)\b/i, 'formation_loose'],
+      [/\b(tighten up|close ranks?|phalanx|tight formation)\b/i, 'spacing_tight'],
+      [/\b(normal spacing|standard formation|regular spacing)\b/i, 'spacing_normal'],
+      [/\b(spread out|loose|open ranks?|skirmish)\b/i, 'spacing_loose'],
     ];
     for (const [pattern, cmd] of commandPatterns) {
       if (pattern.test(msg)) commands.push(cmd);
