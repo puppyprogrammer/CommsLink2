@@ -440,41 +440,39 @@ setInterval(() => {
       if (commander) npc.rot = commander.rot;
     }
 
-    // ── Unit separation: push apart if too close to allies ──
-    // Skip when in formation — formation positioning handles spacing precisely
-    if (!brain.formationType) {
-      const MIN_SEPARATION = 1.0;
-      let sepX = 0;
-      let sepZ = 0;
-      for (const [otherId, otherBrain] of activeNPCs) {
-        if (otherId === id) continue;
-        if (otherBrain.commanderUserId !== brain.commanderUserId) continue;
-        const otherNpc = npcStates.get(otherId);
-        if (!otherNpc) continue;
-        const sdx = npc.pos[0] - otherNpc.pos[0];
-        const sdz = npc.pos[2] - otherNpc.pos[2];
-        const sDist = Math.sqrt(sdx * sdx + sdz * sdz);
-        if (sDist < MIN_SEPARATION && sDist > 0.01) {
-          const pushStrength = (MIN_SEPARATION - sDist) / MIN_SEPARATION * 0.5;
-          sepX += (sdx / sDist) * pushStrength;
-          sepZ += (sdz / sDist) * pushStrength;
-        }
+    // ── Unit separation: soft push when overlapping ──
+    // Gentle when in formation (don't disrupt grid), stronger when free-moving
+    const OVERLAP_DIST = 0.6; // Only push when practically on top of each other
+    const pushScale = brain.formationType ? 0.05 : 0.3; // Gentle in formation, firm when loose
+    let sepX = 0;
+    let sepZ = 0;
+    for (const [otherId] of activeNPCs) {
+      if (otherId === id) continue;
+      const otherNpc = npcStates.get(otherId);
+      if (!otherNpc || otherNpc.isDead) continue;
+      const sdx = npc.pos[0] - otherNpc.pos[0];
+      const sdz = npc.pos[2] - otherNpc.pos[2];
+      const sDist = Math.sqrt(sdx * sdx + sdz * sdz);
+      if (sDist < OVERLAP_DIST && sDist > 0.01) {
+        const push = (OVERLAP_DIST - sDist) / OVERLAP_DIST * pushScale;
+        sepX += (sdx / sDist) * push;
+        sepZ += (sdz / sDist) * push;
       }
-      // Also push away from commander
-      const cmdState = players.get(brain.commanderUserId);
-      if (cmdState) {
-        const cdx = npc.pos[0] - cmdState.pos[0];
-        const cdz = npc.pos[2] - cmdState.pos[2];
-        const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
-        if (cDist < MIN_SEPARATION && cDist > 0.01) {
-          const pushStrength = (MIN_SEPARATION - cDist) / MIN_SEPARATION * 0.5;
-          sepX += (cdx / cDist) * pushStrength;
-          sepZ += (cdz / cDist) * pushStrength;
-        }
+    }
+    // Also push away from commander
+    const cmdState = players.get(brain.commanderUserId);
+    if (cmdState) {
+      const cdx = npc.pos[0] - cmdState.pos[0];
+      const cdz = npc.pos[2] - cmdState.pos[2];
+      const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+      if (cDist < OVERLAP_DIST && cDist > 0.01) {
+        const push = (OVERLAP_DIST - cDist) / OVERLAP_DIST * pushScale;
+        sepX += (cdx / cDist) * push;
+        sepZ += (cdz / cDist) * push;
       }
-      if (sepX !== 0 || sepZ !== 0) {
-        npc.pos = [npc.pos[0] + sepX, npc.pos[1], npc.pos[2] + sepZ];
-      }
+    }
+    if (sepX !== 0 || sepZ !== 0) {
+      npc.pos = [npc.pos[0] + sepX, npc.pos[1], npc.pos[2] + sepZ];
     }
 
     // ── Draw weapon when entering combat for the first time ──
