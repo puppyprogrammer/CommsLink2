@@ -10,7 +10,7 @@ import Data from '../../../../../../core/data';
 
 import { players, broadcast, broadcastAll, loadWeaponRange, loadEquipment } from '../combat';
 import type { PlayerSyncState } from '../combat';
-import { evaluateBehavior, setArmyCountCache } from './behaviorTree';
+import { evaluateBehavior, setArmyCountCache, isEnemy } from './behaviorTree';
 import { buildPrompt, parseGrokResponse, applyGrokResponse } from './grokBrain';
 import type { NPCBrain } from './behaviorTree';
 
@@ -129,19 +129,24 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
     // Also add to the main players map so combat resolution can find them
     players.set(recruit.id, npcState);
 
-    // Broadcast NPC spawn to other players (exclude commander — they manage their own army)
-    broadcast(commanderUserId, {
-      type: 'player_joined',
-      id: recruit.id,
-      username: recruit.name,
-      pos: spawnPos,
-      rot: 0,
-      hp: npcState.hp,
-      maxHp: npcState.maxHp,
-      isNpc: true,
-      equipped: gear.equipped,
-      commanderId: commanderUserId,
-    });
+    // Broadcast NPC spawn to other players — include per-player relation for name colors
+    const { WebSocket } = require('ws');
+    for (const [pid, p] of players) {
+      if (pid === commanderUserId || !p.ws || p.ws.readyState !== WebSocket.OPEN) continue;
+      p.ws.send(JSON.stringify({
+        type: 'player_joined',
+        id: recruit.id,
+        username: recruit.name,
+        pos: spawnPos,
+        rot: 0,
+        hp: npcState.hp,
+        maxHp: npcState.maxHp,
+        isNpc: true,
+        equipped: gear.equipped,
+        commanderId: commanderUserId,
+        relation: isEnemy(pid, commanderUserId) ? 'enemy' : 'neutral',
+      }));
+    }
 
     console.log(`[NPC] Registered ${recruit.name} (${recruit.npc_type}, ${recruit.rank}) for commander ${commanderUserId}`);
   }
