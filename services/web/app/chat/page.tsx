@@ -766,6 +766,8 @@ const ChatPage = () => {
               <WatchParty
                 data={watchParty}
                 onSync={(isPlaying, playbackTime) => {
+                  // Update local state immediately so button reflects the change
+                  setWatchParty((prev) => prev ? { ...prev, isPlaying, playbackTime } : prev);
                   socketInstanceRef.current?.emit('watch_party_sync', { isPlaying, playbackTime });
                 }}
                 onEnd={() => {
