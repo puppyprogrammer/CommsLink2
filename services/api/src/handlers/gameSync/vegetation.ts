@@ -30,9 +30,12 @@ const broadcastNearby = (x: number, z: number, radius: number, msg: object): voi
       sent++;
     }
   }
-  // Log vegetation broadcasts periodically
-  if ((msg as { type?: string }).type?.startsWith('vegetation_') && Math.random() < 0.1) {
-    console.log(`[Vegetation] Broadcast ${(msg as { type: string }).type} at (${x.toFixed(0)},${z.toFixed(0)}) — ${sent}/${checked} players in range (${radius}m)`);
+  // Log vegetation broadcasts periodically — include player positions for debugging
+  if ((msg as { type?: string }).type?.startsWith('vegetation_') && Math.random() < 0.02) {
+    const playerPositions = Array.from(players.values())
+      .filter(p => p.ws?.readyState === WebSocket.OPEN)
+      .map(p => `${p.username}@(${p.pos[0].toFixed(0)},${p.pos[2].toFixed(0)})`).join(', ');
+    console.log(`[Vegetation] Broadcast ${(msg as { type: string }).type} at (${x.toFixed(0)},${z.toFixed(0)}) — ${sent}/${checked} in range | players: ${playerPositions}`);
   }
 };
 
