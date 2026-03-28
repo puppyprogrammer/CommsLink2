@@ -40,11 +40,12 @@ type MarkFormat = 'bold' | 'italic' | 'strikethrough' | 'code';
 
 type Props = {
   onSend: (text: string) => void;
-  onPaste: (e: React.ClipboardEvent) => void;
-  onImageSelect: (file: File) => void;
+  onPaste?: (e: React.ClipboardEvent) => void;
+  onImageSelect?: (file: File) => void;
   disabled?: boolean;
   placeholder?: string;
   actionButtons?: React.ReactNode;
+  compact?: boolean;
 };
 
 // ── Hotkeys ──────────────────────────────────────────────────────

@@ -762,17 +762,20 @@ const ChatPage = () => {
             </Box>
           </Box>
           {watchParty && (
-            <WatchParty
-              data={watchParty}
-              onSync={(isPlaying, playbackTime) => {
-                socketInstanceRef.current?.emit('watch_party_sync', { isPlaying, playbackTime });
-              }}
-              onEnd={() => {
-                socketInstanceRef.current?.emit('watch_party_end');
-              }}
-            />
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <WatchParty
+                data={watchParty}
+                onSync={(isPlaying, playbackTime) => {
+                  socketInstanceRef.current?.emit('watch_party_sync', { isPlaying, playbackTime });
+                }}
+                onEnd={() => {
+                  socketInstanceRef.current?.emit('watch_party_end');
+                }}
+                fullSize
+              />
+            </Box>
           )}
-          <Box className={classes.messages}>
+          {!watchParty && <Box className={classes.messages}>
             {messages.map((msg, i) => {
               const displayName = msg.sender || msg.username || 'Unknown';
               const displayText = msg.text || msg.content || '';
@@ -976,9 +979,9 @@ const ChatPage = () => {
               </Box>
             ))}
             <div ref={messagesEndRef} />
-          </Box>
+          </Box>}
 
-          <ChatInput
+          {!watchParty && <ChatInput
             onSend={(text) => sendMessage(text)}
             onPaste={handlePaste}
             onImageSelect={uploadImage}
@@ -1085,23 +1088,78 @@ const ChatPage = () => {
                 </IconButton>
               </>
             }
-          />
+          />}
         </Box>
 
-        {terminalPanelOpen && (
+        {/* Side panel: always open during watch party for chat tab */}
+        {(terminalPanelOpen || watchParty) && (
           <>
             <ResizeHandle onResize={(d) => setTerminalWidth((w) => Math.max(300, Math.min(1200, w + d)))} />
             <div
               className={classes.sidePanel}
-              style={{ width: terminalWidth }}
+              style={{ width: terminalWidth, display: 'flex', flexDirection: 'column' }}
             >
-              <TerminalPanel
-                socket={socketInstanceRef.current}
-                machines={panelMachines}
-                onClose={() => setTerminalPanelOpen(false)}
-                initialTab={terminalTab}
-                isCreator={rooms.some((r) => r.name === currentRoom && canManageRoom(r))}
-              />
+              {watchParty && (
+                <Box sx={{
+                  display: 'flex',
+                  borderBottom: '1px solid rgba(77,216,208,0.15)',
+                  background: 'rgba(0,0,0,0.3)',
+                }}>
+                  {['chat', 'terminal'].map((t) => (
+                    <Box
+                      key={t}
+                      onClick={() => setTerminalTab(t === 'chat' ? 'claude' : t as 'terminal' | 'claude')}
+                      sx={{
+                        flex: 1, textAlign: 'center', py: 0.8, cursor: 'pointer',
+                        fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1,
+                        color: (t === 'chat' && terminalTab === 'claude') || (t === 'terminal' && terminalTab === 'terminal')
+                          ? '#4dd8d0' : '#556b82',
+                        borderBottom: (t === 'chat' && terminalTab === 'claude') || (t === 'terminal' && terminalTab === 'terminal')
+                          ? '2px solid #4dd8d0' : '2px solid transparent',
+                        '&:hover': { color: '#8ba4bd' },
+                      }}
+                    >
+                      {t === 'chat' ? 'Watch Party Chat' : 'Terminal'}
+                    </Box>
+                  ))}
+                </Box>
+              )}
+              {watchParty && terminalTab === 'claude' ? (
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
+                    {messages.map((msg, i) => {
+                      const displayName = msg.sender || msg.username || 'Unknown';
+                      const displayText = msg.text || msg.content || '';
+                      return (
+                        <Box key={msg.id || i} sx={{ mb: 0.5 }}>
+                          <Typography component="span" sx={{ fontSize: '0.75rem', fontWeight: 700, color: msg.isSystem ? '#4dd8d0' : '#8ba4bd', mr: 0.5 }}>
+                            {displayName}:
+                          </Typography>
+                          <Typography component="span" sx={{ fontSize: '0.75rem', color: '#c0c8d0' }}>
+                            {displayText}
+                          </Typography>
+                        </Box>
+                      );
+                    })}
+                    <div ref={messagesEndRef} />
+                  </Box>
+                  <Box sx={{ borderTop: '1px solid rgba(77,216,208,0.1)', p: 0.5 }}>
+                    <ChatInput
+                      onSend={(text) => sendMessage(text)}
+                      placeholder="Chat while watching..."
+                      compact
+                    />
+                  </Box>
+                </Box>
+              ) : (
+                <TerminalPanel
+                  socket={socketInstanceRef.current}
+                  machines={panelMachines}
+                  onClose={() => { setTerminalPanelOpen(false); }}
+                  initialTab={watchParty ? 'terminal' : terminalTab}
+                  isCreator={rooms.some((r) => r.name === currentRoom && canManageRoom(r))}
+                />
+              )}
             </div>
           </>
         )}
