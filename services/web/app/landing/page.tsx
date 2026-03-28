@@ -8,6 +8,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import ChromeReaderModeIcon from '@mui/icons-material/ChromeReaderMode';
+import ShieldIcon from '@mui/icons-material/Shield';
 
 const products = [
   {
@@ -38,6 +39,16 @@ const products = [
     href: 'https://chromewebstore.google.com/detail/elevenvoicereader/gnakoejcmfhfnoefgdjfpbmlnjpggbkn',
     cta: 'Get Extension',
     color: '#f0883e',
+    live: true,
+  },
+  {
+    name: 'AI Fight Club',
+    tagline: 'Command Your Army in a Persistent Medieval World',
+    description: 'Recruit soldiers, train them through natural language, and lead them into battle. Your troops think for themselves \u2014 they follow orders, form shield walls, and fight with their own AI-driven instincts.',
+    icon: <ShieldIcon sx={{ fontSize: 48 }} />,
+    href: '/api/v1/game/download',
+    cta: 'Download Game',
+    color: '#e05555',
     live: true,
   },
 ];
@@ -164,7 +175,7 @@ const LandingPage = () => {
         </Typography>
         <Box sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
           gap: 3,
         }}>
           {products.map((p) => (
