@@ -73,6 +73,7 @@ const vegetationTick = async (): Promise<void> => {
   }
 
   // Spread: every mature grass has a chance to spawn adjacent — density is the only cap
+  let newSpawns = 0;
   const matureGrass = await prisma.world_vegetation.findMany({
     where: { growth_stage: 4, type: 'grass', health: { gte: 50 } },
   });
@@ -102,6 +103,7 @@ const vegetationTick = async (): Promise<void> => {
       type: 'vegetation_spawned',
       id: newVeg.id, x: newX, z: newZ, vegType: 'grass', growth_stage: 0, health: 100,
     });
+    newSpawns++;
   }
 
   // Trees drop seeds — mature trees have 5% chance to spawn a sapling nearby
@@ -148,6 +150,7 @@ const vegetationTick = async (): Promise<void> => {
       type: 'vegetation_spawned',
       id: newTree.id, x: newX, z: newZ, vegType: tree.type, growth_stage: 0, health: 100,
     });
+    newSpawns++;
   }
 
   // Bushes also spread — 5% chance, 2-4m distance
@@ -179,14 +182,14 @@ const vegetationTick = async (): Promise<void> => {
       type: 'vegetation_spawned',
       id: newBush.id, x: newX, z: newZ, vegType: 'bush', growth_stage: 0, health: 100,
     });
+    newSpawns++;
   }
 
   // Log tick stats
   const totalVeg = await prisma.world_vegetation.count();
   const connectedPlayers = Array.from(players.values()).filter(p => p.ws?.readyState === WebSocket.OPEN).length;
-  if (grownVeg.length > 0 || matureGrass.length > 0) {
-    console.log(`[Vegetation] Tick: grew ${grownVeg.length}, grass spread attempts: ${matureGrass.length}, total: ${totalVeg}, players online: ${connectedPlayers}`);
-  }
+  // Count actual spawns by tracking creates above (grass + trees + bushes)
+  console.log(`[Vegetation] Tick: ${grownVeg.length} grew, ${newSpawns} spawned (from ${matureGrass.length} grass + ${matureTrees.length} trees + ${matureBushes.length} bushes), ${totalVeg} total, ${connectedPlayers} players online`);
 };
 
 // ── Trampling ──
