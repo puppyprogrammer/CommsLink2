@@ -224,10 +224,10 @@ const ChatInput: React.FC<Props> = ({ onSend, onPaste, onImageSelect, disabled, 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) onImageSelect(file);
+      if (file && onImageSelect) onImageSelect(file);
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
-    [onImageSelect],
+    [onImageSelect], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const renderElement = useCallback((props: RenderElementProps) => {
@@ -350,7 +350,7 @@ const ChatInput: React.FC<Props> = ({ onSend, onPaste, onImageSelect, disabled, 
           renderLeaf={renderLeaf}
           placeholder={placeholder || 'Type a message...'}
           onKeyDown={handleKeyDown}
-          onPaste={onPaste as unknown as React.ClipboardEventHandler<HTMLDivElement>}
+          onPaste={onPaste ? onPaste as unknown as React.ClipboardEventHandler<HTMLDivElement> : undefined}
           readOnly={disabled}
           spellCheck
           autoFocus
