@@ -58,6 +58,18 @@ const connectedUsers = new Map<string, ConnectedUser>();
 const activeRooms = new Map<string, ActiveRoom>();
 const memoryMsgCounters = new Map<string, number>(); // per-room msg counter for throttled summarization
 
+// ── Watch Party state (per room) ──
+type WatchPartyState = {
+  videoId: string;
+  title: string;
+  startedBy: string;
+  startedAt: number;    // Date.now() when play was pressed
+  playbackTime: number; // Seconds into the video when last synced
+  isPlaying: boolean;
+  lastSyncAt: number;   // Date.now() of last sync event
+};
+const watchParties = new Map<string, WatchPartyState>(); // keyed by room name
+
 // Agent message dedup: Map<roomId:agentId, Array<{text, timestamp}>>
 const agentRecentMessages = new Map<
   string,
@@ -5267,6 +5279,26 @@ const registerSocketHandlers = async (io: SocketServer): Promise<void> => {
 
       io.to(user.currentRoom).emit("chat_message", message);
 
+      // Auto-detect YouTube URLs in chat — start watch party
+      const ytMatch = text.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/);
+      if (ytMatch) {
+        const youtubeAdapter = (await import("../../../../../core/adapters/youtube")).default;
+        const videoId = ytMatch[1];
+        const metadata = await youtubeAdapter.fetchVideoMetadata(videoId);
+        const title = metadata?.title || "Unknown Video";
+
+        const party: WatchPartyState = {
+          videoId, title, startedBy: socket.user.username,
+          startedAt: Date.now(), playbackTime: 0, isPlaying: false, lastSyncAt: Date.now(),
+        };
+        watchParties.set(user.currentRoom, party);
+
+        io.to(user.currentRoom).emit("watch_party_update", {
+          videoId, title, isPlaying: false, playbackTime: 0, startedBy: socket.user.username,
+        });
+        console.log(`[WatchParty] Auto-started "${title}" from chat in ${user.currentRoom}`);
+      }
+
       // Generate TTS for user message server-side (so other users hear their selected voice)
       const BROWSER_VOICES = ["male", "female", "robot"];
       const userVoice = (data.voice && !BROWSER_VOICES.includes(data.voice)) ? data.voice : "Joanna";
@@ -7115,6 +7147,105 @@ When a user asks to change a voice, ACTUALLY USE the {set_agent_voice} command �
         console.log(`[STT] ${socket.user?.username} ended streaming session`);
       }
       // Don't clear the agent timer on stop — let it fire so the last sentence triggers the agent
+    });
+
+    // ┌──────────────────────────────────────────┐
+    // │ Watch Party                             │
+    // └──────────────────────────────────────────┘
+
+    socket.on("watch_party_start", async (data: { url: string }) => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      const youtubeAdapter = (await import("../../../../../core/adapters/youtube")).default;
+      const videoId = youtubeAdapter.getVideoIdFromUrl(data.url);
+      if (!videoId) {
+        socket.emit("chat_message", { text: "Invalid YouTube URL.", username: "System", isSystem: true, timestamp: new Date().toISOString() });
+        return;
+      }
+
+      const metadata = await youtubeAdapter.fetchVideoMetadata(videoId);
+      const title = metadata?.title || "Unknown Video";
+
+      const party: WatchPartyState = {
+        videoId,
+        title,
+        startedBy: socket.user.username,
+        startedAt: Date.now(),
+        playbackTime: 0,
+        isPlaying: false,
+        lastSyncAt: Date.now(),
+      };
+      watchParties.set(user.currentRoom, party);
+
+      io.to(user.currentRoom).emit("watch_party_update", {
+        videoId, title, isPlaying: false, playbackTime: 0, startedBy: socket.user.username,
+      });
+
+      // Announce in chat
+      io.to(user.currentRoom).emit("chat_message", {
+        text: `🎬 **${socket.user.username}** started a watch party: **${title}**`,
+        username: "System", isSystem: true, timestamp: new Date().toISOString(),
+      });
+
+      console.log(`[WatchParty] ${socket.user.username} started "${title}" in ${user.currentRoom}`);
+    });
+
+    socket.on("watch_party_sync", (data: { isPlaying: boolean; playbackTime: number }) => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      const party = watchParties.get(user.currentRoom);
+      if (!party) return;
+
+      party.isPlaying = data.isPlaying;
+      party.playbackTime = data.playbackTime;
+      party.lastSyncAt = Date.now();
+      if (data.isPlaying) party.startedAt = Date.now();
+
+      // Broadcast to everyone EXCEPT the sender
+      socket.to(user.currentRoom).emit("watch_party_update", {
+        videoId: party.videoId,
+        title: party.title,
+        isPlaying: party.isPlaying,
+        playbackTime: party.playbackTime,
+        startedBy: party.startedBy,
+      });
+    });
+
+    socket.on("watch_party_end", () => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      watchParties.delete(user.currentRoom);
+      io.to(user.currentRoom).emit("watch_party_ended", {});
+      io.to(user.currentRoom).emit("chat_message", {
+        text: `🎬 **${socket.user.username}** ended the watch party.`,
+        username: "System", isSystem: true, timestamp: new Date().toISOString(),
+      });
+      console.log(`[WatchParty] ${socket.user.username} ended party in ${user.currentRoom}`);
+    });
+
+    // Send current watch party state when user joins a room
+    socket.on("watch_party_status", () => {
+      const user = connectedUsers.get(socket.id);
+      if (!user?.currentRoom) return;
+
+      const party = watchParties.get(user.currentRoom);
+      if (party) {
+        // Calculate current playback position if playing
+        let currentTime = party.playbackTime;
+        if (party.isPlaying) {
+          currentTime += (Date.now() - party.lastSyncAt) / 1000;
+        }
+        socket.emit("watch_party_update", {
+          videoId: party.videoId,
+          title: party.title,
+          isPlaying: party.isPlaying,
+          playbackTime: currentTime,
+          startedBy: party.startedBy,
+        });
+      }
     });
 
     // ┌──────────────────────────────────────────┐

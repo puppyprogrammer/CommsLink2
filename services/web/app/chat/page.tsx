@@ -58,6 +58,7 @@ import StopCircleIcon from '@mui/icons-material/StopCircle';
 import html2canvas from 'html2canvas';
 import TerminalPanel from '@/components/TerminalPanel';
 import ResizeHandle from '@/components/ResizeHandle';
+import WatchParty from '@/components/WatchParty';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 // Models
@@ -115,6 +116,7 @@ const ChatPage = () => {
   // Buffer of recently played AI speech text — used to filter mic echo
   const recentAiSpeechRef = useRef<{ text: string; time: number }[]>([]);
   const [availableVoices, setAvailableVoices] = useState<{ voice_id: string; name: string }[]>([]);
+  const [watchParty, setWatchParty] = useState<{ videoId: string; title: string; isPlaying: boolean; playbackTime: number; startedBy: string } | null>(null);
 
   // Fetch available voices on mount
   useEffect(() => {
@@ -250,6 +252,14 @@ const ChatPage = () => {
       if (Array.isArray(roomList)) setRooms(roomList);
     });
 
+    // Watch Party
+    socket.on('watch_party_update', (data: { videoId: string; title: string; isPlaying: boolean; playbackTime: number; startedBy: string }) => {
+      setWatchParty(data);
+    });
+    socket.on('watch_party_ended', () => {
+      setWatchParty(null);
+    });
+
     // Late-arriving TTS audio for user messages
     socket.on('chat_audio', (data: { sender?: string; audio: string; nonce?: string }) => {
       const prefs = preferencesRef.current;
@@ -276,7 +286,10 @@ const ChatPage = () => {
         setRoomPassword('');
         setRoomError('');
         setTypingAgents([]);
+        setWatchParty(null); // Clear watch party when switching rooms
         stopTTS();
+        // Request current watch party state for new room
+        socket.emit('watch_party_status');
         // Auto-open terminal panel for new rooms (0 messages) if user hasn't dismissed it before
         if ((!data.messages || data.messages.length === 0) && !localStorage.getItem('terminalPanelDismissed')) {
           setTerminalPanelOpen(true);
@@ -748,6 +761,17 @@ const ChatPage = () => {
               </IconButton>
             </Box>
           </Box>
+          {watchParty && (
+            <WatchParty
+              data={watchParty}
+              onSync={(isPlaying, playbackTime) => {
+                socketInstanceRef.current?.emit('watch_party_sync', { isPlaying, playbackTime });
+              }}
+              onEnd={() => {
+                socketInstanceRef.current?.emit('watch_party_end');
+              }}
+            />
+          )}
           <Box className={classes.messages}>
             {messages.map((msg, i) => {
               const displayName = msg.sender || msg.username || 'Unknown';
