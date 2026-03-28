@@ -45,14 +45,13 @@ const vegetationTick = async (): Promise<void> => {
 
   const now = new Date();
 
-  // Grow vegetation that hasn't grown in last 60s and isn't fully grown
+  // Grow ALL vegetation that hasn't grown in last 60s and isn't fully grown
   const grownVeg = await prisma.world_vegetation.findMany({
     where: {
       growth_stage: { lt: 4 },
       health: { gt: 0 },
       last_growth: { lt: new Date(now.getTime() - 60000) }, // 60s cooldown
     },
-    take: 500,
   });
 
   for (const veg of grownVeg) {
@@ -73,10 +72,9 @@ const vegetationTick = async (): Promise<void> => {
     });
   }
 
-  // Spread: mature grass has 10% chance to spawn adjacent
+  // Spread: every mature grass has a chance to spawn adjacent — density is the only cap
   const matureGrass = await prisma.world_vegetation.findMany({
     where: { growth_stage: 4, type: 'grass', health: { gte: 50 } },
-    take: 200,
   });
 
   for (const g of matureGrass) {
@@ -112,7 +110,7 @@ const vegetationTick = async (): Promise<void> => {
   const matureTrees = await prisma.$queryRaw<{ id: number; x: number; z: number; type: string }[]>`
     SELECT id, x, z, type FROM world_vegetation
     WHERE growth_stage = 4 AND type LIKE 'tree_%' AND health >= 50
-    ORDER BY RAND() LIMIT 100
+    ORDER BY RAND()
   `;
 
   for (const tree of matureTrees) {
@@ -155,7 +153,6 @@ const vegetationTick = async (): Promise<void> => {
   // Bushes also spread — 5% chance, 2-4m distance
   const matureBushes = await prisma.world_vegetation.findMany({
     where: { growth_stage: 4, type: 'bush', health: { gte: 50 } },
-    take: 100,
   });
 
   for (const bush of matureBushes) {
