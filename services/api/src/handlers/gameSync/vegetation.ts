@@ -134,7 +134,7 @@ const vegetationTick = async (): Promise<void> => {
     });
   }
 
-  // Spread: fetch all mature, random roll in Node, density check only on candidates
+  // Spread: fetch all mature, process in chunks to avoid blocking event loop
   let newSpawns = 0;
 
   const matureGrass = await prisma.world_vegetation.findMany({
@@ -142,9 +142,21 @@ const vegetationTick = async (): Promise<void> => {
     select: { id: true, x: true, z: true },
   });
 
-  for (const g of matureGrass) {
-    if (!canSpread(g.id)) continue; // On cooldown from previous failures
-    if (Math.random() > 0.10) continue; // 10% chance per tick
+  // Filter candidates in-memory (instant — no DB)
+  const grassCandidates = matureGrass.filter(g => canSpread(g.id) && Math.random() <= 0.10);
+
+  // Process in chunks of 100, yielding event loop between chunks
+  const processChunk = async <T>(items: T[], fn: (item: T) => Promise<void>, chunkSize = 100): Promise<void> => {
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      for (const item of chunk) await fn(item);
+      if (i + chunkSize < items.length) {
+        await new Promise(resolve => setTimeout(resolve, 0)); // Yield to event loop
+      }
+    }
+  };
+
+  await processChunk(grassCandidates, async (g) => {
     const angle = Math.random() * Math.PI * 2;
     const dist = 2 + Math.random() * 8;
     const newX = g.x + Math.cos(angle) * dist;
@@ -153,12 +165,13 @@ const vegetationTick = async (): Promise<void> => {
     const nearby = await prisma.world_vegetation.count({
       where: { x: { gte: newX - 1.5, lte: newX + 1.5 }, z: { gte: newZ - 1.5, lte: newZ + 1.5 } },
     });
-    if (nearby > 0) { recordSpreadFailure(g.id); continue; }
+    if (nearby > 0) { recordSpreadFailure(g.id); return; }
 
     const newVeg = await prisma.world_vegetation.create({
       data: { x: newX, z: newZ, type: 'grass', growth_stage: 0, health: 100 },
     });
     recordSpreadSuccess(g.id);
+    try { const { adjustVegCount } = require('./critters'); adjustVegCount('grass', 1); } catch {}
 
     await prisma.vegetation_log.create({ data: {
       veg_id: newVeg.id, veg_type: 'grass', event: 'spawned', x: newX, z: newZ,
@@ -169,7 +182,7 @@ const vegetationTick = async (): Promise<void> => {
       id: newVeg.id, x: newX, z: newZ, vegType: 'grass', growth_stage: 0, health: 100,
     });
     newSpawns++;
-  }
+  });
 
   // Trees drop seeds — mature trees have 5% chance to spawn a sapling nearby
   // Seeds fall further than grass (5-10m) and need more space (3m minimum gap)
@@ -178,10 +191,9 @@ const vegetationTick = async (): Promise<void> => {
     where: { growth_stage: 4, type: { startsWith: 'tree_' }, health: { gte: 50 } },
     select: { id: true, x: true, z: true, type: true },
   });
+  const treeCandidates = matureTrees.filter(t => canSpread(t.id) && Math.random() <= 0.05);
 
-  for (const tree of matureTrees) {
-    if (!canSpread(tree.id)) continue;
-    if (Math.random() > 0.05) continue;
+  await processChunk(treeCandidates, async (tree) => {
     const angle = Math.random() * Math.PI * 2;
     const dist = 5 + Math.random() * 5;
     const newX = tree.x + Math.cos(angle) * dist;
@@ -194,17 +206,18 @@ const vegetationTick = async (): Promise<void> => {
         type: { startsWith: 'tree_' },
       },
     });
-    if (nearbyTrees > 0) { recordSpreadFailure(tree.id); continue; }
+    if (nearbyTrees > 0) { recordSpreadFailure(tree.id); return; }
 
     const nearbyAll = await prisma.world_vegetation.count({
       where: { x: { gte: newX - 1, lte: newX + 1 }, z: { gte: newZ - 1, lte: newZ + 1 } },
     });
-    if (nearbyAll > 2) { recordSpreadFailure(tree.id); continue; }
+    if (nearbyAll > 2) { recordSpreadFailure(tree.id); return; }
 
     const newTree = await prisma.world_vegetation.create({
       data: { x: newX, z: newZ, type: tree.type, growth_stage: 0, health: 100 },
     });
     recordSpreadSuccess(tree.id);
+    try { const { adjustVegCount } = require('./critters'); adjustVegCount(tree.type, 1); } catch {}
 
     await prisma.vegetation_log.create({ data: {
       veg_id: newTree.id, veg_type: tree.type, event: 'spawned', x: newX, z: newZ,
@@ -215,16 +228,15 @@ const vegetationTick = async (): Promise<void> => {
       id: newTree.id, x: newX, z: newZ, vegType: tree.type, growth_stage: 0, health: 100,
     });
     newSpawns++;
-  }
+  });
 
   const matureBushes = await prisma.world_vegetation.findMany({
     where: { growth_stage: 4, type: 'bush', health: { gte: 50 } },
     select: { id: true, x: true, z: true },
   });
+  const bushCandidates = matureBushes.filter(b => canSpread(b.id) && Math.random() <= 0.05);
 
-  for (const bush of matureBushes) {
-    if (!canSpread(bush.id)) continue;
-    if (Math.random() > 0.05) continue;
+  await processChunk(bushCandidates, async (bush) => {
     const bAngle = Math.random() * Math.PI * 2;
     const bDist = 2 + Math.random() * 4;
     const newX = bush.x + Math.cos(bAngle) * bDist;
@@ -233,12 +245,13 @@ const vegetationTick = async (): Promise<void> => {
     const nearby = await prisma.world_vegetation.count({
       where: { x: { gte: newX - 2, lte: newX + 2 }, z: { gte: newZ - 2, lte: newZ + 2 } },
     });
-    if (nearby > 0) { recordSpreadFailure(bush.id); continue; }
+    if (nearby > 0) { recordSpreadFailure(bush.id); return; }
 
     const newBush = await prisma.world_vegetation.create({
       data: { x: newX, z: newZ, type: 'bush', growth_stage: 0, health: 100 },
     });
     recordSpreadSuccess(bush.id);
+    try { const { adjustVegCount } = require('./critters'); adjustVegCount('bush', 1); } catch {}
 
     await prisma.vegetation_log.create({ data: {
       veg_id: newBush.id, veg_type: 'bush', event: 'spawned', x: newX, z: newZ,
@@ -249,7 +262,7 @@ const vegetationTick = async (): Promise<void> => {
       id: newBush.id, x: newX, z: newZ, vegType: 'bush', growth_stage: 0, health: 100,
     });
     newSpawns++;
-  }
+  });
 
   // Log tick stats
   const totalVeg = await prisma.world_vegetation.count();
@@ -289,7 +302,7 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
         detail: `health: ${veg.health}→0 (killed)`,
       } }).catch(() => {});
       broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_died', id: veg.id });
-      // Wake nearby plants so they can spread into the gap
+      try { const { adjustVegCount } = require('./critters'); adjustVegCount(veg.type, -1); } catch {}
       resetCooldownsNear(veg.x, veg.z, 10).catch(() => {});
     } else if (stageChanged) {
       broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_grown', id: veg.id, growth_stage: newStage });

@@ -731,8 +731,22 @@ const getPerfSummary = (): Record<string, { avg: number; min: number; max: numbe
 // ── World stats broadcast (every 30s via game-sync WebSocket) ──
 
 let statsBroadcastCounter = 0;
-let cachedVegStats: Record<string, number> = {};
-let lastVegStatsRefresh = 0;
+
+// In-memory vegetation counts — updated by vegetation.ts on spawn/death, loaded on init
+const vegCounts: Record<string, number> = {};
+const initVegCounts = async (): Promise<void> => {
+  try {
+    const rows = await prisma.$queryRaw<{ type: string; cnt: bigint }[]>`
+      SELECT type, COUNT(*) as cnt FROM world_vegetation WHERE health > 0 GROUP BY type
+    `;
+    for (const row of rows) vegCounts[row.type] = Number(row.cnt);
+    console.log(`[Stats] Loaded vegetation counts: ${JSON.stringify(vegCounts)}`);
+  } catch {}
+};
+const adjustVegCount = (type: string, delta: number): void => {
+  vegCounts[type] = (vegCounts[type] || 0) + delta;
+  if (vegCounts[type] < 0) vegCounts[type] = 0;
+};
 
 const broadcastWorldStats = async (): Promise<void> => {
   statsBroadcastCounter++;
@@ -744,20 +758,9 @@ const broadcastWorldStats = async (): Promise<void> => {
     critterStats[c.species] = (critterStats[c.species] || 0) + 1;
   }
 
-  // Vegetation counts — cached, refresh every 5 minutes to avoid heavy GROUP BY every 30s
+  // Vegetation counts from in-memory tracker (zero DB queries)
   try {
-    const now = Date.now();
-    if (now - lastVegStatsRefresh > 300000) { // 5 minutes
-      const vegRows = await prisma.$queryRaw<{ type: string; cnt: bigint }[]>`
-        SELECT type, COUNT(*) as cnt FROM world_vegetation WHERE health > 0 GROUP BY type
-      `;
-      cachedVegStats = {};
-      for (const row of vegRows) {
-        cachedVegStats[row.type] = Number(row.cnt);
-      }
-      lastVegStatsRefresh = now;
-    }
-    const vegStats = cachedVegStats;
+    const vegStats = { ...vegCounts };
 
     const totalCritters = Object.values(critterStats).reduce((a, b) => a + b, 0);
     const totalVeg = Object.values(vegStats).reduce((a, b) => a + b, 0);
@@ -805,6 +808,9 @@ const initCritterSystem = async (): Promise<void> => {
     });
   }
   console.log(`[Critters] Loaded ${dbCritters.length} critters from DB`);
+
+  // Load vegetation counts into memory
+  await initVegCounts();
 
   // Movement tick: 200ms — only processes critters that are actively moving
   setInterval(() => {
@@ -875,4 +881,4 @@ const seedCritters = async (species: string, count: number, centerX: number, cen
   return spawned;
 };
 
-export { initCritterSystem, seedCritters, critters, recordPerfSample, getPerfSummary };
+export { initCritterSystem, seedCritters, critters, recordPerfSample, getPerfSummary, adjustVegCount, vegCounts };
