@@ -314,12 +314,11 @@ describe('Formation Geometry — 20 Troops Simulation', () => {
       expect(players.get(id)!.action).toBe('idle');
     }
 
-    // Centurion ~3m behind commander, offset left (index 0 = front-left of 10-wide block)
+    // Centurion ~3m behind commander, centered
     const centurion = players.get('centurion')!;
     const cmd = players.get('cmd-1')!;
     expect(centurion.pos[2]).toBeCloseTo(cmd.pos[2] - 3, 0);
-    // Centurion is at col 0 of 10 columns = offset -4.5m from center
-    expect(centurion.pos[0]).toBeCloseTo(cmd.pos[0] - 4.5, 0);
+    expect(centurion.pos[0]).toBeCloseTo(cmd.pos[0], 0);
 
     // All face same direction as commander
     for (const [id] of brains) {

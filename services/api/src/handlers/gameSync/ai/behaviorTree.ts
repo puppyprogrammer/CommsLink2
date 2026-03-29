@@ -447,10 +447,16 @@ const evaluateBehavior = (
       const totalUnits = allBrains ? countArmyUnits(brain.commanderUserId, allBrains) : 5;
       const COLS = Math.ceil(totalUnits / 2);
 
-      const idx = brain.armyBlockIndex;
-      const row = Math.floor(idx / COLS);
-      const col = idx % COLS;
-      const colOffset = (col - (COLS - 1) / 2) * SPACING;
+      // Centurion always centered (colOffset=0). Soldiers form grid centered around centurion.
+      const isCent = brain.rank === 'centurion';
+      const hasCent = allBrains ? Array.from(allBrains.values()).some(b => b.commanderUserId === brain.commanderUserId && b.rank === 'centurion') : false;
+      // If army has a centurion, soldiers skip index 0 (centurion's slot)
+      const gridIdx = (hasCent && !isCent) ? Math.max(0, brain.armyBlockIndex - 1) : brain.armyBlockIndex;
+      const gridTotal = hasCent ? Math.max(1, totalUnits - 1) : totalUnits;
+      const gridCols = Math.max(1, Math.ceil(gridTotal / 2));
+      const row = isCent ? 0 : Math.floor(gridIdx / gridCols);
+      const col = isCent ? 0 : gridIdx % gridCols;
+      const colOffset = isCent ? 0 : (col - (gridCols - 1) / 2) * SPACING;
 
       // Anchor's facing direction (centurion or commander)
       const commander = players.get(brain.commanderUserId);
