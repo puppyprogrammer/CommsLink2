@@ -12,6 +12,7 @@ import { players, broadcast, broadcastAll, loadWeaponRange, loadEquipment } from
 import type { PlayerSyncState } from '../combat';
 import { evaluateBehavior, setArmyCountCache, isEnemy } from './behaviorTree';
 import { buildPrompt, parseGrokResponse, applyGrokResponse } from './grokBrain';
+import { recordPerfSample } from '../critters';
 import type { NPCBrain } from './behaviorTree';
 
 // ── Active NPC brains (keyed by character ID) ──
@@ -376,6 +377,7 @@ const lastBroadcastRot = new Map<string, number>();
 const lastBroadcastAction = new Map<string, string>();
 
 setInterval(() => {
+  const tickStart = performance.now();
   auditTickCounter++;
   const shouldLog = auditTickCounter % 20 === 0; // Log every 10 seconds (20 * 500ms)
 
@@ -606,6 +608,7 @@ setInterval(() => {
 
   // Clear the cache after tick
   setArmyCountCache(new Map());
+  recordPerfSample('npcBehaviorTick', performance.now() - tickStart);
 }, 500);
 
 // ┌──────────────────────────────────────────┐

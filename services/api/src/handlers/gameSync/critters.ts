@@ -691,6 +691,43 @@ const behaviorTick = async (): Promise<void> => {
   }
 };
 
+// ── Server Performance Tracking ──
+
+type PerfMetric = { samples: number[]; maxSamples: number };
+const perfMetrics: Record<string, PerfMetric> = {
+  npcBehaviorTick: { samples: [], maxSamples: 60 },
+  npcPositionBroadcast: { samples: [], maxSamples: 60 },
+  critterBehavior: { samples: [], maxSamples: 60 },
+  critterMovement: { samples: [], maxSamples: 60 },
+  vegetationTick: { samples: [], maxSamples: 60 },
+};
+
+const recordPerfSample = (metric: string, durationMs: number): void => {
+  const m = perfMetrics[metric];
+  if (!m) return;
+  m.samples.push(durationMs);
+  if (m.samples.length > m.maxSamples) m.samples.shift();
+};
+
+const getPerfSummary = (): Record<string, { avg: number; min: number; max: number; last: number; samples: number }> => {
+  const summary: Record<string, { avg: number; min: number; max: number; last: number; samples: number }> = {};
+  for (const [name, m] of Object.entries(perfMetrics)) {
+    if (m.samples.length === 0) {
+      summary[name] = { avg: 0, min: 0, max: 0, last: 0, samples: 0 };
+      continue;
+    }
+    const avg = m.samples.reduce((a, b) => a + b, 0) / m.samples.length;
+    summary[name] = {
+      avg: Math.round(avg * 100) / 100,
+      min: Math.round(Math.min(...m.samples) * 100) / 100,
+      max: Math.round(Math.max(...m.samples) * 100) / 100,
+      last: Math.round(m.samples[m.samples.length - 1] * 100) / 100,
+      samples: m.samples.length,
+    };
+  }
+  return summary;
+};
+
 // ── World stats broadcast (every 30s via game-sync WebSocket) ──
 
 let statsBroadcastCounter = 0;
@@ -722,6 +759,9 @@ const broadcastWorldStats = async (): Promise<void> => {
       critters: critterStats,
       vegetation: vegStats,
       totals: { critters: totalCritters, vegetation: totalVeg },
+      performance: getPerfSummary(),
+      uptime: Math.round(process.uptime()),
+      memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
     });
   } catch { /* ignore DB errors for stats */ }
 };
@@ -759,12 +799,17 @@ const initCritterSystem = async (): Promise<void> => {
   console.log(`[Critters] Loaded ${dbCritters.length} critters from DB`);
 
   // Movement tick: 200ms — only processes critters that are actively moving
-  setInterval(movementTick, 200);
-
-  // Behavior tick: 5s — decisions (staggered: each critter evaluated based on its ID)
-  // This means not all critters think at the same moment
   setInterval(() => {
-    behaviorTick().catch((err) => console.error('[Critters] Behavior error:', err));
+    const start = performance.now();
+    movementTick();
+    recordPerfSample('critterMovement', performance.now() - start);
+  }, 200);
+
+  // Behavior tick: 5s — decisions
+  setInterval(async () => {
+    const start = performance.now();
+    await behaviorTick().catch((err) => console.error('[Critters] Behavior error:', err));
+    recordPerfSample('critterBehavior', performance.now() - start);
     broadcastWorldStats().catch(() => {});
   }, 5000);
 
@@ -822,4 +867,4 @@ const seedCritters = async (species: string, count: number, centerX: number, cen
   return spawned;
 };
 
-export { initCritterSystem, seedCritters, critters };
+export { initCritterSystem, seedCritters, critters, recordPerfSample, getPerfSummary };
