@@ -8,10 +8,17 @@ import { WebSocket } from 'ws';
 
 // ── World Time ──
 // 1 real minute = 1 game hour → 24 real minutes = 1 game day
+// 30 game days = 1 lunar cycle → 12 real hours = 1 full moon cycle
+
+const msPerGameHour = 60 * 1000;
+const msPerGameDay = msPerGameHour * 24; // 24 real minutes
 
 const getGameHour = (): number => {
-  const msPerGameHour = 60 * 1000;
   return (Date.now() / msPerGameHour) % 24;
+};
+
+const getGameDay = (): number => {
+  return Math.floor(Date.now() / msPerGameDay) % 30; // 0-29, 30-day lunar cycle
 };
 
 /** Broadcast nearby — send to all connected players within radius. */
@@ -241,10 +248,10 @@ const initVegetationSystem = (): void => {
 
   // World time broadcast every 10s
   setInterval(() => {
-    broadcastAll({ type: 'world_time', hour: getGameHour() });
+    broadcastAll({ type: 'world_time', hour: getGameHour(), day: getGameDay() });
   }, 10000);
 
   console.log('[Vegetation] System initialized (growth tick: 30s, spread: 10% grass / 3% tree / 5% bush, daytime only)');
 };
 
-export { initVegetationSystem, getGameHour, broadcastNearby, checkTrampling };
+export { initVegetationSystem, getGameHour, getGameDay, broadcastNearby, checkTrampling };
