@@ -437,15 +437,23 @@ const behaviorTick = async (): Promise<void> => {
     const hungerThreshold = 25 * c.geneHungerTolerance;
     const effectiveSearchRadius = config.searchRadius * c.geneCuriosity;
 
-    // ── 5a. Predator hunting (checked BEFORE vegetation) ──
-    if (c.behavior === 'idle' && config.hunts.length > 0 && c.hunger > hungerThreshold) {
-      // Find nearest prey within search radius
+    // ── 5a. Predator hunting — scales with hunger ──
+    // At hunger 0: 5% chance to hunt (opportunistic), search radius 20%
+    // At hunger 50: 80% chance, full search radius
+    // At hunger 80+: 100% chance, 120% search radius (desperate)
+    if (c.behavior === 'idle' && config.hunts.length > 0) {
+      const huntDrive = Math.min(1, c.hunger / 60); // 0.0 at full → 1.0 at hunger 60+
+      const huntChance = 0.05 + huntDrive * 0.95; // 5% → 100%
+      const huntRadius = effectiveSearchRadius * (0.2 + huntDrive * 1.0); // 20% → 120% of base
+
+      if (Math.random() < huntChance) {
+      // Find nearest prey within hunger-scaled search radius
       let nearestPrey: CritterState | null = null;
       let nearestDist = Infinity;
       for (const [, other] of critters) {
         if (!other.isAlive || !config.hunts.includes(other.species)) continue;
         const d = dist2d(c.x, c.z, other.x, other.z);
-        if (d < effectiveSearchRadius && d < nearestDist) {
+        if (d < huntRadius && d < nearestDist) {
           nearestPrey = other;
           nearestDist = d;
         }
@@ -465,6 +473,7 @@ const behaviorTick = async (): Promise<void> => {
         }
         continue;
       }
+      } // huntChance
     }
 
     // Stalking → switch to chase when close enough
@@ -497,12 +506,17 @@ const behaviorTick = async (): Promise<void> => {
       continue;
     }
 
-    // ── 5b. Vegetation eating (fallback for herbivores, or predators with no prey) ──
-    if (c.behavior === 'idle' && config.eats.length > 0 && c.hunger > hungerThreshold) {
+    // ── 5b. Vegetation eating — scales with hunger like hunting ──
+    if (c.behavior === 'idle' && config.eats.length > 0) {
+      const feedDrive = Math.min(1, c.hunger / 60);
+      const feedChance = 0.05 + feedDrive * 0.95;
+      const feedRadius = effectiveSearchRadius * (0.2 + feedDrive * 1.0);
+
+      if (Math.random() < feedChance) {
       const food = await prisma.world_vegetation.findFirst({
         where: {
-          x: { gte: c.x - effectiveSearchRadius, lte: c.x + effectiveSearchRadius },
-          z: { gte: c.z - effectiveSearchRadius, lte: c.z + effectiveSearchRadius },
+          x: { gte: c.x - feedRadius, lte: c.x + feedRadius },
+          z: { gte: c.z - feedRadius, lte: c.z + feedRadius },
           type: { in: config.eats },
           health: { gt: 0 },
           growth_stage: { gte: 2 },
@@ -519,15 +533,16 @@ const behaviorTick = async (): Promise<void> => {
         continue;
       }
 
-      // No food nearby — search further out
+      // No food nearby — search further out when desperate
       if (c.hunger > 50) {
         const angle = Math.random() * Math.PI * 2;
-        c.targetX = c.x + Math.cos(angle) * effectiveSearchRadius;
-        c.targetZ = c.z + Math.sin(angle) * effectiveSearchRadius;
+        c.targetX = c.x + Math.cos(angle) * feedRadius;
+        c.targetZ = c.z + Math.sin(angle) * feedRadius;
         c.behavior = 'searching';
         broadcastCritterMove(c, 'walk');
         continue;
       }
+      } // feedChance
     }
 
     // ── 6a. Mating in progress — wait 5 seconds then spawn baby ──
