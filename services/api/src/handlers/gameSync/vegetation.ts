@@ -263,10 +263,10 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
 const initVegetationSystem = (): void => {
   // Growth tick every 30s (reduced from 5s — was causing connection drops from DB load)
   setInterval(() => {
-    const start = performance.now();
+    const start = Date.now();
     vegetationTick()
       .then(() => {
-        try { const { recordPerfSample } = require('./critters'); recordPerfSample('vegetationTick', performance.now() - start); } catch {}
+        try { const { recordPerfSample } = require('./critters'); recordPerfSample('vegetationTick', Date.now() - start); } catch (e) { console.error('[Vegetation] Perf error:', e); }
       })
       .catch((err) => console.error('[Vegetation] Tick error:', err));
   }, 30000);
