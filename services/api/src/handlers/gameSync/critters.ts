@@ -731,6 +731,9 @@ const getPerfSummary = (): Record<string, { avg: number; min: number; max: numbe
 // ── World stats broadcast (every 30s via game-sync WebSocket) ──
 
 let statsBroadcastCounter = 0;
+let cachedVegStats: Record<string, number> = {};
+let lastVegStatsRefresh = 0;
+
 const broadcastWorldStats = async (): Promise<void> => {
   statsBroadcastCounter++;
   if (statsBroadcastCounter % 6 !== 0) return; // Every 6th behavior tick = 30s
@@ -741,15 +744,20 @@ const broadcastWorldStats = async (): Promise<void> => {
     critterStats[c.species] = (critterStats[c.species] || 0) + 1;
   }
 
-  // Vegetation counts (cached query, runs every 30s)
+  // Vegetation counts — cached, refresh every 5 minutes to avoid heavy GROUP BY every 30s
   try {
-    const vegRows = await prisma.$queryRaw<{ type: string; cnt: bigint }[]>`
-      SELECT type, COUNT(*) as cnt FROM world_vegetation WHERE health > 0 GROUP BY type
-    `;
-    const vegStats: Record<string, number> = {};
-    for (const row of vegRows) {
-      vegStats[row.type] = Number(row.cnt);
+    const now = Date.now();
+    if (now - lastVegStatsRefresh > 300000) { // 5 minutes
+      const vegRows = await prisma.$queryRaw<{ type: string; cnt: bigint }[]>`
+        SELECT type, COUNT(*) as cnt FROM world_vegetation WHERE health > 0 GROUP BY type
+      `;
+      cachedVegStats = {};
+      for (const row of vegRows) {
+        cachedVegStats[row.type] = Number(row.cnt);
+      }
+      lastVegStatsRefresh = now;
     }
+    const vegStats = cachedVegStats;
 
     const totalCritters = Object.values(critterStats).reduce((a, b) => a + b, 0);
     const totalVeg = Object.values(vegStats).reduce((a, b) => a + b, 0);
