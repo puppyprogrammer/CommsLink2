@@ -94,9 +94,8 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
     activeNPCs.set(recruit.id, brain);
 
     // Create a PlayerSyncState for the NPC (so combat resolution can find them)
-    const spawnPos: [number, number, number] = commander
-      ? [commander.pos[0] + (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2 : -2), commander.pos[1], commander.pos[2] + (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2 : -2)]
-      : [recruit.spawn_x, recruit.spawn_y, recruit.spawn_z];
+    // Always use DB position — persisted from last session
+    const spawnPos: [number, number, number] = [recruit.spawn_x, recruit.spawn_y, recruit.spawn_z];
 
     // Load equipment BEFORE creating state
     const gear = await loadEquipment(recruit.id);

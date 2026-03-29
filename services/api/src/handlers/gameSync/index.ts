@@ -34,6 +34,22 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
   // Initialize vegetation & world time system
   initVegetationSystem();
 
+  // Persist all player + NPC positions to DB every 60s
+  setInterval(() => {
+    for (const [id, p] of players) {
+      if (!p.ws || p.ws.readyState !== WebSocket.OPEN) continue; // Only real players
+      Data.playerCharacter.updateSpawn(p.characterId, p.pos[0], p.pos[1], p.pos[2]).catch(() => {});
+    }
+    // NPC positions
+    const { npcStates: npcS, activeNPCs: aNPCs } = require('./ai/npcEngine');
+    for (const [id] of aNPCs) {
+      const npc = npcS.get(id);
+      if (npc) {
+        Data.playerCharacter.updateSpawn(npc.characterId, npc.pos[0], npc.pos[1], npc.pos[2]).catch(() => {});
+      }
+    }
+  }, 60000);
+
   // Initialize critter/wildlife system
   initCritterSystem().catch((err) => console.error('[Critters] Init error:', err));
 
@@ -195,6 +211,17 @@ const registerGameSyncHandler = (wss: WebSocketServer): void => {
         }
 
         players.delete(userId);
+
+        // Save NPC positions before unregistering
+        const { npcStates: npcS, activeNPCs: aNPCs } = require('./ai/npcEngine');
+        for (const [npcId, brain] of aNPCs) {
+          if ((brain as { commanderUserId: string }).commanderUserId === userId) {
+            const npc = npcS.get(npcId);
+            if (npc) {
+              Data.playerCharacter.updateSpawn(npc.characterId, npc.pos[0], npc.pos[1], npc.pos[2]).catch(() => {});
+            }
+          }
+        }
 
         // Unregister this player's NPCs
         unregisterPlayerNPCs(userId);
