@@ -283,7 +283,7 @@ const evaluateBehavior = (
     // Continuously correct toward hold position (like follow formation)
     if (brain.holdPosition) {
       const distToHold = dist3d(npc.pos, brain.holdPosition);
-      if (distToHold > 0.3) {
+      if (distToHold > 0.5) {
         return { action: 'walk', moveTarget: brain.holdPosition, faceTarget: null, reason: `GUARD: correcting to hold position (${distToHold.toFixed(1)}m)` };
       }
     }
@@ -483,7 +483,7 @@ const evaluateBehavior = (
       if (distToTarget > 3) {
         return { action: 'run', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: running to position (${distToTarget.toFixed(1)}m off)` };
       }
-      if (distToTarget > 0.3) {
+      if (distToTarget > 0.5) {
         return { action: 'walk', moveTarget: targetPos, faceTarget: null, reason: `FOLLOW: adjusting position (${distToTarget.toFixed(1)}m off)` };
       }
       // In position — idle
