@@ -803,3 +803,26 @@ model vegetation_log {
   @@index([event])
   @@index([created_at])
 }
+
+model world_stats_history {
+  id                    Int      @id @default(autoincrement())
+  timestamp             DateTime @default(now())
+  resolution            String   @default("raw") // "raw" | "1min" | "10min" | "1hour"
+  chickens              Int      @default(0)
+  deer                  Int      @default(0)
+  fox                   Int      @default(0)
+  bear                  Int      @default(0)
+  grass                 Int      @default(0)
+  bush                  Int      @default(0)
+  tree_oak              Int      @default(0)
+  tree_pine             Int      @default(0)
+  total_critters        Int      @default(0)
+  total_vegetation      Int      @default(0)
+  memory_mb             Int      @default(0)
+  npc_tick_avg          Float    @default(0)
+  critter_behavior_avg  Float    @default(0)
+  veg_tick_avg          Float    @default(0)
+
+  @@index([timestamp])
+  @@index([resolution])
+}

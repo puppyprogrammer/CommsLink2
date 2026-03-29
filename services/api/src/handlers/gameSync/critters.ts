@@ -765,16 +765,103 @@ const broadcastWorldStats = async (): Promise<void> => {
     const totalCritters = Object.values(critterStats).reduce((a, b) => a + b, 0);
     const totalVeg = Object.values(vegStats).reduce((a, b) => a + b, 0);
 
+    const perf = getPerfSummary();
+    const memMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+
     broadcastAll({
       type: 'world_stats',
       critters: critterStats,
       vegetation: vegStats,
       totals: { critters: totalCritters, vegetation: totalVeg },
-      performance: getPerfSummary(),
+      performance: perf,
       uptime: Math.round(process.uptime()),
-      memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      memoryMB: memMB,
     });
-  } catch { /* ignore DB errors for stats */ }
+
+    // Record snapshot to history
+    prisma.world_stats_history.create({ data: {
+      resolution: 'raw',
+      chickens: critterStats.chicken || 0,
+      deer: critterStats.deer || 0,
+      fox: critterStats.fox || 0,
+      bear: critterStats.bear || 0,
+      grass: vegStats.grass || 0,
+      bush: vegStats.bush || 0,
+      tree_oak: vegStats.tree_oak || 0,
+      tree_pine: vegStats.tree_pine || 0,
+      total_critters: totalCritters,
+      total_vegetation: totalVeg,
+      memory_mb: memMB,
+      npc_tick_avg: perf.npcBehaviorTick?.avg || 0,
+      critter_behavior_avg: perf.critterBehavior?.avg || 0,
+      veg_tick_avg: perf.vegetationTick?.avg || 0,
+    } }).catch(() => {});
+  } catch { /* ignore errors for stats */ }
+};
+
+// ── Stats downsampling (runs hourly) ──
+const downsampleStats = async (): Promise<void> => {
+  try {
+    // Raw → 1min averages for data older than 1 hour
+    const oneHourAgo = new Date(Date.now() - 3600000);
+    await prisma.$executeRaw`
+      INSERT INTO world_stats_history (timestamp, resolution, chickens, deer, fox, bear, grass, bush, tree_oak, tree_pine, total_critters, total_vegetation, memory_mb, npc_tick_avg, critter_behavior_avg, veg_tick_avg)
+      SELECT
+        DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:00') as timestamp,
+        '1min',
+        ROUND(AVG(chickens)), ROUND(AVG(deer)), ROUND(AVG(fox)), ROUND(AVG(bear)),
+        ROUND(AVG(grass)), ROUND(AVG(bush)), ROUND(AVG(tree_oak)), ROUND(AVG(tree_pine)),
+        ROUND(AVG(total_critters)), ROUND(AVG(total_vegetation)), ROUND(AVG(memory_mb)),
+        ROUND(AVG(npc_tick_avg), 2), ROUND(AVG(critter_behavior_avg), 2), ROUND(AVG(veg_tick_avg), 2)
+      FROM world_stats_history
+      WHERE resolution = 'raw' AND timestamp < ${oneHourAgo}
+      GROUP BY DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:00')
+    `;
+    await prisma.$executeRaw`DELETE FROM world_stats_history WHERE resolution = 'raw' AND timestamp < ${oneHourAgo}`;
+
+    // 1min → 10min averages for data older than 24 hours
+    const oneDayAgo = new Date(Date.now() - 86400000);
+    await prisma.$executeRaw`
+      INSERT INTO world_stats_history (timestamp, resolution, chickens, deer, fox, bear, grass, bush, tree_oak, tree_pine, total_critters, total_vegetation, memory_mb, npc_tick_avg, critter_behavior_avg, veg_tick_avg)
+      SELECT
+        DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:00') as timestamp,
+        '10min',
+        ROUND(AVG(chickens)), ROUND(AVG(deer)), ROUND(AVG(fox)), ROUND(AVG(bear)),
+        ROUND(AVG(grass)), ROUND(AVG(bush)), ROUND(AVG(tree_oak)), ROUND(AVG(tree_pine)),
+        ROUND(AVG(total_critters)), ROUND(AVG(total_vegetation)), ROUND(AVG(memory_mb)),
+        ROUND(AVG(npc_tick_avg), 2), ROUND(AVG(critter_behavior_avg), 2), ROUND(AVG(veg_tick_avg), 2)
+      FROM world_stats_history
+      WHERE resolution = '1min' AND timestamp < ${oneDayAgo}
+      GROUP BY FLOOR(UNIX_TIMESTAMP(timestamp) / 600)
+    `;
+    await prisma.$executeRaw`DELETE FROM world_stats_history WHERE resolution = '1min' AND timestamp < ${oneDayAgo}`;
+
+    // 10min → 1hour averages for data older than 7 days
+    const sevenDaysAgo = new Date(Date.now() - 604800000);
+    await prisma.$executeRaw`
+      INSERT INTO world_stats_history (timestamp, resolution, chickens, deer, fox, bear, grass, bush, tree_oak, tree_pine, total_critters, total_vegetation, memory_mb, npc_tick_avg, critter_behavior_avg, veg_tick_avg)
+      SELECT
+        DATE_FORMAT(timestamp, '%Y-%m-%d %H:00:00') as timestamp,
+        '1hour',
+        ROUND(AVG(chickens)), ROUND(AVG(deer)), ROUND(AVG(fox)), ROUND(AVG(bear)),
+        ROUND(AVG(grass)), ROUND(AVG(bush)), ROUND(AVG(tree_oak)), ROUND(AVG(tree_pine)),
+        ROUND(AVG(total_critters)), ROUND(AVG(total_vegetation)), ROUND(AVG(memory_mb)),
+        ROUND(AVG(npc_tick_avg), 2), ROUND(AVG(critter_behavior_avg), 2), ROUND(AVG(veg_tick_avg), 2)
+      FROM world_stats_history
+      WHERE resolution = '10min' AND timestamp < ${sevenDaysAgo}
+      GROUP BY DATE_FORMAT(timestamp, '%Y-%m-%d %H:00:00')
+    `;
+    await prisma.$executeRaw`DELETE FROM world_stats_history WHERE resolution = '10min' AND timestamp < ${sevenDaysAgo}`;
+
+    // Delete anything older than 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 2592000000);
+    await prisma.$executeRaw`DELETE FROM world_stats_history WHERE timestamp < ${thirtyDaysAgo}`;
+
+    const remaining = await prisma.world_stats_history.count();
+    console.log(`[Stats] Downsampled — ${remaining} rows remaining`);
+  } catch (err) {
+    console.error('[Stats] Downsample error:', err);
+  }
 };
 
 // ── Persistence (save to DB periodically) ──
@@ -832,7 +919,12 @@ const initCritterSystem = async (): Promise<void> => {
     persistTick().catch((err) => console.error('[Critters] Persist error:', err));
   }, 60000);
 
-  console.log('[Critters] Event-driven system initialized (movement: 200ms, behavior: 5s, persist: 60s)');
+  // Downsample stats history: every hour
+  setInterval(() => {
+    downsampleStats().catch((err) => console.error('[Stats] Downsample error:', err));
+  }, 3600000);
+
+  console.log('[Critters] Event-driven system initialized (movement: 200ms, behavior: 5s, persist: 60s, downsample: 1h)');
 };
 
 /** Spawn critters. baby=true spawns as newborn, otherwise as adult. */
