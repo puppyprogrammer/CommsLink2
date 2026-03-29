@@ -82,14 +82,13 @@ const vegetationTick = async (): Promise<void> => {
     });
   }
 
-  // Spread: random sample of mature plants — density checked per-plant in Node
+  // Spread: fetch all mature, random roll in Node, density check only on candidates
   let newSpawns = 0;
 
-  const matureGrass = await prisma.$queryRaw<{ id: number; x: number; z: number }[]>`
-    SELECT id, x, z FROM world_vegetation
-    WHERE growth_stage = 4 AND type = 'grass' AND health >= 50
-    ORDER BY RAND() LIMIT 500
-  `;
+  const matureGrass = await prisma.world_vegetation.findMany({
+    where: { growth_stage: 4, type: 'grass', health: { gte: 50 } },
+    select: { id: true, x: true, z: true },
+  });
 
   for (const g of matureGrass) {
     if (Math.random() > 0.10) continue; // 10% chance per tick
@@ -122,11 +121,10 @@ const vegetationTick = async (): Promise<void> => {
   // Trees drop seeds — mature trees have 5% chance to spawn a sapling nearby
   // Seeds fall further than grass (5-10m) and need more space (3m minimum gap)
   // Random ordering ensures rare species (pine) get a fair chance alongside common ones (oak)
-  const matureTrees = await prisma.$queryRaw<{ id: number; x: number; z: number; type: string }[]>`
-    SELECT id, x, z, type FROM world_vegetation
-    WHERE growth_stage = 4 AND type LIKE 'tree_%' AND health >= 50
-    ORDER BY RAND() LIMIT 200
-  `;
+  const matureTrees = await prisma.world_vegetation.findMany({
+    where: { growth_stage: 4, type: { startsWith: 'tree_' }, health: { gte: 50 } },
+    select: { id: true, x: true, z: true, type: true },
+  });
 
   for (const tree of matureTrees) {
     if (Math.random() > 0.05) continue; // 5% chance per tick
@@ -166,11 +164,10 @@ const vegetationTick = async (): Promise<void> => {
     newSpawns++;
   }
 
-  const matureBushes = await prisma.$queryRaw<{ id: number; x: number; z: number }[]>`
-    SELECT id, x, z FROM world_vegetation
-    WHERE growth_stage = 4 AND type = 'bush' AND health >= 50
-    ORDER BY RAND() LIMIT 200
-  `;
+  const matureBushes = await prisma.world_vegetation.findMany({
+    where: { growth_stage: 4, type: 'bush', health: { gte: 50 } },
+    select: { id: true, x: true, z: true },
+  });
 
   for (const bush of matureBushes) {
     if (Math.random() > 0.05) continue; // 5% chance per tick
