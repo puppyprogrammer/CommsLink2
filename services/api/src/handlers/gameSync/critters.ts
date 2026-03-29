@@ -931,6 +931,11 @@ const initCritterSystem = async (): Promise<void> => {
     persistTick().catch((err) => console.error('[Critters] Persist error:', err));
   }, 60000);
 
+  // Resync vegCounts from DB every 60s (catches manual inserts, external changes)
+  setInterval(() => {
+    initVegCounts().catch(() => {});
+  }, 60000);
+
   // Downsample stats history: every hour
   setInterval(() => {
     downsampleStats().catch((err) => console.error('[Stats] Downsample error:', err));
