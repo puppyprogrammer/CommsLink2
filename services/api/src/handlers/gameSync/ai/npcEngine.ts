@@ -72,7 +72,8 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       groupCohesion: recruit.bw_group_cohesion,
       commanderProtection: recruit.bw_commander_protection,
       selfPreservation: recruit.bw_self_preservation,
-      agenda: recruit.ai_agenda || 'follow_commander',
+      // Reset transient agendas (move_to, guard_position) to follow on reload — their targets aren't persisted
+      agenda: (recruit.ai_agenda === 'move_to' || recruit.ai_agenda === 'guard_position') ? 'follow_commander' : (recruit.ai_agenda || 'follow_commander'),
       targetId: recruit.ai_target_id || null,
       lastGrokCall: 0,
       grokIntervalMs: GROK_INTERVALS[recruit.npc_type || ''] || 20_000,
