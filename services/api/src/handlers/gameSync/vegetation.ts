@@ -191,7 +191,7 @@ const vegetationTick = async (): Promise<void> => {
     where: { growth_stage: 4, type: { startsWith: 'tree_' }, health: { gte: 50 } },
     select: { id: true, x: true, z: true, type: true },
   });
-  const treeCandidates = matureTrees.filter(t => canSpread(t.id) && Math.random() <= 0.05);
+  const treeCandidates = matureTrees.filter(t => canSpread(t.id) && Math.random() <= 0.0375); // 3.75% (reduced 25% from 5%)
 
   await processChunk(treeCandidates, async (tree) => {
     const angle = Math.random() * Math.PI * 2;
