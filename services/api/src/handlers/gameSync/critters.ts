@@ -148,6 +148,11 @@ const randomGenes = () => ({
   geneCuriosity: 0.8 + Math.random() * 0.4,
 });
 
+/** Log a life event for a critter. */
+const logLife = (critterId: number, event: string, detail?: string): void => {
+  prisma.world_critter_log.create({ data: { critter_id: critterId, event, detail } }).catch(() => {});
+};
+
 /** Get age in minutes (for client scaling: baby → adult). */
 const getAgeMinutes = (c: CritterState): number => Math.round((Date.now() - c.bornAt) / 60000);
 
@@ -287,6 +292,8 @@ const movementTick = (): void => {
             prey.behavior = 'idle';
             broadcastNearby(prey.x, prey.z, 200, { type: 'critter_died', id: prey.id, species: prey.species, cause: 'killed', killerId: c.id, killerSpecies: c.species });
             prisma.world_critter.update({ where: { id: prey.id }, data: { is_alive: false, health: 0 } }).catch(() => {});
+            logLife(c.id, 'hunted', `Killed ${prey.species} #${prey.id}`);
+            logLife(prey.id, 'killed', `Killed by ${c.species} #${c.id}`);
             console.log(`[Critters] ${c.species} #${c.id} killed ${prey.species} #${prey.id}`);
 
             // Eat the kill
@@ -359,6 +366,7 @@ const behaviorTick = async (): Promise<void> => {
       c.targetZ = c.z + (threat.dz / len) * (effectiveFleeRange + 5);
       c.behavior = 'fleeing';
       c.foodTargetId = null;
+      logLife(id, 'fled', `Fled from threat at distance ${effectiveFleeRange.toFixed(0)}m`);
       broadcastCritterMove(c, 'run');
       continue;
     }
@@ -382,6 +390,7 @@ const behaviorTick = async (): Promise<void> => {
       broadcastNearby(c.x, c.z, 200, { type: 'critter_died', id, species: c.species, cause: 'starvation' });
       await prisma.world_critter.update({ where: { id }, data: { is_alive: false, health: 0 } }).catch(() => {});
       critters.delete(id);
+      logLife(id, 'starved', `Died of starvation at hunger ${c.hunger}`);
       console.log(`[Critters] ${c.species} #${id} starved`);
       continue;
     }
@@ -393,6 +402,7 @@ const behaviorTick = async (): Promise<void> => {
         if (food && food.health > 0) {
           c.hunger = Math.max(0, c.hunger - config.hungerRestore);
           c.lastAte = now;
+          logLife(id, 'ate', `Ate ${food.type} #${food.id}, hunger now ${c.hunger}`);
 
           const newHealth = Math.max(0, food.health - config.eatDamage);
           const newStage = newHealth <= 0 ? 0 : Math.min(4, Math.floor(newHealth / 20));
@@ -611,6 +621,8 @@ const behaviorTick = async (): Promise<void> => {
           broadcastCritterState(mateRef, 'idle');
         }
 
+        logLife(baby.id, 'born', `Born to ${c.species} #${id}, gender: ${baby.gender}`);
+        logLife(id, 'mated', `Gave birth to ${c.species} #${baby.id}`);
         console.log(`[Critters] ${c.species} #${id} gave birth to #${baby.id}`);
       }
       continue; // Stay in mating state until duration passes
@@ -968,6 +980,7 @@ const seedCritters = async (species: string, count: number, centerX: number, cen
       x, y: 0, z, gender: g,
       age: baby ? 0 : config.matureAgeMinutes, maturity: baby ? 0 : 1.0, parentId: null,
     });
+    logLife(critter.id, 'born', `Seeded ${species} (${g}) at (${x.toFixed(0)}, ${z.toFixed(0)})`);
     spawned++;
   }
   return spawned;

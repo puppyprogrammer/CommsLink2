@@ -730,9 +730,24 @@ model world_critter {
   gene_hunger_tolerance  Float @default(1.0) // How hungry before seeking food (high=patient, low=seeks early)
   gene_curiosity         Float @default(1.0) // How far they wander when searching
 
+  life_log   world_critter_log[]
+
   @@index([x, z])
   @@index([species])
   @@index([is_alive])
+}
+
+model world_critter_log {
+  id         Int      @id @default(autoincrement())
+  critter_id Int
+  event      String   // "born" | "ate" | "hunted" | "mated" | "fled" | "starved" | "killed" | "died"
+  detail     String?  @db.Text // e.g. "ate grass #123", "killed chicken #456", "fled from bear #789"
+  timestamp  DateTime @default(now())
+
+  critter    world_critter @relation(fields: [critter_id], references: [id])
+
+  @@index([critter_id])
+  @@index([timestamp])
 }
 
 // ┌──────────────────────────────────────────┐
