@@ -750,7 +750,7 @@ const adjustVegCount = (type: string, delta: number): void => {
 
 const broadcastWorldStats = async (): Promise<void> => {
   statsBroadcastCounter++;
-  if (statsBroadcastCounter % 6 !== 0) return; // Every 6th behavior tick = 30s
+  if (statsBroadcastCounter % 1 !== 0) return; // Every behavior tick = 5s
 
   const critterStats: Record<string, number> = {};
   for (const [, c] of critters) {
