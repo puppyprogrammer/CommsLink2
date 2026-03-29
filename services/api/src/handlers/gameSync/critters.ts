@@ -36,7 +36,7 @@ const SPECIES: Record<string, SpeciesConfig> = {
   chicken: {
     walkSpeed: 0.8, runSpeed: 2.5, fleeRange: 8,
     fleesFrom: ['fox', 'bear'], hunts: [],
-    eats: ['grass'], eatDamage: 10, attackDamage: 0, attackRange: 0,
+    eats: ['grass', 'bush'], eatDamage: 10, attackDamage: 0, attackRange: 0,
     hungerRestore: 30, hungerPerMinute: 3, searchRadius: 20,
     matureAgeMinutes: 5, breedCooldownMinutes: 10, breedHungerMax: 40,
     maxHealth: 30,
