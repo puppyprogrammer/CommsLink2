@@ -61,7 +61,7 @@ const SPECIES: Record<string, SpeciesConfig> = {
     walkSpeed: 1.0, runSpeed: 3.5, fleeRange: 0, // Bears don't flee
     fleesFrom: [], hunts: ['deer', 'fox', 'chicken'],
     eats: ['bush'], eatDamage: 20, attackDamage: 40, attackRange: 2.5,
-    hungerRestore: 60, hungerPerMinute: 1, searchRadius: 50,
+    hungerRestore: 15, hungerPerMinute: 2, searchRadius: 50, // Low veg restore (15) forces hunting, kill gives 60
     matureAgeMinutes: 15, breedCooldownMinutes: 30, breedHungerMax: 30,
     maxHealth: 200,
   },
@@ -433,49 +433,15 @@ const behaviorTick = async (): Promise<void> => {
       }
     }
 
-    // ── 5. Hungry and idle — search for food ──
-    // gene_hunger_tolerance: high=waits longer before seeking (patient), low=seeks food early
-    const hungerThreshold = 25 * c.geneHungerTolerance; // 1.0=25, 0.5=12.5 (seeks early), 1.5=37.5 (patient)
-    if (c.behavior === 'idle' && c.hunger > hungerThreshold) {
-      // gene_curiosity modifies search radius
-      const effectiveSearchRadius = config.searchRadius * c.geneCuriosity;
-      const food = await prisma.world_vegetation.findFirst({
-        where: {
-          x: { gte: c.x - effectiveSearchRadius, lte: c.x + effectiveSearchRadius },
-          z: { gte: c.z - effectiveSearchRadius, lte: c.z + effectiveSearchRadius },
-          type: { in: config.eats },
-          health: { gt: 0 },
-          growth_stage: { gte: 2 },
-        },
-        orderBy: { health: 'desc' }, // Prefer healthiest plants
-      });
+    // ── 5. Hungry and idle — predators hunt first, herbivores eat vegetation ──
+    const hungerThreshold = 25 * c.geneHungerTolerance;
+    const effectiveSearchRadius = config.searchRadius * c.geneCuriosity;
 
-      if (food) {
-        c.targetX = food.x;
-        c.targetZ = food.z;
-        c.foodTargetId = food.id;
-        c.behavior = 'walking_to_food';
-        broadcastCritterMove(c, 'walk');
-        continue;
-      }
-
-      // No food nearby — search further out (wander in a random direction)
-      if (c.hunger > 50) {
-        const angle = Math.random() * Math.PI * 2;
-        c.targetX = c.x + Math.cos(angle) * effectiveSearchRadius;
-        c.targetZ = c.z + Math.sin(angle) * effectiveSearchRadius;
-        c.behavior = 'searching';
-        broadcastCritterMove(c, 'walk');
-        continue;
-      }
-    }
-
-    // ── 5b. Predator hunting — find prey when hungry ──
+    // ── 5a. Predator hunting (checked BEFORE vegetation) ──
     if (c.behavior === 'idle' && config.hunts.length > 0 && c.hunger > hungerThreshold) {
       // Find nearest prey within search radius
       let nearestPrey: CritterState | null = null;
       let nearestDist = Infinity;
-      const effectiveSearchRadius = config.searchRadius * c.geneCuriosity;
       for (const [, other] of critters) {
         if (!other.isAlive || !config.hunts.includes(other.species)) continue;
         const d = dist2d(c.x, c.z, other.x, other.z);
@@ -529,6 +495,39 @@ const behaviorTick = async (): Promise<void> => {
         broadcastCritterState(c, 'idle');
       }
       continue;
+    }
+
+    // ── 5b. Vegetation eating (fallback for herbivores, or predators with no prey) ──
+    if (c.behavior === 'idle' && config.eats.length > 0 && c.hunger > hungerThreshold) {
+      const food = await prisma.world_vegetation.findFirst({
+        where: {
+          x: { gte: c.x - effectiveSearchRadius, lte: c.x + effectiveSearchRadius },
+          z: { gte: c.z - effectiveSearchRadius, lte: c.z + effectiveSearchRadius },
+          type: { in: config.eats },
+          health: { gt: 0 },
+          growth_stage: { gte: 2 },
+        },
+        orderBy: { health: 'desc' },
+      });
+
+      if (food) {
+        c.targetX = food.x;
+        c.targetZ = food.z;
+        c.foodTargetId = food.id;
+        c.behavior = 'walking_to_food';
+        broadcastCritterMove(c, 'walk');
+        continue;
+      }
+
+      // No food nearby — search further out
+      if (c.hunger > 50) {
+        const angle = Math.random() * Math.PI * 2;
+        c.targetX = c.x + Math.cos(angle) * effectiveSearchRadius;
+        c.targetZ = c.z + Math.sin(angle) * effectiveSearchRadius;
+        c.behavior = 'searching';
+        broadcastCritterMove(c, 'walk');
+        continue;
+      }
     }
 
     // ── 6a. Mating in progress — wait 5 seconds then spawn baby ──
