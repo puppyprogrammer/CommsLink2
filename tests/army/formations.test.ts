@@ -238,3 +238,171 @@ describe('Formation Behavior Tree', () => {
     expect(decision.reason).toContain('FOLLOW');
   });
 });
+
+describe('Formation Geometry — 20 Troops Simulation', () => {
+  const SPACING = 1.0;
+  const ROW_DEPTH = 1.5;
+  const NUM_UNITS = 20;
+  const COLS = Math.ceil(NUM_UNITS / 2);
+
+  const setupArmy = (commanderPos: [number, number, number], commanderRot: number) => {
+    const players = new Map<string, PlayerSyncState>();
+    const brains = new Map<string, NPCBrain>();
+
+    const commander = makePlayer('cmd-1', commanderPos);
+    commander.rot = commanderRot;
+    players.set('cmd-1', commander);
+
+    const centurion = makePlayer('centurion', [0, 0, 0]);
+    players.set('centurion', centurion);
+    brains.set('centurion', makeBrain({
+      characterId: 'centurion', commanderUserId: 'cmd-1', name: 'Centurion',
+      rank: 'centurion', armyBlockIndex: 0, leaderId: 'cmd-1',
+      agenda: 'follow_commander',
+    }));
+
+    for (let i = 1; i < NUM_UNITS; i++) {
+      const id = `soldier-${i}`;
+      const npc = makePlayer(id, [Math.random() * 100, 0, Math.random() * 100]);
+      players.set(id, npc);
+      brains.set(id, makeBrain({
+        characterId: id, commanderUserId: 'cmd-1', name: `Soldier ${i}`,
+        rank: 'soldier', armyBlockIndex: i, leaderId: 'centurion',
+        agenda: 'follow_commander',
+      }));
+    }
+
+    return { players, brains };
+  };
+
+  const runTicks = (players: Map<string, PlayerSyncState>, brains: Map<string, NPCBrain>, ticks: number) => {
+    for (let t = 0; t < ticks; t++) {
+      for (const [id, brain] of brains) {
+        const npc = players.get(id);
+        if (!npc) continue;
+        const decision = evaluateBehavior(brain, npc, players, brains);
+        if (decision.moveTarget) {
+          const dx = decision.moveTarget[0] - npc.pos[0];
+          const dz = decision.moveTarget[2] - npc.pos[2];
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist > 0.3) {
+            const maxSpeed = decision.action === 'run' ? 2.8 : 1.5;
+            const speed = Math.min(maxSpeed, dist);
+            npc.pos = [npc.pos[0] + (dx / dist) * speed, decision.moveTarget[1], npc.pos[2] + (dz / dist) * speed];
+          }
+        }
+        npc.action = decision.action;
+        if (brain.agenda === 'follow_commander' && !decision.faceTarget) {
+          if (brain.rank === 'centurion') {
+            const cmd = players.get('cmd-1');
+            if (cmd) npc.rot = cmd.rot;
+          } else {
+            const cent = players.get('centurion');
+            if (cent) npc.rot = cent.rot;
+          }
+        }
+      }
+    }
+  };
+
+  it('20 units converge to grid behind commander — all idle, correct facing', () => {
+    const { players, brains } = setupArmy([50, 0, 50], 0);
+    runTicks(players, brains, 100);
+
+    // All units should be idle
+    for (const [id] of brains) {
+      expect(players.get(id)!.action).toBe('idle');
+    }
+
+    // Centurion ~3m behind commander, offset left (index 0 = front-left of 10-wide block)
+    const centurion = players.get('centurion')!;
+    const cmd = players.get('cmd-1')!;
+    expect(centurion.pos[2]).toBeCloseTo(cmd.pos[2] - 3, 0);
+    // Centurion is at col 0 of 10 columns = offset -4.5m from center
+    expect(centurion.pos[0]).toBeCloseTo(cmd.pos[0] - 4.5, 0);
+
+    // All face same direction as commander
+    for (const [id] of brains) {
+      expect(Math.abs(players.get(id)!.rot - cmd.rot)).toBeLessThan(2);
+    }
+  });
+
+  it('20 units hold exact positions after move_to with facing', () => {
+    const { players, brains } = setupArmy([50, 0, 50], 0);
+    const targetFacing = 90;
+    const rad = targetFacing * Math.PI / 180;
+    const fwdX = Math.sin(rad);
+    const fwdZ = Math.cos(rad);
+    const rightX = Math.cos(rad);
+    const rightZ = -Math.sin(rad);
+
+    const sortedBrains = Array.from(brains.entries()).sort((a, b) => a[1].armyBlockIndex - b[1].armyBlockIndex);
+    for (let i = 0; i < sortedBrains.length; i++) {
+      const [, brain] = sortedBrains[i];
+      const row = Math.floor(i / COLS);
+      const col = i % COLS;
+      const colOffset = (col - (COLS - 1) / 2) * SPACING;
+      const behindDist = 3 + row * ROW_DEPTH;
+      brain.holdPosition = [80 - fwdX * behindDist + rightX * colOffset, 0, 80 - fwdZ * behindDist + rightZ * colOffset];
+      brain.holdFacing = targetFacing;
+      brain.agenda = 'guard_position';
+      brain.agendaLocked = true;
+    }
+
+    runTicks(players, brains, 100);
+
+    for (const [id, brain] of brains) {
+      const npc = players.get(id)!;
+      expect(npc.action).toBe('idle');
+      expect(npc.rot).toBeCloseTo(targetFacing, 0);
+      if (brain.holdPosition) {
+        const dist = Math.sqrt((npc.pos[0] - brain.holdPosition[0]) ** 2 + (npc.pos[2] - brain.holdPosition[2]) ** 2);
+        expect(dist).toBeLessThan(0.5);
+      }
+    }
+  });
+
+  it('soldiers reform around centurion after centurion relocates', () => {
+    const { players, brains } = setupArmy([50, 0, 50], 0);
+    runTicks(players, brains, 50);
+
+    // Move centurion
+    players.get('centurion')!.pos = [80, 0, 80];
+    players.get('centurion')!.rot = 180;
+    players.get('cmd-1')!.rot = 180;
+
+    runTicks(players, brains, 100);
+
+    const centurion = players.get('centurion')!;
+    for (const [id, brain] of brains) {
+      if (brain.rank === 'centurion') continue;
+      const npc = players.get(id)!;
+      const dist = Math.sqrt((npc.pos[0] - centurion.pos[0]) ** 2 + (npc.pos[2] - centurion.pos[2]) ** 2);
+      expect(dist).toBeLessThan(15);
+      expect(Math.abs(npc.rot - 180)).toBeLessThan(2);
+    }
+  });
+
+  it('adjacent soldiers in same row are exactly SPACING apart', () => {
+    const { players, brains } = setupArmy([50, 0, 50], 0);
+    runTicks(players, brains, 100);
+
+    // Get soldiers sorted by block index
+    const sorted = Array.from(brains.entries())
+      .filter(([, b]) => b.rank === 'soldier')
+      .sort((a, b) => a[1].armyBlockIndex - b[1].armyBlockIndex)
+      .map(([id]) => players.get(id)!);
+
+    // Row 0: indices 1-10 (centurion is 0), Row 1: indices 11-19
+    // Check spacing within first row (indices 1-9, which are soldiers 0-8)
+    for (let i = 1; i < Math.min(COLS - 1, sorted.length); i++) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      // Same row = similar Z
+      if (Math.abs(prev.pos[2] - curr.pos[2]) < 0.5) {
+        const xDist = Math.abs(curr.pos[0] - prev.pos[0]);
+        expect(xDist).toBeCloseTo(SPACING, 0);
+      }
+    }
+  });
+});
