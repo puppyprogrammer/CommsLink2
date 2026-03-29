@@ -6,6 +6,58 @@ import prisma from '../../../../../core/adapters/prisma';
 import { broadcastAll, players } from './combat';
 import { WebSocket } from 'ws';
 
+// ── Spread Cooldown System ──
+// Each plant tracks failed spread attempts. Cooldown doubles on each failure.
+// 5min → 10min → 20min → 40min → 1hr max. Resets when a neighbor is destroyed.
+const spreadCooldowns = new Map<number, { nextSpread: number; failures: number }>();
+
+const canSpread = (id: number): boolean => {
+  const cd = spreadCooldowns.get(id);
+  if (!cd) return true;
+  return Date.now() >= cd.nextSpread;
+};
+
+const recordSpreadFailure = (id: number): void => {
+  const cd = spreadCooldowns.get(id) || { nextSpread: 0, failures: 0 };
+  cd.failures++;
+  // 5min base, doubles each failure, max 1hr
+  const waitMs = Math.min(3600000, 300000 * Math.pow(2, cd.failures - 1));
+  cd.nextSpread = Date.now() + waitMs;
+  spreadCooldowns.set(id, cd);
+};
+
+const recordSpreadSuccess = (id: number): void => {
+  spreadCooldowns.delete(id); // Reset — can try again next tick
+};
+
+/** Wake up plants near a destroyed/trampled position. Called from trampling and critter eating. */
+const wakeNearbyPlants = (x: number, z: number, radius: number): void => {
+  // We don't know which plant IDs are nearby without a query, so just clear all cooldowns
+  // for plants whose stored position might be in range. Since we don't store positions in the
+  // cooldown map, we use a simpler approach: clear ALL cooldowns periodically or on trample.
+  // For targeted clearing, we'd need to store x/z — but that doubles memory.
+  // Compromise: clear cooldowns for any plant that has been waiting > 5min and is "near" the event.
+  // Actually simplest: just track by position hash and clear matching hashes.
+  // SIMPLEST: clear all cooldowns in the area by iterating (fast for sparse maps).
+};
+
+/** Reset cooldowns for all plants near a position (called when vegetation is destroyed). */
+const resetCooldownsNear = async (x: number, z: number, radius: number): Promise<void> => {
+  // Find plant IDs near the destruction and reset their cooldowns
+  const nearby = await prisma.world_vegetation.findMany({
+    where: {
+      x: { gte: x - radius, lte: x + radius },
+      z: { gte: z - radius, lte: z + radius },
+      growth_stage: 4,
+      health: { gt: 0 },
+    },
+    select: { id: true },
+  });
+  for (const p of nearby) {
+    spreadCooldowns.delete(p.id);
+  }
+};
+
 // ── World Time ──
 // 1 real minute = 1 game hour → 24 real minutes = 1 game day
 // 30 game days = 1 lunar cycle → 12 real hours = 1 full moon cycle
@@ -91,21 +143,22 @@ const vegetationTick = async (): Promise<void> => {
   });
 
   for (const g of matureGrass) {
+    if (!canSpread(g.id)) continue; // On cooldown from previous failures
     if (Math.random() > 0.10) continue; // 10% chance per tick
     const angle = Math.random() * Math.PI * 2;
-    const dist = 2 + Math.random() * 8; // 2-10m from parent
+    const dist = 2 + Math.random() * 8;
     const newX = g.x + Math.cos(angle) * dist;
     const newZ = g.z + Math.sin(angle) * dist;
 
-    // Don't spawn too close to existing
     const nearby = await prisma.world_vegetation.count({
       where: { x: { gte: newX - 1.5, lte: newX + 1.5 }, z: { gte: newZ - 1.5, lte: newZ + 1.5 } },
     });
-    if (nearby > 0) continue;
+    if (nearby > 0) { recordSpreadFailure(g.id); continue; }
 
     const newVeg = await prisma.world_vegetation.create({
       data: { x: newX, z: newZ, type: 'grass', growth_stage: 0, health: 100 },
     });
+    recordSpreadSuccess(g.id);
 
     await prisma.vegetation_log.create({ data: {
       veg_id: newVeg.id, veg_type: 'grass', event: 'spawned', x: newX, z: newZ,
@@ -127,13 +180,13 @@ const vegetationTick = async (): Promise<void> => {
   });
 
   for (const tree of matureTrees) {
-    if (Math.random() > 0.05) continue; // 5% chance per tick
+    if (!canSpread(tree.id)) continue;
+    if (Math.random() > 0.05) continue;
     const angle = Math.random() * Math.PI * 2;
-    const dist = 5 + Math.random() * 5; // 5-10m from parent
+    const dist = 5 + Math.random() * 5;
     const newX = tree.x + Math.cos(angle) * dist;
     const newZ = tree.z + Math.sin(angle) * dist;
 
-    // Trees need more space — 3m minimum from any other tree
     const nearbyTrees = await prisma.world_vegetation.count({
       where: {
         x: { gte: newX - 3, lte: newX + 3 },
@@ -141,17 +194,17 @@ const vegetationTick = async (): Promise<void> => {
         type: { startsWith: 'tree_' },
       },
     });
-    if (nearbyTrees > 0) continue;
+    if (nearbyTrees > 0) { recordSpreadFailure(tree.id); continue; }
 
-    // Don't spawn on top of dense grass either
     const nearbyAll = await prisma.world_vegetation.count({
       where: { x: { gte: newX - 1, lte: newX + 1 }, z: { gte: newZ - 1, lte: newZ + 1 } },
     });
-    if (nearbyAll > 2) continue;
+    if (nearbyAll > 2) { recordSpreadFailure(tree.id); continue; }
 
     const newTree = await prisma.world_vegetation.create({
       data: { x: newX, z: newZ, type: tree.type, growth_stage: 0, health: 100 },
     });
+    recordSpreadSuccess(tree.id);
 
     await prisma.vegetation_log.create({ data: {
       veg_id: newTree.id, veg_type: tree.type, event: 'spawned', x: newX, z: newZ,
@@ -170,20 +223,22 @@ const vegetationTick = async (): Promise<void> => {
   });
 
   for (const bush of matureBushes) {
-    if (Math.random() > 0.05) continue; // 5% chance per tick
+    if (!canSpread(bush.id)) continue;
+    if (Math.random() > 0.05) continue;
     const bAngle = Math.random() * Math.PI * 2;
-    const bDist = 2 + Math.random() * 4; // 2-6m from parent
+    const bDist = 2 + Math.random() * 4;
     const newX = bush.x + Math.cos(bAngle) * bDist;
     const newZ = bush.z + Math.sin(bAngle) * bDist;
 
     const nearby = await prisma.world_vegetation.count({
       where: { x: { gte: newX - 2, lte: newX + 2 }, z: { gte: newZ - 2, lte: newZ + 2 } },
     });
-    if (nearby > 0) continue;
+    if (nearby > 0) { recordSpreadFailure(bush.id); continue; }
 
     const newBush = await prisma.world_vegetation.create({
       data: { x: newX, z: newZ, type: 'bush', growth_stage: 0, health: 100 },
     });
+    recordSpreadSuccess(bush.id);
 
     await prisma.vegetation_log.create({ data: {
       veg_id: newBush.id, veg_type: 'bush', event: 'spawned', x: newX, z: newZ,
@@ -200,7 +255,8 @@ const vegetationTick = async (): Promise<void> => {
   const totalVeg = await prisma.world_vegetation.count();
   const connectedPlayers = Array.from(players.values()).filter(p => p.ws?.readyState === WebSocket.OPEN).length;
   // Count actual spawns by tracking creates above (grass + trees + bushes)
-  console.log(`[Vegetation] Tick: ${grownVeg.length} grew, ${newSpawns} spawned (from ${matureGrass.length} grass + ${matureTrees.length} trees + ${matureBushes.length} bushes), ${totalVeg} total, ${connectedPlayers} players online`);
+  const dormant = spreadCooldowns.size;
+  console.log(`[Vegetation] Tick: ${grownVeg.length} grew, ${newSpawns} spawned (from ${matureGrass.length} grass + ${matureTrees.length} trees + ${matureBushes.length} bushes), ${totalVeg} total, ${dormant} on cooldown, ${connectedPlayers} players online`);
 };
 
 // ── Trampling ──
@@ -233,6 +289,8 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
         detail: `health: ${veg.health}→0 (killed)`,
       } }).catch(() => {});
       broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_died', id: veg.id });
+      // Wake nearby plants so they can spread into the gap
+      resetCooldownsNear(veg.x, veg.z, 10).catch(() => {});
     } else if (stageChanged) {
       broadcastNearby(veg.x, veg.z, 200, { type: 'vegetation_grown', id: veg.id, growth_stage: newStage });
     }
@@ -260,4 +318,4 @@ const initVegetationSystem = (): void => {
   console.log('[Vegetation] System initialized (growth tick: 30s, spread: 10% grass / 3% tree / 5% bush, daytime only)');
 };
 
-export { initVegetationSystem, getGameHour, getGameDay, broadcastNearby, checkTrampling };
+export { initVegetationSystem, getGameHour, getGameDay, broadcastNearby, checkTrampling, resetCooldownsNear };
