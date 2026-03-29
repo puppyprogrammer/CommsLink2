@@ -55,13 +55,14 @@ const vegetationTick = async (): Promise<void> => {
 
   const now = new Date();
 
-  // Grow ALL vegetation that hasn't grown in last 60s and isn't fully grown
+  // Grow vegetation that hasn't grown in last 60s — batch limit to prevent event loop starvation
   const grownVeg = await prisma.world_vegetation.findMany({
     where: {
       growth_stage: { lt: 4 },
       health: { gt: 0 },
-      last_growth: { lt: new Date(now.getTime() - 60000) }, // 60s cooldown
+      last_growth: { lt: new Date(now.getTime() - 60000) },
     },
+    take: 500, // Cap per tick — remaining will be caught next tick
   });
 
   for (const veg of grownVeg) {
@@ -82,11 +83,20 @@ const vegetationTick = async (): Promise<void> => {
     });
   }
 
-  // Spread: every mature grass has a chance to spawn adjacent — density is the only cap
+  // Spread: only check plants that aren't in saturated areas
+  // Dormant plants (surrounded) skip spread checks. Wake when neighbors die.
   let newSpawns = 0;
-  const matureGrass = await prisma.world_vegetation.findMany({
-    where: { growth_stage: 4, type: 'grass', health: { gte: 50 } },
-  });
+
+  // Grass: saturated if 30+ grass within 10m radius
+  const matureGrass = await prisma.$queryRaw<{ id: number; x: number; z: number }[]>`
+    SELECT g.id, g.x, g.z FROM world_vegetation g
+    WHERE g.growth_stage = 4 AND g.type = 'grass' AND g.health >= 50
+    AND (SELECT COUNT(*) FROM world_vegetation n
+         WHERE n.x BETWEEN g.x - 10 AND g.x + 10
+         AND n.z BETWEEN g.z - 10 AND g.z + 10
+         AND n.type = 'grass') < 30
+    ORDER BY RAND() LIMIT 500
+  `;
 
   for (const g of matureGrass) {
     if (Math.random() > 0.10) continue; // 10% chance per tick
@@ -119,10 +129,15 @@ const vegetationTick = async (): Promise<void> => {
   // Trees drop seeds — mature trees have 5% chance to spawn a sapling nearby
   // Seeds fall further than grass (5-10m) and need more space (3m minimum gap)
   // Random ordering ensures rare species (pine) get a fair chance alongside common ones (oak)
+  // Trees: saturated if 8+ trees within 10m radius
   const matureTrees = await prisma.$queryRaw<{ id: number; x: number; z: number; type: string }[]>`
-    SELECT id, x, z, type FROM world_vegetation
-    WHERE growth_stage = 4 AND type LIKE 'tree_%' AND health >= 50
-    ORDER BY RAND()
+    SELECT t.id, t.x, t.z, t.type FROM world_vegetation t
+    WHERE t.growth_stage = 4 AND t.type LIKE 'tree_%' AND t.health >= 50
+    AND (SELECT COUNT(*) FROM world_vegetation n
+         WHERE n.x BETWEEN t.x - 10 AND t.x + 10
+         AND n.z BETWEEN t.z - 10 AND t.z + 10
+         AND n.type LIKE 'tree_%') < 8
+    ORDER BY RAND() LIMIT 200
   `;
 
   for (const tree of matureTrees) {
@@ -163,10 +178,16 @@ const vegetationTick = async (): Promise<void> => {
     newSpawns++;
   }
 
-  // Bushes also spread — 5% chance, 2-4m distance
-  const matureBushes = await prisma.world_vegetation.findMany({
-    where: { growth_stage: 4, type: 'bush', health: { gte: 50 } },
-  });
+  // Bushes: saturated if 15+ bushes within 8m radius
+  const matureBushes = await prisma.$queryRaw<{ id: number; x: number; z: number }[]>`
+    SELECT b.id, b.x, b.z FROM world_vegetation b
+    WHERE b.growth_stage = 4 AND b.type = 'bush' AND b.health >= 50
+    AND (SELECT COUNT(*) FROM world_vegetation n
+         WHERE n.x BETWEEN b.x - 8 AND b.x + 8
+         AND n.z BETWEEN b.z - 8 AND b.z + 8
+         AND n.type = 'bush') < 15
+    ORDER BY RAND() LIMIT 200
+  `;
 
   for (const bush of matureBushes) {
     if (Math.random() > 0.05) continue; // 5% chance per tick
