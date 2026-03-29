@@ -7,7 +7,7 @@
 
 import prisma from '../../../../../core/adapters/prisma';
 import { broadcastNearby } from './vegetation';
-import { players } from './combat';
+import { players, broadcastAll } from './combat';
 import { activeNPCs, npcStates } from './ai/npcEngine';
 import { WebSocket } from 'ws';
 
@@ -691,6 +691,41 @@ const behaviorTick = async (): Promise<void> => {
   }
 };
 
+// ── World stats broadcast (every 30s via game-sync WebSocket) ──
+
+let statsBroadcastCounter = 0;
+const broadcastWorldStats = async (): Promise<void> => {
+  statsBroadcastCounter++;
+  if (statsBroadcastCounter % 6 !== 0) return; // Every 6th behavior tick = 30s
+
+  const critterStats: Record<string, number> = {};
+  for (const [, c] of critters) {
+    if (!c.isAlive) continue;
+    critterStats[c.species] = (critterStats[c.species] || 0) + 1;
+  }
+
+  // Vegetation counts (cached query, runs every 30s)
+  try {
+    const vegRows = await prisma.$queryRaw<{ type: string; cnt: bigint }[]>`
+      SELECT type, COUNT(*) as cnt FROM world_vegetation WHERE health > 0 GROUP BY type
+    `;
+    const vegStats: Record<string, number> = {};
+    for (const row of vegRows) {
+      vegStats[row.type] = Number(row.cnt);
+    }
+
+    const totalCritters = Object.values(critterStats).reduce((a, b) => a + b, 0);
+    const totalVeg = Object.values(vegStats).reduce((a, b) => a + b, 0);
+
+    broadcastAll({
+      type: 'world_stats',
+      critters: critterStats,
+      vegetation: vegStats,
+      totals: { critters: totalCritters, vegetation: totalVeg },
+    });
+  } catch { /* ignore DB errors for stats */ }
+};
+
 // ── Persistence (save to DB periodically) ──
 
 const persistTick = async (): Promise<void> => {
@@ -730,6 +765,7 @@ const initCritterSystem = async (): Promise<void> => {
   // This means not all critters think at the same moment
   setInterval(() => {
     behaviorTick().catch((err) => console.error('[Critters] Behavior error:', err));
+    broadcastWorldStats().catch(() => {});
   }, 5000);
 
   // Persistence: every 60s
