@@ -207,11 +207,8 @@ const checkTrampling = async (x: number, z: number): Promise<void> => {
   });
 
   for (const veg of nearbyVeg) {
-    // Trees can't be trampled — you can't walk through them
-    if (veg.type.startsWith('tree_')) continue;
-
-    // Grass/bush: ~5 walks to kill (100 health / 20 damage = 5 steps)
-    const dmg = veg.type === 'grass' ? 20 : 15; // bushes slightly tougher
+    // Grass: 5 walks to kill, bushes: ~7, trees: ~15 (tougher but still trampleable for paths)
+    const dmg = veg.type === 'grass' ? 20 : veg.type === 'bush' ? 15 : 7; // trees take 3x more walks
     const newHealth = Math.max(0, veg.health - dmg);
     // Growth stage regresses with health: 80-100=4, 60-79=3, 40-59=2, 20-39=1, 1-19=0
     const newStage = newHealth <= 0 ? 0 : Math.min(4, Math.floor(newHealth / 20));
