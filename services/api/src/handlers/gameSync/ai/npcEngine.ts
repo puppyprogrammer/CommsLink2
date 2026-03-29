@@ -518,14 +518,14 @@ setInterval(() => {
         sepZ += (sdz / sDist) * push;
       }
     }
-    // Also push away from commander
-    const cmdState = players.get(brain.commanderUserId);
-    if (cmdState) {
-      const cdx = npc.pos[0] - cmdState.pos[0];
-      const cdz = npc.pos[2] - cmdState.pos[2];
+    // Also push away from ALL real players (not just commander) — dodge out of the way
+    for (const [pid, p] of players) {
+      if (!p.ws || p.ws.readyState !== WebSocket.OPEN) continue; // Skip NPCs in the map
+      const cdx = npc.pos[0] - p.pos[0];
+      const cdz = npc.pos[2] - p.pos[2];
       const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
-      if (cDist < OVERLAP_DIST && cDist > 0.01) {
-        const push = (OVERLAP_DIST - cDist) / OVERLAP_DIST * pushScale;
+      if (cDist < 1.5 && cDist > 0.01) { // Players push NPCs from further away (1.5m)
+        const push = (1.5 - cDist) / 1.5 * 0.6; // Stronger push from players
         sepX += (cdx / cDist) * push;
         sepZ += (cdz / cDist) * push;
       }
