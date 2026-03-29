@@ -723,6 +723,13 @@ model world_critter {
   last_ate   DateTime @default(now())
   last_bred  DateTime @default(now())
 
+  // Behavioral genes (0.0-2.0, 1.0 = species default, inherited + mutated)
+  gene_boldness          Float @default(1.0) // Modifies fleeRange: high=stands ground, low=flees early
+  gene_speed             Float @default(1.0) // Multiplier on walk/run speed
+  gene_social            Float @default(1.0) // How strongly they stay near family
+  gene_hunger_tolerance  Float @default(1.0) // How hungry before seeking food (high=patient, low=seeks early)
+  gene_curiosity         Float @default(1.0) // How far they wander when searching
+
   @@index([x, z])
   @@index([species])
   @@index([is_alive])
