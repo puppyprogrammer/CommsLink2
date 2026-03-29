@@ -72,8 +72,8 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
       groupCohesion: recruit.bw_group_cohesion,
       commanderProtection: recruit.bw_commander_protection,
       selfPreservation: recruit.bw_self_preservation,
-      // Reset transient agendas (move_to, guard_position) to follow on reload — their targets aren't persisted
-      agenda: (recruit.ai_agenda === 'move_to' || recruit.ai_agenda === 'guard_position') ? 'follow_commander' : (recruit.ai_agenda || 'follow_commander'),
+      // All NPCs spawn on hold — player issues commands to move them
+      agenda: 'guard_position',
       targetId: recruit.ai_target_id || null,
       lastGrokCall: 0,
       grokIntervalMs: GROK_INTERVALS[recruit.npc_type || ''] || 20_000,
@@ -95,21 +95,8 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
     activeNPCs.set(recruit.id, brain);
 
     // Create a PlayerSyncState for the NPC (so combat resolution can find them)
-    // Use DB position if near commander, otherwise spawn behind commander
-    let spawnPos: [number, number, number] = [recruit.spawn_x, recruit.spawn_y, recruit.spawn_z];
-    if (commander) {
-      const dx = spawnPos[0] - commander.pos[0];
-      const dz = spawnPos[2] - commander.pos[2];
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist > 100) {
-        // Too far — teleport near commander instead of running 7km
-        spawnPos = [
-          commander.pos[0] + (Math.random() - 0.5) * 6,
-          commander.pos[1],
-          commander.pos[2] + (Math.random() - 0.5) * 6,
-        ];
-      }
-    }
+    // Always use saved DB position
+    const spawnPos: [number, number, number] = [recruit.spawn_x, recruit.spawn_y, recruit.spawn_z];
 
     // Load equipment BEFORE creating state
     const gear = await loadEquipment(recruit.id);
