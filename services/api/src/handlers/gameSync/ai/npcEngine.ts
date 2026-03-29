@@ -95,8 +95,21 @@ const registerPlayerNPCs = async (commanderUserId: string): Promise<void> => {
     activeNPCs.set(recruit.id, brain);
 
     // Create a PlayerSyncState for the NPC (so combat resolution can find them)
-    // Always use DB position — persisted from last session
-    const spawnPos: [number, number, number] = [recruit.spawn_x, recruit.spawn_y, recruit.spawn_z];
+    // Use DB position if near commander, otherwise spawn behind commander
+    let spawnPos: [number, number, number] = [recruit.spawn_x, recruit.spawn_y, recruit.spawn_z];
+    if (commander) {
+      const dx = spawnPos[0] - commander.pos[0];
+      const dz = spawnPos[2] - commander.pos[2];
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist > 100) {
+        // Too far — teleport near commander instead of running 7km
+        spawnPos = [
+          commander.pos[0] + (Math.random() - 0.5) * 6,
+          commander.pos[1],
+          commander.pos[2] + (Math.random() - 0.5) * 6,
+        ];
+      }
+    }
 
     // Load equipment BEFORE creating state
     const gear = await loadEquipment(recruit.id);
