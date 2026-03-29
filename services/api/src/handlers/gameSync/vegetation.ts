@@ -55,14 +55,13 @@ const vegetationTick = async (): Promise<void> => {
 
   const now = new Date();
 
-  // Grow vegetation that hasn't grown in last 60s — batch limit to prevent event loop starvation
+  // Grow ALL vegetation that hasn't grown in last 60s and isn't fully grown
   const grownVeg = await prisma.world_vegetation.findMany({
     where: {
       growth_stage: { lt: 4 },
       health: { gt: 0 },
       last_growth: { lt: new Date(now.getTime() - 60000) },
     },
-    take: 500, // Cap per tick — remaining will be caught next tick
   });
 
   for (const veg of grownVeg) {
