@@ -501,8 +501,8 @@ setInterval(() => {
 
     // ── Unit separation: soft push when overlapping ──
     // Gentle when in formation (don't disrupt grid), stronger when free-moving
-    const OVERLAP_DIST = 0.8; // Push when close enough to block each other
-    const pushScale = 0.4; // Strong enough to actually move — they'll snap back to formation after
+    const OVERLAP_DIST = 1.5; // Push when close enough to block each other
+    const pushScale = 0.5; // Strong enough to actually slide past each other
     let sepX = 0;
     let sepZ = 0;
     for (const [otherId] of activeNPCs) {
