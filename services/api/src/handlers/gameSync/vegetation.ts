@@ -162,10 +162,15 @@ const vegetationTick = async (): Promise<void> => {
     const newX = g.x + Math.cos(angle) * dist;
     const newZ = g.z + Math.sin(angle) * dist;
 
-    const nearby = await prisma.world_vegetation.count({
-      where: { x: { gte: newX - 1.5, lte: newX + 1.5 }, z: { gte: newZ - 1.5, lte: newZ + 1.5 } },
+    // Grass: 6m from other grass, 1.5m from trees/bushes (can grow near but not ON them)
+    const nearbyGrass = await prisma.world_vegetation.count({
+      where: { x: { gte: newX - 6, lte: newX + 6 }, z: { gte: newZ - 6, lte: newZ + 6 }, type: 'grass' },
     });
-    if (nearby > 0) { recordSpreadFailure(g.id); return; }
+    if (nearbyGrass > 0) { recordSpreadFailure(g.id); return; }
+    const nearbyOther = await prisma.world_vegetation.count({
+      where: { x: { gte: newX - 1.5, lte: newX + 1.5 }, z: { gte: newZ - 1.5, lte: newZ + 1.5 }, type: { not: 'grass' } },
+    });
+    if (nearbyOther > 0) { recordSpreadFailure(g.id); return; }
 
     const newVeg = await prisma.world_vegetation.create({
       data: { x: newX, z: newZ, type: 'grass', growth_stage: 0, health: 100 },
@@ -242,8 +247,9 @@ const vegetationTick = async (): Promise<void> => {
     const newX = bush.x + Math.cos(bAngle) * bDist;
     const newZ = bush.z + Math.sin(bAngle) * bDist;
 
+    // Bushes: 20m from other bushes
     const nearby = await prisma.world_vegetation.count({
-      where: { x: { gte: newX - 2, lte: newX + 2 }, z: { gte: newZ - 2, lte: newZ + 2 } },
+      where: { x: { gte: newX - 20, lte: newX + 20 }, z: { gte: newZ - 20, lte: newZ + 20 }, type: 'bush' },
     });
     if (nearby > 0) { recordSpreadFailure(bush.id); return; }
 
