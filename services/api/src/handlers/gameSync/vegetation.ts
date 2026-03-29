@@ -82,18 +82,12 @@ const vegetationTick = async (): Promise<void> => {
     });
   }
 
-  // Spread: only check plants that aren't in saturated areas
-  // Dormant plants (surrounded) skip spread checks. Wake when neighbors die.
+  // Spread: random sample of mature plants — density checked per-plant in Node
   let newSpawns = 0;
 
-  // Grass: saturated if 30+ grass within 10m radius
   const matureGrass = await prisma.$queryRaw<{ id: number; x: number; z: number }[]>`
-    SELECT g.id, g.x, g.z FROM world_vegetation g
-    WHERE g.growth_stage = 4 AND g.type = 'grass' AND g.health >= 50
-    AND (SELECT COUNT(*) FROM world_vegetation n
-         WHERE n.x BETWEEN g.x - 10 AND g.x + 10
-         AND n.z BETWEEN g.z - 10 AND g.z + 10
-         AND n.type = 'grass') < 30
+    SELECT id, x, z FROM world_vegetation
+    WHERE growth_stage = 4 AND type = 'grass' AND health >= 50
     ORDER BY RAND() LIMIT 500
   `;
 
@@ -128,14 +122,9 @@ const vegetationTick = async (): Promise<void> => {
   // Trees drop seeds — mature trees have 5% chance to spawn a sapling nearby
   // Seeds fall further than grass (5-10m) and need more space (3m minimum gap)
   // Random ordering ensures rare species (pine) get a fair chance alongside common ones (oak)
-  // Trees: saturated if 8+ trees within 10m radius
   const matureTrees = await prisma.$queryRaw<{ id: number; x: number; z: number; type: string }[]>`
-    SELECT t.id, t.x, t.z, t.type FROM world_vegetation t
-    WHERE t.growth_stage = 4 AND t.type LIKE 'tree_%' AND t.health >= 50
-    AND (SELECT COUNT(*) FROM world_vegetation n
-         WHERE n.x BETWEEN t.x - 10 AND t.x + 10
-         AND n.z BETWEEN t.z - 10 AND t.z + 10
-         AND n.type LIKE 'tree_%') < 8
+    SELECT id, x, z, type FROM world_vegetation
+    WHERE growth_stage = 4 AND type LIKE 'tree_%' AND health >= 50
     ORDER BY RAND() LIMIT 200
   `;
 
@@ -177,14 +166,9 @@ const vegetationTick = async (): Promise<void> => {
     newSpawns++;
   }
 
-  // Bushes: saturated if 15+ bushes within 8m radius
   const matureBushes = await prisma.$queryRaw<{ id: number; x: number; z: number }[]>`
-    SELECT b.id, b.x, b.z FROM world_vegetation b
-    WHERE b.growth_stage = 4 AND b.type = 'bush' AND b.health >= 50
-    AND (SELECT COUNT(*) FROM world_vegetation n
-         WHERE n.x BETWEEN b.x - 8 AND b.x + 8
-         AND n.z BETWEEN b.z - 8 AND b.z + 8
-         AND n.type = 'bush') < 15
+    SELECT id, x, z FROM world_vegetation
+    WHERE growth_stage = 4 AND type = 'bush' AND health >= 50
     ORDER BY RAND() LIMIT 200
   `;
 
